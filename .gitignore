@@ -3,6 +3,7 @@ obj/
 artifacts/
 coverage/
 output/
+.fsdocs/
 *.nupkg
 *.snupkg
 .vs/
