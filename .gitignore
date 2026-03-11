@@ -1,0 +1,9 @@
+bin/
+obj/
+artifacts/
+coverage/
+output/
+*.nupkg
+*.snupkg
+.vs/
+*.user
