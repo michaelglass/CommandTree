@@ -66,6 +66,13 @@ type UiDemoCommand =
     | [<Cmd("Show spinner animations")>] Spinners
     | [<Cmd("Show ANSI color constants")>] Colors
 
+type ReflectionDemoCommand =
+    | [<Cmd("Show formatCmd roundtrip")>] FormatCmd
+    | [<Cmd("Show naming conversions")>] Naming
+    | [<Cmd("Show field value parsing and formatting")>] ParseValues
+    | [<Cmd("Show CommandSpec usage")>] Spec
+    | [<Cmd("Show tree inspection")>] TreeInfo
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
@@ -74,6 +81,7 @@ type Command =
     | [<Cmd("Job management")>] Job of JobCommand
     | [<Cmd("Process execution demos")>] Proc of ProcessDemoCommand
     | [<Cmd("UI and color demos")>] Ui of UiDemoCommand
+    | [<Cmd("Reflection and tree inspection demos")>] Reflect of ReflectionDemoCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Format source code")>] Format
     | [<Cmd("Generate fish completions")>] Fish
@@ -274,7 +282,108 @@ let handleUiDemo (cmd: UiDemoCommand) =
 let tree = CommandReflection.fromUnion<Command> "Example project management CLI"
 let cmdName = "example-cli"
 
-let run (cmd: Command) =
+let handleReflectionDemo
+    (tree: CommandTree<Command>)
+    (cmdName: string)
+    (runCmd: Command -> unit)
+    (cmd: ReflectionDemoCommand)
+    =
+    match cmd with
+    | ReflectionDemoCommand.FormatCmd ->
+        UI.title "CommandReflection.formatCmd"
+
+        let examples: Command list =
+            [ Task(TaskCommand.Add("buy milk", Some Priority.High))
+              Deploy(DeployCommand.Push "staging")
+              Job(JobCommand.Start("build", 1024L, true))
+              Job(JobCommand.Status(Guid.Parse("550e8400-e29b-41d4-a716-446655440000"))) ]
+
+        for ex in examples do
+            let formatted = CommandReflection.formatCmd ex
+            UI.info $"%s{formatted}"
+
+            match CommandTree.format tree ex [] cmdName with
+            | Some full -> UI.dimInfo $"Full: %s{full}"
+            | None -> UI.dimInfo "Could not format via tree"
+
+    | ReflectionDemoCommand.Naming ->
+        UI.title "Naming Conversions"
+        let names = [ "FileCoverage"; "RunAsync"; "ProcessDemoCommand"; "MyApp"; "UI" ]
+
+        for name in names do
+            UI.info $"\"%s{name}\""
+            UI.dimInfo $"  toKebabCase:    %s{CommandReflection.toKebabCase name}"
+            UI.dimInfo $"  toDescription:  %s{CommandReflection.toDescription name}"
+
+    | ReflectionDemoCommand.ParseValues ->
+        UI.title "Field Value Parsing and Formatting"
+
+        let testCases: (Type * string) list =
+            [ (typeof<string>, "hello")
+              (typeof<int>, "42")
+              (typeof<int64>, "9876543210")
+              (typeof<bool>, "true")
+              (typeof<Guid>, "550e8400-e29b-41d4-a716-446655440000")
+              (typeof<Priority option>, "high")
+              (typeof<Priority>, "med") ]
+
+        for (t, input) in testCases do
+            match CommandReflection.parseFieldValue t input with
+            | Some value ->
+                let formatted = CommandReflection.formatFieldValue value
+                UI.success $"parse(%s{t.Name}, \"%s{input}\") = %s{formatted}"
+            | None -> UI.fail $"parse(%s{t.Name}, \"%s{input}\") = None"
+
+    | ReflectionDemoCommand.Spec ->
+        UI.title "CommandSpec Usage"
+        UI.info "CommandSpec bundles tree + format + execute:"
+
+        let spec: CommandSpec<Command> =
+            { Tree = tree
+              Format = CommandReflection.formatCmd
+              Execute = runCmd }
+
+        UI.dimInfo $"Tree root desc: %s{CommandTree.desc spec.Tree}"
+        UI.dimInfo $"Format example: %s{spec.Format(Test)}"
+        UI.info "Executing 'test' via spec.Execute:"
+        spec.Execute Test
+
+    | ReflectionDemoCommand.TreeInfo ->
+        UI.title "Tree Inspection"
+        UI.section "CommandTree.name / desc on root"
+        UI.info $"name: \"%s{CommandTree.name tree}\""
+        UI.info $"desc: \"%s{CommandTree.desc tree}\""
+        UI.section "CommandTree.findByPath"
+
+        match CommandTree.findByPath tree [ "task" ] with
+        | Some subtree ->
+            UI.success $"Found: \"%s{CommandTree.name subtree}\" — %s{CommandTree.desc subtree}"
+            UI.dimInfo "Args (group has none):"
+
+            for arg in CommandTree.args subtree do
+                UI.dimInfo $"  %s{arg.Name}: %s{arg.TypeName} (optional: %b{arg.IsOptional})"
+        | None -> UI.fail "Not found"
+
+        UI.section "CommandTree.findByPath for leaf"
+
+        match CommandTree.findByPath tree [ "task"; "add" ] with
+        | Some leaf ->
+            UI.success $"Found leaf: \"%s{CommandTree.name leaf}\""
+
+            for arg in CommandTree.args leaf do
+                UI.info $"  %s{arg.Name}: %s{arg.TypeName} (optional: %b{arg.IsOptional})"
+        | None -> UI.fail "Not found"
+
+        UI.section "CommandTree.fishCompletions (raw)"
+        let raw = CommandTree.fishCompletions tree cmdName
+        let lines = raw.Split('\n')
+
+        for line in lines |> Array.truncate 5 do
+            UI.dimInfo line
+
+        UI.dimInfo $"... (%d{lines.Length} lines total)"
+
+let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
     match cmd with
     | Task t -> handleTask t
     | Db d -> handleDb d
@@ -283,6 +392,7 @@ let run (cmd: Command) =
     | Job j -> handleJob j
     | Proc p -> handleProcessDemo p
     | Ui u -> handleUiDemo u
+    | Reflect r -> handleReflectionDemo tree cmdName (run tree cmdName) r
     | Test ->
         UI.section "Running tests"
         UI.success "All 42 tests passed"
@@ -298,7 +408,7 @@ let main argv =
 
     match CommandTree.parse tree args with
     | Ok cmd ->
-        run cmd
+        run tree cmdName cmd
         0
     | Error "_help" ->
         printfn "%s" (CommandTree.help tree [] cmdName)
