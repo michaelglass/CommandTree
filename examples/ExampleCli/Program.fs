@@ -60,6 +60,12 @@ type ProcessDemoCommand =
     | [<Cmd("Run dotnet command")>] Dotnet
     | [<Cmd("Run tasks in parallel")>] Parallel
 
+type UiDemoCommand =
+    | [<Cmd("Show all output styles")>] Styles
+    | [<Cmd("Show timing display with color gradient")>] Timing
+    | [<Cmd("Show spinner animations")>] Spinners
+    | [<Cmd("Show ANSI color constants")>] Colors
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
@@ -67,6 +73,7 @@ type Command =
     | [<Cmd("Code coverage")>] Coverage of CoverageCommand
     | [<Cmd("Job management")>] Job of JobCommand
     | [<Cmd("Process execution demos")>] Proc of ProcessDemoCommand
+    | [<Cmd("UI and color demos")>] Ui of UiDemoCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Format source code")>] Format
     | [<Cmd("Generate fish completions")>] Fish
@@ -202,6 +209,64 @@ let handleProcessDemo (cmd: ProcessDemoCommand) =
         for (code, stdout, _) in results do
             UI.success $"Exit %d{code}: %s{stdout.Trim()}"
 
+let handleUiDemo (cmd: UiDemoCommand) =
+    match cmd with
+    | UiDemoCommand.Styles ->
+        UI.title "UI Output Styles"
+        UI.section "Section header"
+        UI.success "Success message"
+        UI.pass "Pass message (alias for success)"
+        UI.fail "Fail message (goes to stderr)"
+        UI.info "Info message"
+        UI.warn "Warning message"
+        UI.skip "Skip message"
+        UI.dimInfo "Dim info message"
+        UI.cmd "echo" "command echo display"
+        UI.info $"isInteractive: %b{UI.isInteractive}"
+
+    | UiDemoCommand.Timing ->
+        UI.title "Timing Display"
+        UI.info "Timing color gradient from green (fast) to red (slow):"
+
+        for secs in [ 0.5; 1.0; 2.0; 4.0; 6.0; 8.0; 10.0; 15.0 ] do
+            let elapsed = TimeSpan.FromSeconds(secs)
+            printfn $"  %4.1f{secs}s -> %s{UI.timing elapsed}"
+
+        UI.info "Direct timingColor usage:"
+
+        printfn
+            $"  %s{UI.timingColor 1.0}fast%s{Color.reset}  %s{UI.timingColor 5.0}medium%s{Color.reset}  %s{UI.timingColor 10.0}slow%s{Color.reset}"
+
+    | UiDemoCommand.Spinners ->
+        UI.title "Spinner Demos"
+        UI.section "withSpinner — shows result on completion"
+
+        let result =
+            UI.withSpinner "Computing something" (fun () ->
+                System.Threading.Thread.Sleep(1500)
+                42)
+
+        UI.info $"Spinner returned: %d{result}"
+        UI.section "withSpinnerQuiet — clears line, caller handles output"
+
+        let result2 =
+            UI.withSpinnerQuiet "Working quietly" (fun () ->
+                System.Threading.Thread.Sleep(1000)
+                "done")
+
+        UI.success $"Quiet spinner returned: %s{result2}"
+
+    | UiDemoCommand.Colors ->
+        UI.title "ANSI Color Constants"
+        printfn $"  %s{Color.bold}Color.bold%s{Color.reset}"
+        printfn $"  %s{Color.dim}Color.dim%s{Color.reset}"
+        printfn $"  %s{Color.red}Color.red%s{Color.reset}"
+        printfn $"  %s{Color.green}Color.green%s{Color.reset}"
+        printfn $"  %s{Color.yellow}Color.yellow%s{Color.reset}"
+        printfn $"  %s{Color.blue}Color.blue%s{Color.reset}"
+        printfn $"  %s{Color.cyan}Color.cyan%s{Color.reset}"
+        printfn $"  Combined: %s{Color.bold}%s{Color.red}bold+red%s{Color.reset}"
+
 // =============================================================================
 // Entry point
 // =============================================================================
@@ -217,6 +282,7 @@ let run (cmd: Command) =
     | Coverage c -> handleCoverage c
     | Job j -> handleJob j
     | Proc p -> handleProcessDemo p
+    | Ui u -> handleUiDemo u
     | Test ->
         UI.section "Running tests"
         UI.success "All 42 tests passed"
