@@ -13,11 +13,6 @@ type Priority =
     | Medium
     | High
 
-type Environment =
-    | Dev
-    | Staging
-    | Prod
-
 // =============================================================================
 // Command definitions
 // =============================================================================
@@ -34,10 +29,8 @@ type DbCommand =
     | [<Cmd("Show connection status"); CmdDefault>] Status
 
 type DeployCommand =
-    | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>]
-      Push of env: string
-    | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>]
-      Status of env: string option
+    | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
+    | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
 
 type CoverageCommand =
     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of path: string
@@ -117,8 +110,7 @@ let handleDb (cmd: DbCommand) =
     | DbCommand.Reset ->
         UI.warn "Resetting database..."
         UI.success "Database reset complete"
-    | DbCommand.Status ->
-        UI.info "Database: connected (localhost:5432/myapp_dev)"
+    | DbCommand.Status -> UI.info "Database: connected (localhost:5432/myapp_dev)"
 
 let handleDeploy (cmd: DeployCommand) =
     match cmd with
@@ -142,8 +134,7 @@ let handleJob (cmd: JobCommand) =
     match cmd with
     | JobCommand.Start(name, size, verbose) ->
         UI.success $"Started job \"%s{name}\" (size: %d{size} bytes, verbose: %b{verbose})"
-    | JobCommand.Status id ->
-        UI.info $"Job %s{string id}: running (42%% complete)"
+    | JobCommand.Status id -> UI.info $"Job %s{string id}: running (42%% complete)"
     | JobCommand.List ->
         UI.title "Recent Jobs"
         printfn "  1. build-assets  (completed)"
@@ -196,12 +187,17 @@ let handleProcessDemo (cmd: ProcessDemoCommand) =
 
     | ProcessDemoCommand.Timeout ->
         UI.section "Process.runSilentWithTimeout — with timeout"
-        let (code, stdout, _) = Process.runSilentWithTimeout "echo" "fast command" (Some 5000)
+
+        let (code, stdout, _) =
+            Process.runSilentWithTimeout "echo" "fast command" (Some 5000)
+
         UI.info $"Exit code: %d{code}, Stdout: %s{stdout}"
         UI.section "Process.runSilentWithTimeout — timeout exceeded"
         let (code2, _, stderr2) = Process.runSilentWithTimeout "sleep" "10" (Some 100)
         UI.info $"Exit code: %d{code2}"
-        if stderr2 <> "" then UI.warn stderr2
+
+        if stderr2 <> "" then
+            UI.warn stderr2
 
     | ProcessDemoCommand.Dotnet ->
         UI.section "Process.dotnet — run dotnet command"
