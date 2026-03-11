@@ -48,12 +48,25 @@ type JobCommand =
     | [<Cmd("Check job status")>] Status of id: Guid
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
+type ProcessDemoCommand =
+    | [<Cmd("Run a command visibly with timing")>] Run
+    | [<Cmd("Run silently and show captured output")>] Silent
+    | [<Cmd("Run and get CommandResult record")>] Result
+    | [<Cmd("Run command asynchronously")>] Async
+    | [<Cmd("Run with spinner animation")>] Spinner
+    | [<Cmd("Run interactively (no capture)")>] Interactive
+    | [<Cmd("Run with custom environment variables")>] WithEnv
+    | [<Cmd("Run with timeout")>] Timeout
+    | [<Cmd("Run dotnet command")>] Dotnet
+    | [<Cmd("Run tasks in parallel")>] Parallel
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
     | [<Cmd("Deployment")>] Deploy of DeployCommand
     | [<Cmd("Code coverage")>] Coverage of CoverageCommand
     | [<Cmd("Job management")>] Job of JobCommand
+    | [<Cmd("Process execution demos")>] Proc of ProcessDemoCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Format source code")>] Format
     | [<Cmd("Generate fish completions")>] Fish
@@ -116,6 +129,79 @@ let handleJob (cmd: JobCommand) =
         printfn "  1. build-assets  (completed)"
         printfn "  2. deploy-prod   (running)"
 
+let handleProcessDemo (cmd: ProcessDemoCommand) =
+    match cmd with
+    | ProcessDemoCommand.Run ->
+        UI.section "Process.run — visible output with timing"
+        Process.run "echo" "hello from Process.run"
+
+    | ProcessDemoCommand.Silent ->
+        UI.section "Process.runSilent — captured output"
+        let (code, stdout, stderr) = Process.runSilent "echo" "captured output"
+        UI.info $"Exit code: %d{code}"
+        UI.info $"Stdout: %s{stdout}"
+        UI.dimInfo $"Stderr: %s{stderr}"
+
+    | ProcessDemoCommand.Result ->
+        UI.section "Process.runCommand — CommandResult record"
+        let result = Process.runCommand "echo" "hello from runCommand"
+        UI.info $"ExitCode: %d{result.ExitCode}"
+        UI.info $"Stdout: %s{result.Stdout}"
+        UI.dimInfo $"Stderr: %s{result.Stderr}"
+
+    | ProcessDemoCommand.Async ->
+        UI.section "Process.runAsync — async execution"
+        let task = Process.runAsync "echo" "async hello"
+        let (code, stdout, _stderr) = task.Result
+        UI.info $"Exit code: %d{code}, Output: %s{stdout.Trim()}"
+
+    | ProcessDemoCommand.Spinner ->
+        UI.section "Process.runWithSpinner — spinner animation"
+        Process.runWithSpinner "Sleeping for 1 second" "sleep" "1" |> ignore
+
+    | ProcessDemoCommand.Interactive ->
+        UI.section "Process.runInteractive — no capture, returns exit code"
+        let exitCode = Process.runInteractive "echo" "interactive output"
+        UI.info $"Exit code: %d{exitCode}"
+
+    | ProcessDemoCommand.WithEnv ->
+        UI.section "Process.runWithEnv — custom environment"
+        Process.runWithEnv "sh" "-c \"echo MY_VAR=$MY_VAR\"" [ ("MY_VAR", "hello-from-env") ]
+        UI.section "Process.runSilentWithEnv — silent with env"
+
+        let (code, stdout, _) =
+            Process.runSilentWithEnv "sh" "-c \"echo MY_VAR=$MY_VAR\"" [ ("MY_VAR", "silent-env") ]
+
+        UI.info $"Exit code: %d{code}, Stdout: %s{stdout}"
+
+    | ProcessDemoCommand.Timeout ->
+        UI.section "Process.runSilentWithTimeout — with timeout"
+        let (code, stdout, _) = Process.runSilentWithTimeout "echo" "fast command" (Some 5000)
+        UI.info $"Exit code: %d{code}, Stdout: %s{stdout}"
+        UI.section "Process.runSilentWithTimeout — timeout exceeded"
+        let (code2, _, stderr2) = Process.runSilentWithTimeout "sleep" "10" (Some 100)
+        UI.info $"Exit code: %d{code2}"
+        if stderr2 <> "" then UI.warn stderr2
+
+    | ProcessDemoCommand.Dotnet ->
+        UI.section "Process.dotnet — run dotnet command"
+        Process.dotnet "--version"
+        UI.section "Process.dotnetSpinner — dotnet with spinner"
+        Process.dotnetSpinner "Getting dotnet info" "--version"
+
+    | ProcessDemoCommand.Parallel ->
+        UI.section "Process.runParallel — parallel execution"
+
+        let tasks =
+            [| Process.runAsync "echo" "task-1"
+               Process.runAsync "echo" "task-2"
+               Process.runAsync "echo" "task-3" |]
+
+        let results = Process.runParallel tasks
+
+        for (code, stdout, _) in results do
+            UI.success $"Exit %d{code}: %s{stdout.Trim()}"
+
 // =============================================================================
 // Entry point
 // =============================================================================
@@ -130,6 +216,7 @@ let run (cmd: Command) =
     | Deploy d -> handleDeploy d
     | Coverage c -> handleCoverage c
     | Job j -> handleJob j
+    | Proc p -> handleProcessDemo p
     | Test ->
         UI.section "Running tests"
         UI.success "All 42 tests passed"
