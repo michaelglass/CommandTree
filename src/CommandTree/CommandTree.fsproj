@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Package metadata -->
+    <PackageId>CommandTree</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Michael Glass</Authors>
+    <Description>Type-safe CLI command parsing with discriminated unions and reflection-based tree generation</Description>
+    <PackageTags>fsharp;cli;command;parsing;discriminated-union;reflection</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/michaelglass/command-tree</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningLevel>5</WarningLevel>
+    <!-- NETSDK1188: harmless locale warnings from FSharp.Core -->
+    <!-- FS0052: string indexer copy warning - harmless -->
+    <NoWarn>$(NoWarn);NETSDK1188;FS0052</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>CommandTree.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Attributes.fs" />
+    <Compile Include="Tree.fs" />
+    <Compile Include="Reflection.fs" />
+    <Compile Include="UI.fs" />
+    <Compile Include="Process.fs" />
+    <Compile Include="Fish.fs" />
+  </ItemGroup>
+</Project>

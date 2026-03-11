@@ -1,0 +1,42 @@
+[tools]
+dotnet = "10.0"
+
+[tasks.restore]
+description = "Restore dependencies"
+run = "dotnet restore"
+
+[tasks.build]
+description = "Build the solution"
+run = "dotnet build"
+depends = ["restore"]
+
+[tasks.test]
+description = "Run tests"
+run = "dotnet exec tests/CommandTree.Tests/bin/Debug/net10.0/CommandTree.Tests.dll"
+depends = ["build"]
+
+[tasks.format]
+description = "Format code with Fantomas"
+run = "dotnet fantomas src/ tests/"
+
+[tasks.format-check]
+description = "Check formatting without making changes"
+run = "dotnet fantomas src/ tests/ --check"
+
+[tasks.lint]
+description = "Run FSharpLint"
+run = "dotnet fsharplint lint CommandTree.slnx"
+depends = ["build"]
+
+[tasks.check]
+description = "Run all checks with auto-fix"
+depends = ["format", "lint", "test"]
+
+[tasks.ci]
+description = "Run all CI checks (no auto-fix)"
+depends = ["format-check", "lint", "test"]
+
+[tasks.pack]
+description = "Create NuGet package"
+run = "dotnet pack src/CommandTree/CommandTree.fsproj -c Release"
+depends = ["build"]
