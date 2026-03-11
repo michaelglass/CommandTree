@@ -222,22 +222,22 @@ type TypesCommand =
 [<Fact>]
 let ``parseFieldValue handles int64`` () =
     let result = CommandReflection.parseFieldValue typeof<int64> "42"
-    test <@ result = Some(box 42L) @>
+    test <@ result = Ok(Some(box 42L)) @>
 
 [<Fact>]
 let ``parseFieldValue returns None for invalid int64`` () =
     let result = CommandReflection.parseFieldValue typeof<int64> "notanumber"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parseFieldValue handles bool`` () =
     let result = CommandReflection.parseFieldValue typeof<bool> "true"
-    test <@ result = Some(box true) @>
+    test <@ result = Ok(Some(box true)) @>
 
 [<Fact>]
 let ``parseFieldValue returns None for invalid bool`` () =
     let result = CommandReflection.parseFieldValue typeof<bool> "notabool"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parseFieldValue handles Guid`` () =
@@ -246,30 +246,32 @@ let ``parseFieldValue handles Guid`` () =
     let result =
         CommandReflection.parseFieldValue typeof<System.Guid> (string<System.Guid> guid)
 
-    test <@ result = Some(box guid) @>
+    test <@ result = Ok(Some(box guid)) @>
 
 [<Fact>]
 let ``parseFieldValue returns None for invalid Guid`` () =
     let result = CommandReflection.parseFieldValue typeof<System.Guid> "notaguid"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parseFieldValue handles option None for empty string`` () =
     let result = CommandReflection.parseFieldValue typeof<int option> ""
-    test <@ result.IsSome @>
-    // Should be boxed None<int>
-    let unboxed = result.Value :?> int option
-    test <@ unboxed = None @>
+
+    match result with
+    | Ok(Some v) ->
+        let unboxed = v :?> int option
+        test <@ unboxed = None @>
+    | other -> failwith $"Expected Ok(Some ...), got: %O{other}"
 
 [<Fact>]
 let ``parseFieldValue returns None for option with invalid inner value`` () =
     let result = CommandReflection.parseFieldValue typeof<int option> "notanumber"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parseFieldValue returns None for unknown type`` () =
     let result = CommandReflection.parseFieldValue typeof<float> "3.14"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``formatFieldValue handles int64`` () =
@@ -308,13 +310,13 @@ let ``parseFieldValue union type ignores cases with fields`` () =
     // MixedFieldUnion has Simple (0 fields) and WithArg (1 field)
     // parseFieldValue should match Simple and skip WithArg due to field count check
     let result = CommandReflection.parseFieldValue typeof<MixedFieldUnion> "simple"
-    test <@ result = Some(box MixedFieldUnion.Simple) @>
+    test <@ result = Ok(Some(box MixedFieldUnion.Simple)) @>
 
 [<Fact>]
 let ``parseFieldValue union type does not match case with fields`` () =
     // "with-arg" matches the name but WithArg has 1 field, so it's filtered out
     let result = CommandReflection.parseFieldValue typeof<MixedFieldUnion> "with-arg"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``toDescription handles empty string`` () =

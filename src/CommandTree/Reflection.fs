@@ -125,25 +125,25 @@ module CommandReflection =
         |> Array.toList
 
     /// Parse a single field value from string
-    let rec parseFieldValue (fieldType: Type) (value: string) : obj option =
+    let rec parseFieldValue (fieldType: Type) (value: string) : Result<obj option, string> =
         if fieldType = typeof<string> then
-            Some(box value)
+            Ok(Some(box value))
         elif fieldType = typeof<int> then
             match Int32.TryParse(value) with
-            | true, n -> Some(box n)
-            | _ -> None
+            | true, n -> Ok(Some(box n))
+            | _ -> Ok None
         elif fieldType = typeof<int64> then
             match Int64.TryParse(value) with
-            | true, n -> Some(box n)
-            | _ -> None
+            | true, n -> Ok(Some(box n))
+            | _ -> Ok None
         elif fieldType = typeof<bool> then
             match Boolean.TryParse(value) with
-            | true, b -> Some(box b)
-            | _ -> None
+            | true, b -> Ok(Some(box b))
+            | _ -> Ok None
         elif fieldType = typeof<Guid> then
             match Guid.TryParse(value) with
-            | true, g -> Some(box g)
-            | _ -> None
+            | true, g -> Ok(Some(box g))
+            | _ -> Ok None
         elif
             fieldType.IsGenericType
             && fieldType.GetGenericTypeDefinition() = typedefof<option<_>>
@@ -154,15 +154,16 @@ module CommandReflection =
                 let noneCase =
                     FSharpType.GetUnionCases(fieldType) |> Array.find (fun c -> c.Name = "None")
 
-                Some(FSharpValue.MakeUnion(noneCase, [||]))
+                Ok(Some(FSharpValue.MakeUnion(noneCase, [||])))
             else
                 match parseFieldValue innerType value with
-                | Some v ->
+                | Ok(Some v) ->
                     let someCase =
                         FSharpType.GetUnionCases(fieldType) |> Array.find (fun c -> c.Name = "Some")
 
-                    Some(FSharpValue.MakeUnion(someCase, [| v |]))
-                | None -> None
+                    Ok(Some(FSharpValue.MakeUnion(someCase, [| v |])))
+                | Ok None -> Ok None
+                | Error e -> Error e
         elif isUnionType fieldType then
             // Match kebab-case input against union case names with prefix matching
             let cases = FSharpType.GetUnionCases(fieldType)
@@ -182,15 +183,15 @@ module CommandReflection =
                             || valueLower.StartsWith(caseName, StringComparison.Ordinal)))
 
             match matches with
-            | [| single |] -> Some(FSharpValue.MakeUnion(single, [||]))
-            | [||] -> None
+            | [| single |] -> Ok(Some(FSharpValue.MakeUnion(single, [||])))
+            | [||] -> Ok None
             | ambiguous ->
-                let names =
-                    ambiguous |> Array.map (fun c -> toKebabCase c.Name) |> String.concat ", "
+                let names = ambiguous |> Array.map (fun c -> toKebabCase c.Name) |> Array.toList
 
-                failwith $"Ambiguous argument '%s{value}' matches: %s{names}"
+                let namesStr = String.concat ", " names
+                Error $"Ambiguous argument '%s{value}' matches: %s{namesStr}"
         else
-            None
+            Ok None
 
     /// Format a field value to string
     let rec formatFieldValue (value: obj) : string =
@@ -224,7 +225,7 @@ module CommandReflection =
         FSharpValue.MakeUnion(noneCase, [||])
 
     /// Parse fields from args array
-    let parseFields (fields: Reflection.PropertyInfo array) (args: string array) =
+    let parseFields (fields: Reflection.PropertyInfo array) (args: string array) : Result<obj option, string> array =
         fields
         |> Array.mapi (fun i field ->
             if i < args.Length then
@@ -233,9 +234,9 @@ module CommandReflection =
                 field.PropertyType.IsGenericType
                 && field.PropertyType.GetGenericTypeDefinition() = typedefof<option<_>>
             then
-                Some(makeNone field.PropertyType)
+                Ok(Some(makeNone field.PropertyType))
             else
-                None)
+                Ok None)
 
     /// Format a command value to its CLI string using reflection (no tree needed).
     /// Recursively walks nested unions using getCommandName + formatFieldValue.
@@ -288,42 +289,92 @@ module CommandReflection =
                 let defaultParse =
                     defaultCase
                     |> Option.map (fun dc ->
+                        let dcName = getCommandName dc
+
                         fun (args: string array) ->
                             let nestedFields = dc.GetFields()
+                            let fieldValues = parseFields nestedFields args
 
-                            try
-                                let fieldValues = parseFields nestedFields args
+                            // Check for Error results (e.g., ambiguous arguments)
+                            let firstError =
+                                fieldValues
+                                |> Array.tryPick (fun r ->
+                                    match r with
+                                    | Error e -> Some e
+                                    | Ok _ -> None)
 
-                                if fieldValues |> Array.forall Option.isSome then
-                                    let values = fieldValues |> Array.map Option.get
+                            match firstError with
+                            | Some errMsg ->
+                                if errMsg.Contains("Ambiguous") then
+                                    // Extract input and candidates from error message
+                                    Error(AmbiguousArgument(errMsg, []))
+                                else
+                                    Error(InvalidArguments(dcName, errMsg))
+                            | None ->
+                                if
+                                    fieldValues
+                                    |> Array.forall (fun r ->
+                                        match r with
+                                        | Ok(Some _) -> true
+                                        | _ -> false)
+                                then
+                                    let values =
+                                        fieldValues
+                                        |> Array.map (fun r ->
+                                            match r with
+                                            | Ok(Some v) -> v
+                                            | _ -> failwith "unreachable")
+
                                     let nestedValue = FSharpValue.MakeUnion(dc, values)
 
                                     let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| nestedValue |]))
 
                                     Ok(cmdValue :?> 'Cmd)
                                 else
-                                    Error "Invalid arguments"
-                            with _ ->
-                                Error "Parse error")
+                                    Error(InvalidArguments(dcName, "Invalid arguments")))
 
                 let defaultChildName = defaultCase |> Option.map (fun dc -> getCommandName dc)
 
                 CommandTree.Group(cmdName, desc, nestedChildren, defaultParse, defaultChildName)
             else
                 // Leaf case
-                let parse (args: string array) : Result<'Cmd, string> =
-                    try
-                        let fieldValues = parseFields fields args
+                let parse (args: string array) : Result<'Cmd, ParseError> =
+                    let fieldValues = parseFields fields args
 
-                        if fieldValues |> Array.forall Option.isSome then
-                            let values = fieldValues |> Array.map Option.get
+                    // Check for Error results (e.g., ambiguous arguments)
+                    let firstError =
+                        fieldValues
+                        |> Array.tryPick (fun r ->
+                            match r with
+                            | Error e -> Some e
+                            | Ok _ -> None)
+
+                    match firstError with
+                    | Some errMsg ->
+                        if errMsg.Contains("Ambiguous") then
+                            Error(AmbiguousArgument(errMsg, []))
+                        else
+                            Error(InvalidArguments(cmdName, errMsg))
+                    | None ->
+                        if
+                            fieldValues
+                            |> Array.forall (fun r ->
+                                match r with
+                                | Ok(Some _) -> true
+                                | _ -> false)
+                        then
+                            let values =
+                                fieldValues
+                                |> Array.map (fun r ->
+                                    match r with
+                                    | Ok(Some v) -> v
+                                    | _ -> failwith "unreachable")
+
                             let innerValue = FSharpValue.MakeUnion(outerCase, values)
                             let cmdValue = wrapValue innerValue
                             Ok(cmdValue :?> 'Cmd)
                         else
-                            Error $"Invalid arguments for %s{cmdName}"
-                    with ex ->
-                        Error $"Parse error: %s{ex.Message}"
+                            Error(InvalidArguments(cmdName, "Invalid arguments"))
 
                 let formatArgs (cmd: 'Cmd) : string list option =
                     // Navigate through nested unions to find the target case
@@ -364,6 +415,8 @@ module CommandReflection =
         let defaultParse =
             rootDefault
             |> Option.map (fun defaultCase ->
+                let defaultName = getCommandName defaultCase
+
                 fun (args: string array) ->
                     let fields = defaultCase.GetFields()
 
@@ -379,16 +432,43 @@ module CommandReflection =
                             let nestedFields = nestedDefault.GetFields()
                             let fieldValues = parseFields nestedFields args
 
-                            if fieldValues |> Array.forall Option.isSome then
-                                let values = fieldValues |> Array.map Option.get
-                                let nestedValue = FSharpValue.MakeUnion(nestedDefault, values)
-                                let cmdValue = FSharpValue.MakeUnion(defaultCase, [| nestedValue |])
-                                Ok(cmdValue :?> 'Cmd)
-                            else
-                                Error "Invalid arguments for default command"
-                        | None -> Error "No default command in nested group"
+                            // Check for Error results
+                            let firstError =
+                                fieldValues
+                                |> Array.tryPick (fun r ->
+                                    match r with
+                                    | Error e -> Some e
+                                    | Ok _ -> None)
+
+                            match firstError with
+                            | Some errMsg ->
+                                if errMsg.Contains("Ambiguous") then
+                                    Error(AmbiguousArgument(errMsg, []))
+                                else
+                                    Error(InvalidArguments(defaultName, errMsg))
+                            | None ->
+                                if
+                                    fieldValues
+                                    |> Array.forall (fun r ->
+                                        match r with
+                                        | Ok(Some _) -> true
+                                        | _ -> false)
+                                then
+                                    let values =
+                                        fieldValues
+                                        |> Array.map (fun r ->
+                                            match r with
+                                            | Ok(Some v) -> v
+                                            | _ -> failwith "unreachable")
+
+                                    let nestedValue = FSharpValue.MakeUnion(nestedDefault, values)
+                                    let cmdValue = FSharpValue.MakeUnion(defaultCase, [| nestedValue |])
+                                    Ok(cmdValue :?> 'Cmd)
+                                else
+                                    Error(InvalidArguments(defaultName, "Invalid arguments for default command"))
+                        | None -> Error(InvalidArguments(defaultName, "No default command in nested group"))
                     else
-                        Error "Default command requires no arguments")
+                        Error(InvalidArguments(defaultName, "Default command requires no arguments")))
 
         let defaultChildName = rootDefault |> Option.map getCommandName
 
