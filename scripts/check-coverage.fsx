@@ -28,12 +28,12 @@ let overrides =
           "Tree.fs", (96.0, 90.0)
           // Reflection.fs: Compiler-generated branches for type matching, prefix matching
           "Reflection.fs", (95.0, 84.0)
-          // UI.fs: Terminal I/O, spinner threads — not unit-testable
-          "UI.fs", (0.0, 0.0)
-          // Process.fs: Process execution — not unit-testable
-          "Process.fs", (0.0, 0.0)
-          // Fish.fs: File I/O — not unit-testable
-          "Fish.fs", (0.0, 0.0) ]
+          // UI.fs: Spinner threads use Console.Write directly; non-interactive path covered
+          "UI.fs", (41.0, 65.0)
+          // Process.fs: run/runWithSpinner/dotnet use UI output; core silent/async/timeout covered
+          "Process.fs", (50.0, 56.0)
+          // Fish.fs: writeToFile/installHook do file I/O; generateContent covered
+          "Fish.fs", (16.0, 0.0) ]
 
 // ============================================================================
 // Types
