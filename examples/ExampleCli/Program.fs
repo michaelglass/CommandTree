@@ -73,6 +73,11 @@ type ReflectionDemoCommand =
     | [<Cmd("Show CommandSpec usage")>] Spec
     | [<Cmd("Show tree inspection")>] TreeInfo
 
+type FishDemoCommand =
+    | [<Cmd("Write completions to file")>] Generate
+    | [<Cmd("Preview completions on stdout"); CmdDefault>] Preview
+    | [<Cmd("Install auto-update hook")>] Install
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
@@ -84,7 +89,7 @@ type Command =
     | [<Cmd("Reflection and tree inspection demos")>] Reflect of ReflectionDemoCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Format source code")>] Format
-    | [<Cmd("Generate fish completions")>] Fish
+    | [<Cmd("Fish shell completions")>] Fish of FishDemoCommand
     | [<Cmd("Show full help")>] Help
 
 // =============================================================================
@@ -383,6 +388,15 @@ let handleReflectionDemo
 
         UI.dimInfo $"... (%d{lines.Length} lines total)"
 
+let handleFishDemo (tree: CommandTree<Command>) (cmdName: string) (cmd: FishDemoCommand) =
+    match cmd with
+    | FishDemoCommand.Generate -> FishCompletions.writeToFile tree cmdName
+    | FishDemoCommand.Preview ->
+        UI.title "Fish Completions Preview"
+        UI.info "FishCompletions.generateContent output:"
+        printfn "%s" (FishCompletions.generateContent tree cmdName)
+    | FishDemoCommand.Install -> FishCompletions.installHook cmdName
+
 let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
     match cmd with
     | Task t -> handleTask t
@@ -399,7 +413,7 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
     | Format ->
         UI.section "Formatting code"
         UI.success "Formatted 12 files"
-    | Fish -> FishCompletions.writeToFile tree cmdName
+    | Fish f -> handleFishDemo tree cmdName f
     | Help -> printfn "%s" (CommandTree.helpFull tree cmdName)
 
 [<EntryPoint>]
