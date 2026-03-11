@@ -1,4 +1,4 @@
-<!-- sync:intro:start -->
+<!-- sync:intro -->
 # CommandTree
 
 Define your CLI commands as F# discriminated unions. Get type-safe parsing, automatic help generation, and fish shell completions -- all from your type definitions.
@@ -40,7 +40,9 @@ match CommandTree.parse tree argv with
 dotnet add package CommandTree
 ```
 
-<!-- sync:howitworks:start -->
+**[API Reference](reference/index.html)**
+
+<!-- sync:howitworks -->
 ## How It Works
 
 Commands are discriminated unions. Case names become command names via kebab-case conversion:
@@ -83,7 +85,7 @@ type DeployCommand =
 ```
 <!-- sync:howitworks:end -->
 
-<!-- sync:basicusage:start -->
+<!-- sync:basicusage -->
 ## Basic Usage
 
 The full example app is at [`examples/ExampleCli/Program.fs`](examples/ExampleCli/Program.fs). Here are the key parts:
@@ -150,7 +152,7 @@ let main argv =
 ```
 <!-- sync:basicusage:end -->
 
-<!-- sync:reference:start -->
+<!-- sync:reference -->
 ## Reference
 
 ### Attributes
@@ -241,7 +243,7 @@ FishCompletions.installHook "my-tool"           // Install auto-update hook in c
 | Union types | `of env: EnvKind` | Matched by kebab-case name with prefix matching (min 3 chars) |
 <!-- sync:reference:end -->
 
-<!-- sync:license:start -->
+<!-- sync:license -->
 ## License
 
 MIT
