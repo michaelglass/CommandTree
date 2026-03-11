@@ -43,11 +43,17 @@ type CoverageCommand =
     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of path: string
     | [<Cmd("Show coverage summary"); CmdDefault>] Summary
 
+type JobCommand =
+    | [<Cmd("Start a new job")>] Start of name: string * size: int64 * verbose: bool
+    | [<Cmd("Check job status")>] Status of id: Guid
+    | [<Cmd("List recent jobs"); CmdDefault>] List
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
     | [<Cmd("Deployment")>] Deploy of DeployCommand
     | [<Cmd("Code coverage")>] Coverage of CoverageCommand
+    | [<Cmd("Job management")>] Job of JobCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Format source code")>] Format
     | [<Cmd("Generate fish completions")>] Fish
@@ -99,6 +105,17 @@ let handleCoverage (cmd: CoverageCommand) =
         printfn "  src/App.fs: 91.0%%"
         printfn "  src/Lib.fs: 73.5%%"
 
+let handleJob (cmd: JobCommand) =
+    match cmd with
+    | JobCommand.Start(name, size, verbose) ->
+        UI.success $"Started job \"%s{name}\" (size: %d{size} bytes, verbose: %b{verbose})"
+    | JobCommand.Status id ->
+        UI.info $"Job %s{string id}: running (42%% complete)"
+    | JobCommand.List ->
+        UI.title "Recent Jobs"
+        printfn "  1. build-assets  (completed)"
+        printfn "  2. deploy-prod   (running)"
+
 // =============================================================================
 // Entry point
 // =============================================================================
@@ -112,6 +129,7 @@ let run (cmd: Command) =
     | Db d -> handleDb d
     | Deploy d -> handleDeploy d
     | Coverage c -> handleCoverage c
+    | Job j -> handleJob j
     | Test ->
         UI.section "Running tests"
         UI.success "All 42 tests passed"
