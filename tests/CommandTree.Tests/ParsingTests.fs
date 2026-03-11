@@ -77,10 +77,7 @@ let ``parse handles simple command`` () =
 let ``parse handles unknown command`` () =
     let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
     let result = CommandTree.parse tree [| "unknown" |]
-
-    match result with
-    | Error msg -> test <@ msg.Contains("Unknown command") @>
-    | Ok _ -> failwith "Expected error"
+    test <@ result = Error(UnknownCommand("unknown", [])) @>
 
 // =============================================================================
 // Argument parsing tests
@@ -136,7 +133,7 @@ let ``parse uses root default when no args`` () =
     | Ok(RootCommand.Dev DevCommand.Check) -> ()
     | Ok(RootCommand.Dev(DevCommand.Build | DevCommand.Test)) -> failwith "Expected default command"
     | Ok RootCommand.Help -> failwith "Expected default command"
-    | Error msg -> failwith $"Expected default command, got error: %s{msg}"
+    | Error err -> failwith $"Expected default command, got error: %O{err}"
 
 // =============================================================================
 // Unknown command tests (with defaults present)
@@ -146,19 +143,13 @@ let ``parse uses root default when no args`` () =
 let ``parse rejects unknown root command even with default`` () =
     let tree = CommandReflection.fromUnion<RootCommand> "Test"
     let result = CommandTree.parse tree [| "devv" |]
-
-    match result with
-    | Error msg -> test <@ msg.Contains("Unknown command") && msg.Contains("devv") @>
-    | Ok _ -> failwith "Expected error for misspelled command"
+    test <@ result = Error(UnknownCommand("devv", [])) @>
 
 [<Fact>]
 let ``parse rejects unknown subcommand even with default`` () =
     let tree = CommandReflection.fromUnion<RootCommand> "Test"
     let result = CommandTree.parse tree [| "dev"; "chekc" |]
-
-    match result with
-    | Error msg -> test <@ msg.Contains("Unknown subcommand") && msg.Contains("chekc") @>
-    | Ok _ -> failwith "Expected error for misspelled subcommand"
+    test <@ result = Error(UnknownCommand("chekc", [ "dev" ])) @>
 
 // =============================================================================
 // Closest help path tests
@@ -281,8 +272,8 @@ let ``parse returns error when nested group has no inner default`` () =
     let result = CommandTree.parse tree [||]
 
     match result with
-    | Error msg -> test <@ msg.Contains("No default command in nested group") @>
-    | Ok _ -> failwith "Expected error"
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
 
 [<Fact>]
 let ``parse returns error when root default has non-union argument`` () =
@@ -290,8 +281,8 @@ let ``parse returns error when root default has non-union argument`` () =
     let result = CommandTree.parse tree [||]
 
     match result with
-    | Error msg -> test <@ msg.Contains("Default command requires no arguments") @>
-    | Ok _ -> failwith "Expected error"
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
 
 [<Fact>]
 let ``parse returns error when nested default requires args not provided`` () =
@@ -299,23 +290,20 @@ let ``parse returns error when nested default requires args not provided`` () =
     let result = CommandTree.parse tree [||]
 
     match result with
-    | Error msg -> test <@ msg.Contains("Invalid arguments for default command") @>
-    | Ok _ -> failwith "Expected error"
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
 
 [<Fact>]
 let ``parse returns help error when root group has no default and no args`` () =
     let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
     let result = CommandTree.parse tree [||]
-    Assert.Equal(Error "_help", result)
+    test <@ result = Error(HelpRequested []) @>
 
 [<Fact>]
 let ``parse returns help error when nested group has no default and no args`` () =
     let tree = CommandReflection.fromUnion<NestNoDefault> "Test"
     let result = CommandTree.parse tree [| "inner" |]
-
-    match result with
-    | Error msg -> test <@ msg.Contains("inner") && msg.Contains("help") @>
-    | Ok _ -> failwith "Expected error"
+    test <@ result = Error(HelpRequested [ "inner" ]) @>
 
 [<Fact>]
 let ``help generates help for leaf node`` () =

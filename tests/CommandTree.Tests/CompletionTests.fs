@@ -105,12 +105,12 @@ let ``Optional union-typed field auto-detects Values completion`` () =
 [<Fact>]
 let ``parseFieldValue handles union type by kebab-case name`` () =
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "staging"
-    test <@ result = Some(box EnvKind.Staging) @>
+    test <@ result = Ok(Some(box EnvKind.Staging)) @>
 
 [<Fact>]
 let ``parseFieldValue handles unknown union case`` () =
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "unknown"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``formatFieldValue handles union type`` () =
@@ -125,7 +125,7 @@ let ``roundtrip parse and format for optional union arg`` () =
     match result with
     | Ok(UnionArgCommand.ChooseOpt(Some EnvKind.Prod)) -> ()
     | Ok cmd -> failwith $"Unexpected: %O{cmd}"
-    | Error msg -> failwith $"Parse error: %s{msg}"
+    | Error err -> failwith $"Parse error: %O{err}"
 
 [<Fact>]
 let ``roundtrip format for optional union arg`` () =
@@ -148,48 +148,48 @@ type AmbiguousKind =
 [<Fact>]
 let ``parseFieldValue exact match still works for union type`` () =
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "staging"
-    test <@ result = Some(box EnvKind.Staging) @>
+    test <@ result = Ok(Some(box EnvKind.Staging)) @>
 
 [<Fact>]
 let ``parseFieldValue prefix of case name works`` () =
     // "sta" is a prefix of "staging", shorter=3 >= 3
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "sta"
-    test <@ result = Some(box EnvKind.Staging) @>
+    test <@ result = Ok(Some(box EnvKind.Staging)) @>
 
 [<Fact>]
 let ``parseFieldValue case name prefix of input works`` () =
     // "dev" is a prefix of "development", shorter=3 >= 3
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "development"
-    test <@ result = Some(box EnvKind.Dev) @>
+    test <@ result = Ok(Some(box EnvKind.Dev)) @>
 
 [<Fact>]
 let ``parseFieldValue case name prefix of longer input works for prod`` () =
     // "prod" is a prefix of "production", shorter=4 >= 3
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "production"
-    test <@ result = Some(box EnvKind.Prod) @>
+    test <@ result = Ok(Some(box EnvKind.Prod)) @>
 
 [<Fact>]
 let ``parseFieldValue short prefix returns None`` () =
     // "st" shorter=2 < 3
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "st"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parseFieldValue single char returns None`` () =
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "s"
-    test <@ result = None @>
+    test <@ result = Ok None @>
 
 [<Fact>]
-let ``parseFieldValue ambiguous prefix fails with error`` () =
-    // "st" matches both "start" and "stop" and "status" — but shorter=2 < 3, so no match
-    // Use "sta" which matches "start" and "status" (both start with "sta")
-    let ex =
-        Assert.Throws<System.Exception>(fun () ->
-            CommandReflection.parseFieldValue typeof<AmbiguousKind> "sta" |> ignore)
+let ``parseFieldValue ambiguous prefix returns Error`` () =
+    // "sta" matches "start" and "status" (both start with "sta")
+    let result = CommandReflection.parseFieldValue typeof<AmbiguousKind> "sta"
 
-    test <@ ex.Message.Contains("Ambiguous") @>
-    test <@ ex.Message.Contains("start") @>
-    test <@ ex.Message.Contains("status") @>
+    match result with
+    | Error msg ->
+        test <@ msg.Contains("Ambiguous") @>
+        test <@ msg.Contains("start") @>
+        test <@ msg.Contains("status") @>
+    | Ok _ -> failwith "Expected Error for ambiguous prefix"
 
 // =============================================================================
 // Fish completions with argument values

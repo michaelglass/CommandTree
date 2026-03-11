@@ -15,6 +15,17 @@ type ArgInfo =
       IsOptional: bool
       Completions: ArgCompletionHint }
 
+/// Structured error from command parsing
+type ParseError =
+    /// User requested help (e.g., no args given). Path is the group where help was requested.
+    | HelpRequested of path: string list
+    /// Command name not recognized. Includes what was typed and the group path for context.
+    | UnknownCommand of input: string * groupPath: string list
+    /// Arguments couldn't be parsed for a known command.
+    | InvalidArguments of command: string * message: string
+    /// Argument value matched multiple union cases.
+    | AmbiguousArgument of input: string * candidates: string list
+
 /// Recursive command tree for declarative parsing and help generation
 [<NoComparison; NoEquality>]
 type CommandTree<'Cmd> =
@@ -23,14 +34,14 @@ type CommandTree<'Cmd> =
         name: string *
         desc: string *
         args: ArgInfo list *
-        parse: (string array -> Result<'Cmd, string>) *
+        parse: (string array -> Result<'Cmd, ParseError>) *
         formatArgs: ('Cmd -> string list option)
     /// Group: contains subcommands
     | Group of
         name: string *
         desc: string *
         children: CommandTree<'Cmd> list *
-        defaultParse: (string array -> Result<'Cmd, string>) option *
+        defaultParse: (string array -> Result<'Cmd, ParseError>) option *
         defaultChild: string option
 
 module CommandTree =
@@ -53,33 +64,32 @@ module CommandTree =
         | Group _ -> []
 
     /// Parse args using tree structure (recursive)
-    let rec parse (tree: CommandTree<'Cmd>) (args: string array) : Result<'Cmd, string> =
-        match tree, args with
-        // Leaf node: delegate to leaf parser
-        | Leaf(_, _, _, leafParse, _), _ -> leafParse args
+    let parse (tree: CommandTree<'Cmd>) (args: string array) : Result<'Cmd, ParseError> =
+        let rec parseRec (node: CommandTree<'Cmd>) (args: string array) (path: string list) =
+            match node, args with
+            // Leaf node: delegate to leaf parser
+            | Leaf(_, _, _, leafParse, _), _ -> leafParse args
 
-        // Group with no args: use default if available, otherwise show help
-        | Group(groupName, _, _, defaultParse, _), [||] ->
-            match defaultParse with
-            | Some p -> p [||]
-            | None ->
-                if groupName = "" then
-                    Error "_help"
-                else
-                    Error $"%s{groupName}_help"
+            // Group with no args: use default if available, otherwise show help
+            | Group(groupName, _, _, defaultParse, _), [||] ->
+                let currentPath = if groupName = "" then path else path @ [ groupName ]
 
-        // Group with args: find matching child
-        | Group(groupName, _, children, _, _), _ ->
-            let subCmd = args.[0]
-            let rest = args |> Array.skip 1
+                match defaultParse with
+                | Some p -> p [||]
+                | None -> Error(HelpRequested currentPath)
 
-            match children |> List.tryFind (fun c -> name c = subCmd) with
-            | Some child -> parse child rest
-            | None ->
-                if groupName = "" then
-                    Error $"Unknown command: %s{subCmd}"
-                else
-                    Error $"Unknown subcommand '%s{subCmd}' for %s{groupName}"
+            // Group with args: find matching child
+            | Group(groupName, _, children, _, _), _ ->
+                let currentPath = if groupName = "" then path else path @ [ groupName ]
+
+                let subCmd = args.[0]
+                let rest = args |> Array.skip 1
+
+                match children |> List.tryFind (fun c -> name c = subCmd) with
+                | Some child -> parseRec child rest currentPath
+                | None -> Error(UnknownCommand(subCmd, currentPath))
+
+        parseRec tree args []
 
     /// Format a command by walking the tree to find matching leaf
     /// Returns the full command string (e.g., "build env edit staging")
