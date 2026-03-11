@@ -13,6 +13,9 @@
     <Compile Include="ReflectionTests.fs" />
     <Compile Include="CompletionTests.fs" />
     <Compile Include="ParsingTests.fs" />
+    <Compile Include="UITests.fs" />
+    <Compile Include="ProcessTests.fs" />
+    <Compile Include="FishTests.fs" />
   </ItemGroup>
 
   <!-- xUnit runner configuration -->
