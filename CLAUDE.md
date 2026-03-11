@@ -12,20 +12,22 @@ Uses `mise` as task runner (see `mise.toml`). All commands also work with `dotne
 
 ```bash
 mise run build              # Build solution (restores deps first)
-mise run test               # Run tests (xUnit v3 standalone exe)
+mise run test               # Run tests with coverage (Cobertura XML)
+mise run coverage-check     # Check per-file coverage thresholds
 mise run lint               # FSharpLint
-mise run format             # Format with Fantomas
-mise run check              # All checks with auto-fix (format, lint, test)
+mise run format             # Format with Fantomas (src/ tests/ examples/)
+mise run example-build      # Build example app with --warnaserror
+mise run docs               # Generate API docs via fsdocs
+mise run sync-docs          # Sync README.md sections to docs/index.md
+mise run check              # All checks with auto-fix
 mise run ci                 # All CI checks without auto-fix
 mise run pack               # Create NuGet package
 ```
 
 **Running tests directly:**
 ```bash
-dotnet exec tests/CommandTree.Tests/bin/Debug/net10.0/CommandTree.Tests.dll
+dotnet test --coverage --coverage-output-format cobertura --coverage-output "$PWD/coverage/coverage.cobertura.xml"
 ```
-
-Note: xUnit v3 produces a standalone executable. `dotnet test` also works but `dotnet exec` is preferred.
 
 ## Architecture
 
@@ -71,4 +73,5 @@ Uses xUnit v3 + Unquote (`test <@ assertion @>` syntax). Tests access internal m
 - **Linting**: FSharpLint -- 4-space indent, 120 char max line, 1000 line max file, 500 line max source length
 - **Naming**: PascalCase for types/modules/records/unions, camelCase for values/params
 - **Build strictness**: `TreatWarningsAsErrors` is enabled; `GenerateDocumentationFile` requires XML docs on public members
-- **Coverage**: Tests cover all public API surface including edge cases (ambiguous union prefix matching, optional fields, nested defaults)
+- **Coverage**: Per-file coverage enforced via `scripts/check-coverage.fsx` (100% default, with overrides for I/O modules). Tests cover all public API surface including edge cases (ambiguous union prefix matching, optional fields, nested defaults)
+- **Documentation**: fsdocs generates API docs; `scripts/sync-docs.fsx` syncs README sections to `docs/index.md` via `<!-- sync:name:start -->` tags
