@@ -354,6 +354,25 @@ let ``toDescription handles empty string`` () =
     test <@ result = "" @>
 
 [<Fact>]
+let ``formatFieldValue handles Some option`` () =
+    let value: int option = Some 42
+    let result = CommandReflection.formatFieldValue (box value)
+    test <@ result = "42" @>
+
+[<Fact>]
+let ``formatFieldValue handles null`` () =
+    let result = CommandReflection.formatFieldValue null
+    test <@ result = "" @>
+
+[<Fact>]
+let ``parseFieldValue matches union case by reverse prefix`` () =
+    // Input "checking" is longer than case name "check" (8 vs 5)
+    // shorter = 5 >= 3, and "checking".StartsWith("check") = true
+    // DevSubCommand has Check, Build, Test — only Check matches
+    let result = CommandReflection.parseFieldValue typeof<DevSubCommand> "checking"
+    test <@ result = Ok(Some(box DevSubCommand.Check)) @>
+
+[<Fact>]
 let ``parse and format roundtrip for int64 command`` () =
     let tree = CommandReflection.fromUnion<TypesCommand> "Test"
     let result = CommandTree.parse tree [| "run"; "100" |]
