@@ -16,6 +16,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningLevel>5</WarningLevel>
+    <WarnOn>3390;1104;0020;0044;0025;3391;0067;0021;1182</WarnOn>
     <!-- NETSDK1188: harmless locale warnings from FSharp.Core -->
     <!-- FS0052: string indexer copy warning - harmless -->
     <NoWarn>$(NoWarn);NETSDK1188;FS0052</NoWarn>
