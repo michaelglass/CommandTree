@@ -330,10 +330,11 @@ let handleReflectionDemo
 
         for (t, input) in testCases do
             match CommandReflection.parseFieldValue t input with
-            | Some value ->
+            | Ok(Some value) ->
                 let formatted = CommandReflection.formatFieldValue value
                 UI.success $"parse(%s{t.Name}, \"%s{input}\") = %s{formatted}"
-            | None -> UI.fail $"parse(%s{t.Name}, \"%s{input}\") = None"
+            | Ok None -> UI.warn $"parse(%s{t.Name}, \"%s{input}\") = None"
+            | Error err -> UI.fail $"parse(%s{t.Name}, \"%s{input}\") failed: %s{err}"
 
     | ReflectionDemoCommand.Spec ->
         UI.title "CommandSpec Usage"
@@ -414,21 +415,23 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
 
 [<EntryPoint>]
 let main argv =
-    let args = if argv.Length > 0 then argv else [| "--help" |]
+    let args = argv
 
     match CommandTree.parse tree args with
     | Ok cmd ->
         run tree cmdName cmd
         0
-    | Error "_help" ->
-        printfn "%s" (CommandTree.help tree [] cmdName)
-        0
-    | Error msg when msg.EndsWith("_help") ->
-        let groupName = msg.Replace("_help", "")
-        printfn "%s" (CommandTree.helpForPath tree [ groupName ] cmdName)
-        0
-    | Error msg ->
-        UI.fail msg
-        let path = CommandTree.closestGroupPath tree (args |> Array.toList)
+    | Error(HelpRequested path) ->
         printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        0
+    | Error(UnknownCommand(input, path)) ->
+        UI.fail $"Unknown command: %s{input}"
+        printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        1
+    | Error(InvalidArguments(cmd, msg)) ->
+        UI.fail $"Invalid arguments for %s{cmd}: %s{msg}"
+        1
+    | Error(AmbiguousArgument(input, candidates)) ->
+        let joined = String.concat ", " candidates
+        UI.fail $"Ambiguous: '{input}' matches: {joined}"
         1
