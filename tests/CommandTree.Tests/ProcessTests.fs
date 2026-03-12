@@ -129,6 +129,46 @@ let ``runWithSpinner returns exit code stdout stderr tuple`` () =
     test <@ code = 0 @>
     test <@ out.Trim().Contains("spinner-output") @>
 
+[<Fact>]
+let ``runWithSpinner throws on non-zero exit code`` () =
+    let ex =
+        Assert.Throws<Exception>(fun () ->
+            Process.runWithSpinner "failing" "sh" "-c \"echo out; echo err >&2; exit 1\""
+            |> ignore)
+
+    test <@ ex.Message.Contains("exit code") @>
+
+// =============================================================================
+// runWithEnv — interactive with environment variables
+// =============================================================================
+
+[<Fact>]
+let ``runWithEnv runs successfully`` () =
+    UITests.captureStdout (fun () -> Process.runWithEnv "sh" "-c \"exit 0\"" [ ("TEST_RWE", "val") ])
+    |> ignore
+
+[<Fact>]
+let ``runWithEnv throws on non-zero exit`` () =
+    let ex =
+        Assert.Throws<Exception>(fun () ->
+            UITests.captureStdout (fun () -> Process.runWithEnv "sh" "-c \"exit 3\"" [])
+            |> ignore)
+
+    test <@ ex.Message.Contains("exit code") @>
+
+// =============================================================================
+// dotnet / dotnetSpinner — thin wrappers
+// =============================================================================
+
+[<Fact>]
+let ``dotnet runs dotnet command`` () =
+    UITests.captureStdout (fun () -> Process.dotnet "--version") |> ignore
+
+[<Fact>]
+let ``dotnetSpinner runs dotnet with spinner`` () =
+    UITests.captureStdout (fun () -> Process.dotnetSpinner "Getting version" "--version")
+    |> ignore
+
 // =============================================================================
 // runParallel — multiple tasks
 // =============================================================================

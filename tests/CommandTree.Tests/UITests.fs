@@ -7,49 +7,54 @@ open Swensen.Unquote
 open CommandTree
 
 // =============================================================================
-// Helper: capture stdout/stderr
+// Helper: capture stdout/stderr (locked to prevent parallel test races)
 // =============================================================================
 
-let captureStdout (action: unit -> 'T) : string * 'T =
-    let oldOut = Console.Out
-    use sw = new StringWriter()
-    Console.SetOut(sw)
+let private consoleLock = obj ()
 
-    try
-        let result = action ()
-        Console.Out.Flush()
-        (sw.ToString(), result)
-    finally
-        Console.SetOut(oldOut)
+let captureStdout (action: unit -> 'T) : string * 'T =
+    lock consoleLock (fun () ->
+        let oldOut = Console.Out
+        use sw = new StringWriter()
+        Console.SetOut(sw)
+
+        try
+            let result = action ()
+            Console.Out.Flush()
+            (sw.ToString(), result)
+        finally
+            Console.SetOut(oldOut))
 
 let captureStderr (action: unit -> 'T) : string * 'T =
-    let oldErr = Console.Error
-    use sw = new StringWriter()
-    Console.SetError(sw)
+    lock consoleLock (fun () ->
+        let oldErr = Console.Error
+        use sw = new StringWriter()
+        Console.SetError(sw)
 
-    try
-        let result = action ()
-        Console.Error.Flush()
-        (sw.ToString(), result)
-    finally
-        Console.SetError(oldErr)
+        try
+            let result = action ()
+            Console.Error.Flush()
+            (sw.ToString(), result)
+        finally
+            Console.SetError(oldErr))
 
 let captureBoth (action: unit -> 'T) : string * string * 'T =
-    let oldOut = Console.Out
-    let oldErr = Console.Error
-    use outSw = new StringWriter()
-    use errSw = new StringWriter()
-    Console.SetOut(outSw)
-    Console.SetError(errSw)
+    lock consoleLock (fun () ->
+        let oldOut = Console.Out
+        let oldErr = Console.Error
+        use outSw = new StringWriter()
+        use errSw = new StringWriter()
+        Console.SetOut(outSw)
+        Console.SetError(errSw)
 
-    try
-        let result = action ()
-        Console.Out.Flush()
-        Console.Error.Flush()
-        (outSw.ToString(), errSw.ToString(), result)
-    finally
-        Console.SetOut(oldOut)
-        Console.SetError(oldErr)
+        try
+            let result = action ()
+            Console.Out.Flush()
+            Console.Error.Flush()
+            (outSw.ToString(), errSw.ToString(), result)
+        finally
+            Console.SetOut(oldOut)
+            Console.SetError(oldErr))
 
 // =============================================================================
 // Color module constants
@@ -143,16 +148,36 @@ let ``timingColor under 2s is bright green`` () =
     test <@ UI.timingColor 1.9 = "\x1b[38;5;46m" @>
 
 [<Fact>]
-let ``timingColor at 3s is yellow-green`` () =
+let ``timingColor 2-3s is light green`` () =
+    test <@ UI.timingColor 2.5 = "\x1b[38;5;118m" @>
+
+[<Fact>]
+let ``timingColor 3-4s is yellow-green`` () =
     test <@ UI.timingColor 3.5 = "\x1b[38;5;154m" @>
 
 [<Fact>]
-let ``timingColor at 5s is yellow`` () =
+let ``timingColor 4-5s is greenish yellow`` () =
+    test <@ UI.timingColor 4.5 = "\x1b[38;5;190m" @>
+
+[<Fact>]
+let ``timingColor 5-6s is yellow`` () =
     test <@ UI.timingColor 5.5 = "\x1b[38;5;226m" @>
 
 [<Fact>]
-let ``timingColor at 8s is dark orange`` () =
+let ``timingColor 6-7s is gold`` () =
+    test <@ UI.timingColor 6.5 = "\x1b[38;5;220m" @>
+
+[<Fact>]
+let ``timingColor 7-8s is orange`` () =
+    test <@ UI.timingColor 7.5 = "\x1b[38;5;214m" @>
+
+[<Fact>]
+let ``timingColor 8-9s is dark orange`` () =
     test <@ UI.timingColor 8.5 = "\x1b[38;5;208m" @>
+
+[<Fact>]
+let ``timingColor 9-10s is red-orange`` () =
+    test <@ UI.timingColor 9.5 = "\x1b[38;5;202m" @>
 
 [<Fact>]
 let ``timingColor at 10s+ is red`` () =
@@ -169,9 +194,19 @@ let ``timing formats sub-second as milliseconds`` () =
     test <@ result = "\x1b[38;5;46m(450ms)\x1b[0m" @>
 
 [<Fact>]
+let ``timing formats exactly 1s as seconds`` () =
+    let result = UI.timing (TimeSpan.FromSeconds(1.0))
+    test <@ result = "\x1b[38;5;46m(1.0s)\x1b[0m" @>
+
+[<Fact>]
 let ``timing formats seconds with one decimal`` () =
     let result = UI.timing (TimeSpan.FromSeconds(3.7))
     test <@ result = "\x1b[38;5;154m(3.7s)\x1b[0m" @>
+
+[<Fact>]
+let ``timing formats exactly 60s as minutes`` () =
+    let result = UI.timing (TimeSpan.FromSeconds(60.0))
+    test <@ result = "\x1b[38;5;196m(1m 0s)\x1b[0m" @>
 
 [<Fact>]
 let ``timing formats minutes and seconds`` () =
