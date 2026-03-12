@@ -53,6 +53,16 @@ type DefaultWrapsArgInnerDefault =
     | [<CmdDefault>] Inner of InnerWithArgDefault
     | Other
 
+// Types for ambiguous argument tests
+
+type AmbiguousAction =
+    | Start
+    | Stop
+    | Status
+
+type AmbiguousCmd =
+    | Do of action: AmbiguousAction * count: int
+
 // Types for group-with-no-default error paths
 
 type SubNoDefault =
@@ -304,6 +314,23 @@ let ``parse returns help error when nested group has no default and no args`` ()
     let tree = CommandReflection.fromUnion<NestNoDefault> "Test"
     let result = CommandTree.parse tree [| "inner" |]
     test <@ result = Error(HelpRequested [ "inner" ]) @>
+
+// =============================================================================
+// Ambiguous argument tests (through parse)
+// =============================================================================
+
+[<Fact>]
+let ``parse returns AmbiguousArgument with correct input and candidates`` () =
+    let tree = CommandReflection.fromUnion<AmbiguousCmd> "Test"
+    // "sta" matches both "start" and "status"
+    let result = CommandTree.parse tree [| "do"; "sta"; "1" |]
+
+    match result with
+    | Error(AmbiguousArgument(input, candidates)) ->
+        test <@ input = "sta" @>
+        test <@ candidates = [ "start"; "status" ] @>
+    | Ok cmd -> failwith $"Expected AmbiguousArgument, got Ok: %O{cmd}"
+    | Error err -> failwith $"Expected AmbiguousArgument, got Error: %O{err}"
 
 [<Fact>]
 let ``help generates help for leaf node`` () =
