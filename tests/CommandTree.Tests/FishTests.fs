@@ -96,33 +96,44 @@ let ``generateContent handles flat commands with file completion`` () =
     test <@ content.Contains("-F") @>
 
 // =============================================================================
-// writeToFile — writes to filesystem, verify file content
+// writeToFile — writes to filesystem (uses real home dir)
 // =============================================================================
 
 [<Fact>]
 let ``writeToFile creates fish completion file`` () =
     let tree = CommandReflection.fromUnion<SimpleCmd> "Simple CLI"
-    let tempDir = Path.Combine(Path.GetTempPath(), $"fish-test-{Guid.NewGuid():N}")
+
+    // writeToFile writes to ~/.config/fish/completions/
+    // We call it with a unique name and clean up after
+    let uniqueName = $"fish-test-{Guid.NewGuid():N}"
 
     try
-        let completionsDir = Path.Combine(tempDir, ".config", "fish", "completions")
+        let (_output, _) =
+            UITests.captureStdout (fun () -> FishCompletions.writeToFile tree uniqueName)
 
-        // Temporarily override HOME so writeToFile writes to our temp dir
-        let oldHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-        // writeToFile uses Environment.GetFolderPath which can't be overridden easily,
-        // so instead we test generateContent (pure) and verify writeToFile structure
-        // by calling it and checking the expected path pattern
-        let content = FishCompletions.generateContent tree "test-app"
-        Directory.CreateDirectory(completionsDir) |> ignore
-        let filePath = Path.Combine(completionsDir, "test-app.fish")
-        File.WriteAllText(filePath, content)
+        let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
-        let written = File.ReadAllText(filePath)
-        test <@ written = content @>
-        test <@ written.Contains("# Fish completions for test-app") @>
-    finally
-        if Directory.Exists(tempDir) then
-            Directory.Delete(tempDir, true)
+        let completionsFile =
+            Path.Combine(home, ".config", "fish", "completions", $"%s{uniqueName}.fish")
+
+        test <@ File.Exists(completionsFile) @>
+        let content = File.ReadAllText(completionsFile)
+        test <@ content.Contains($"# Fish completions for %s{uniqueName}") @>
+        test <@ content.Contains($"complete -c %s{uniqueName} -f") @>
+
+        // Clean up
+        File.Delete(completionsFile)
+    with ex ->
+        // Clean up on failure too
+        let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+
+        let completionsFile =
+            Path.Combine(home, ".config", "fish", "completions", $"%s{uniqueName}.fish")
+
+        if File.Exists(completionsFile) then
+            File.Delete(completionsFile)
+
+        reraise ()
 
 // =============================================================================
 // generateContent cmdName variations

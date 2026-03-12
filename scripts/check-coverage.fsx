@@ -29,11 +29,11 @@ let overrides =
           // Reflection.fs: Compiler-generated branches for type matching, prefix matching, error parsing
           "Reflection.fs", (90.0, 83.0)
           // UI.fs: Spinner threads use Console.Write directly; non-interactive path covered
-          "UI.fs", (41.0, 65.0)
-          // Process.fs: run/runWithSpinner/dotnet use UI output; core silent/async/timeout covered
-          "Process.fs", (50.0, 56.0)
-          // Fish.fs: writeToFile/installHook do file I/O; generateContent covered
-          "Fish.fs", (16.0, 0.0) ]
+          "UI.fs", (41.0, 84.0)
+          // Process.fs: run is interactive-only; all other paths covered
+          "Process.fs", (98.0, 75.0)
+          // Fish.fs: installHook calls external process + writes to ~/.config
+          "Fish.fs", (35.0, 0.0) ]
 
 // ============================================================================
 // Types
