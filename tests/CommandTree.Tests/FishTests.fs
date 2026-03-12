@@ -69,7 +69,9 @@ let ``generateContent full snapshot`` () =
     test <@ lines.[6] = "# Commands, subcommands, and argument completions" @>
 
     // Rest is the fishCompletions output — verify it's non-empty
-    let completionLines = lines |> Array.skip 7 |> Array.filter (fun l -> l.Trim() <> "")
+    let completionLines =
+        lines |> Array.skip 7 |> Array.filter (fun l -> l.Trim() <> "")
+
     test <@ completionLines.Length > 0 @>
 
 // =============================================================================
