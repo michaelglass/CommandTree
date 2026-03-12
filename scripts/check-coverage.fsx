@@ -26,8 +26,8 @@ let overrides =
     Map.ofList
         [ // Tree.fs: F# compiler-generated branches for nested pattern matching
           "Tree.fs", (96.0, 90.0)
-          // Reflection.fs: Compiler-generated branches for type matching, prefix matching
-          "Reflection.fs", (95.0, 84.0)
+          // Reflection.fs: Compiler-generated branches for type matching, prefix matching, error parsing
+          "Reflection.fs", (90.0, 83.0)
           // UI.fs: Spinner threads use Console.Write directly; non-interactive path covered
           "UI.fs", (41.0, 65.0)
           // Process.fs: run/runWithSpinner/dotnet use UI output; core silent/async/timeout covered

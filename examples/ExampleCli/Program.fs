@@ -323,6 +323,8 @@ let handleReflectionDemo
             [ (typeof<string>, "hello")
               (typeof<int>, "42")
               (typeof<int64>, "9876543210")
+              (typeof<float>, "3.14")
+              (typeof<decimal>, "99.99")
               (typeof<bool>, "true")
               (typeof<Guid>, "550e8400-e29b-41d4-a716-446655440000")
               (typeof<Priority option>, "high")
