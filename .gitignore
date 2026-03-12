@@ -8,4 +8,5 @@ output/
 *.snupkg
 .vs/
 *.user
+docs/plans/
 .claude/settings.local.json
