@@ -28,7 +28,7 @@ module Process =
 
     /// Run a command with spinner, capturing output
     let runWithSpinner (message: string) (command: string) (args: string) =
-        let (stdout, stderr) =
+        let (exitCode, stdout, stderr) =
             UI.withSpinner message (fun () ->
                 let psi = ProcessStartInfo(command, args)
                 psi.UseShellExecute <- false
@@ -51,7 +51,7 @@ module Process =
 
                     failwith $"Command failed with exit code %d{proc.ExitCode}"
 
-                (stdout, stderr))
+                (proc.ExitCode, stdout, stderr))
 
         // Show output after spinner completes
         if not (String.IsNullOrWhiteSpace(stdout)) then
@@ -60,7 +60,7 @@ module Process =
         if not (String.IsNullOrWhiteSpace(stderr)) then
             eprintfn "%s" (stderr.TrimEnd())
 
-        (stdout, stderr)
+        (exitCode, stdout, stderr)
 
     /// Run a command asynchronously, returning exit code, stdout, stderr
     let runAsync (command: string) (args: string) =

@@ -59,10 +59,7 @@ let ``runSilentWithEnv passes environment variables`` () =
 [<Fact>]
 let ``runSilentWithEnv passes multiple env vars`` () =
     let (code, stdout, _) =
-        Process.runSilentWithEnv
-            "sh"
-            "-c \"echo $A-$B\""
-            [ ("A", "hello"); ("B", "world") ]
+        Process.runSilentWithEnv "sh" "-c \"echo $A-$B\"" [ ("A", "hello"); ("B", "world") ]
 
     test <@ code = 0 @>
     test <@ stdout = "hello-world" @>
@@ -118,6 +115,19 @@ let ``runAsync returns exit code stdout stderr`` () =
     test <@ code = 0 @>
     test <@ out.Trim() = "async-output" @>
     test <@ err = "" @>
+
+// =============================================================================
+// runWithSpinner — spinner + captured output
+// =============================================================================
+
+[<Fact>]
+let ``runWithSpinner returns exit code stdout stderr tuple`` () =
+    let (_output, result) =
+        UITests.captureStdout (fun () -> Process.runWithSpinner "echo test" "echo" "spinner-output")
+
+    let (code, out, _err) = result
+    test <@ code = 0 @>
+    test <@ out.Trim().Contains("spinner-output") @>
 
 // =============================================================================
 // runParallel — multiple tasks
