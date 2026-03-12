@@ -75,6 +75,11 @@ description = "Create NuGet package"
 run = "dotnet pack src/CommandTree/CommandTree.fsproj -c Release"
 depends = ["build"]
 
+[tasks.release]
+description = "Release a new version"
+run = "dotnet fsi scripts/release.fsx -- {{arg(name='command', default='')}} {{option(name='publish')}}"
+depends = ["ci"]
+
 [tasks.docs]
 description = "Generate API documentation"
 run = "dotnet fsdocs build --output output/docs --clean"
