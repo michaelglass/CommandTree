@@ -56,36 +56,28 @@ let captureBoth (action: unit -> 'T) : string * string * 'T =
 // =============================================================================
 
 [<Fact>]
-let ``Color.reset is ANSI reset sequence`` () =
-    test <@ Color.reset = "\x1b[0m" @>
+let ``Color.reset is ANSI reset sequence`` () = test <@ Color.reset = "\x1b[0m" @>
 
 [<Fact>]
-let ``Color.bold is ANSI bold sequence`` () =
-    test <@ Color.bold = "\x1b[1m" @>
+let ``Color.bold is ANSI bold sequence`` () = test <@ Color.bold = "\x1b[1m" @>
 
 [<Fact>]
-let ``Color.dim is ANSI dim sequence`` () =
-    test <@ Color.dim = "\x1b[2m" @>
+let ``Color.dim is ANSI dim sequence`` () = test <@ Color.dim = "\x1b[2m" @>
 
 [<Fact>]
-let ``Color.red is ANSI red sequence`` () =
-    test <@ Color.red = "\x1b[31m" @>
+let ``Color.red is ANSI red sequence`` () = test <@ Color.red = "\x1b[31m" @>
 
 [<Fact>]
-let ``Color.green is ANSI green sequence`` () =
-    test <@ Color.green = "\x1b[32m" @>
+let ``Color.green is ANSI green sequence`` () = test <@ Color.green = "\x1b[32m" @>
 
 [<Fact>]
-let ``Color.yellow is ANSI yellow sequence`` () =
-    test <@ Color.yellow = "\x1b[33m" @>
+let ``Color.yellow is ANSI yellow sequence`` () = test <@ Color.yellow = "\x1b[33m" @>
 
 [<Fact>]
-let ``Color.blue is ANSI blue sequence`` () =
-    test <@ Color.blue = "\x1b[34m" @>
+let ``Color.blue is ANSI blue sequence`` () = test <@ Color.blue = "\x1b[34m" @>
 
 [<Fact>]
-let ``Color.cyan is ANSI cyan sequence`` () =
-    test <@ Color.cyan = "\x1b[36m" @>
+let ``Color.cyan is ANSI cyan sequence`` () = test <@ Color.cyan = "\x1b[36m" @>
 
 // =============================================================================
 // UI output functions — fixture tests capturing stdout/stderr
@@ -192,7 +184,9 @@ let ``timing formats minutes and seconds`` () =
 
 [<Fact>]
 let ``withSpinner returns action result in non-interactive mode`` () =
-    let (output, result) = captureStdout (fun () -> UI.withSpinner "Computing" (fun () -> 42))
+    let (output, result) =
+        captureStdout (fun () -> UI.withSpinner "Computing" (fun () -> 42))
+
     test <@ result = 42 @>
     test <@ output.Contains("Computing") @>
     test <@ output.Contains("✓") @>
@@ -204,8 +198,7 @@ let ``withSpinner shows failure marker on exception`` () =
     let ex =
         Assert.Throws<Exception>(fun () ->
             let (o, _) =
-                captureStdout (fun () ->
-                    UI.withSpinner "Failing" (fun () -> failwith "boom") |> ignore)
+                captureStdout (fun () -> UI.withSpinner "Failing" (fun () -> failwith "boom") |> ignore)
 
             output <- o)
 

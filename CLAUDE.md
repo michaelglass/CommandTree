@@ -35,13 +35,13 @@ Six source files in `src/CommandTree/`:
 
 - **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions).
 
-- **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`. The `CommandTree` module has `parse`, `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, and `fishCompletions`.
+- **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, and `fishCompletions`.
 
-- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue`, `formatFieldValue`, `formatCmd`, `toKebabCase`, and `CommandSpec<'Cmd>` for bundling tree + execute + format.
+- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, and nested unions.
 
 - **UI.fs** -- Terminal output helpers: colored printing (`title`, `section`, `success`, `fail`, `info`, `warn`), timing display with color gradient, spinner animation (`withSpinner`, `withSpinnerQuiet`). `Color` module has ANSI escape codes.
 
-- **Process.fs** -- Process execution: `run` (interactive with timing), `runSilent` (captured output), `runAsync` (Task-based), `runWithSpinner`, `runCommand` (returns `CommandResult` record), `runInteractive`, `dotnet`, `runParallel`. All use `ProcessStartInfo` directly (no shell).
+- **Process.fs** -- Process execution: `run` (interactive with timing), `runSilent` (captured output), `runAsync` (Task-based), `runWithSpinner` (returns `int * string * string`), `runCommand` (returns `CommandResult` record), `runInteractive`, `dotnet`, `runParallel`. All use `ProcessStartInfo` directly (no shell).
 
 - **Fish.fs** -- Fish shell completion generation and installation. `FishCompletions.generateContent` creates `.fish` file content, `writeToFile` installs to `~/.config/fish/completions/`, `installHook` sets up auto-regeneration via `conf.d`.
 
@@ -51,7 +51,9 @@ Six source files in `src/CommandTree/`:
 
 **Attributes:** `[<Cmd("desc")>]` for description/name, `[<CmdDefault>]` for default subcommand, `[<CmdCompletion("a", "b")>]` for argument completions, `[<CmdFileCompletion>]` for file path completions.
 
-**Tree structure:** `CommandTree<'Cmd>` is a recursive union of `Leaf` (command with parser) and `Group` (subcommands with optional default). Parsing walks the tree matching args to node names.
+**Tree structure:** `CommandTree<'Cmd>` is a recursive union of `Leaf` (command with parser) and `Group` (subcommands with optional default). Parsing walks the tree matching args to node names, returning `Result<'Cmd, ParseError>` with structured errors carrying path context.
+
+**Structured parse errors:** `ParseError` is a discriminated union with `HelpRequested of path`, `UnknownCommand of input * groupPath`, `InvalidArguments of command * message`, and `AmbiguousArgument of input * candidates`. Path accumulation during recursive parse gives consumers full context for error display.
 
 **Process runner:** The `Process` module wraps `System.Diagnostics.Process` with convenience functions. `ProcessStartInfo` is used directly -- no shell involved, so single quotes are literal.
 
@@ -59,11 +61,14 @@ Six source files in `src/CommandTree/`:
 
 ## Tests
 
-Three test files in `tests/CommandTree.Tests/`:
+Six test files in `tests/CommandTree.Tests/`:
 
-- **ReflectionTests.fs** -- `toKebabCase`, `toDescription`, `fromUnion` tree generation, `caseName`, `formatCmd`, field value parsing/formatting for all supported types (string, int, int64, bool, Guid, option, union).
+- **ReflectionTests.fs** -- `toKebabCase`, `toDescription`, `fromUnion` tree generation, `caseName`, `formatCmd`, field value parsing/formatting for all supported types (string, int, int64, float, decimal, bool, Guid, option, union).
 - **CompletionTests.fs** -- Completion attributes, union auto-detection, fish completion output for values/files/nested groups.
-- **ParsingTests.fs** -- `parse` for simple/nested/default commands, argument parsing, unknown command errors, `closestGroupPath`, help generation, `format` roundtrips.
+- **ParsingTests.fs** -- `parse` for simple/nested/default commands, argument parsing, structured `ParseError` matching (`HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`), `closestGroupPath`, help generation, `format` roundtrips.
+- **UITests.fs** -- Color ANSI constants, UI output functions (title, section, success, fail, info, warn, dimInfo, cmd), timingColor gradient, timing format, withSpinner non-interactive mode. Uses stdout/stderr capture helpers.
+- **ProcessTests.fs** -- `runSilent`, `runCommand`, `runSilentWithEnv`, `runSilentWithTimeout`, `runInteractive`, `runAsync`, `runWithSpinner`, `runParallel`. Uses real process execution (echo/sh).
+- **FishTests.fs** -- `generateContent` snapshot/fixture tests for completion script structure, subcommands, file completions, cmdName variations.
 
 Uses xUnit v3 + Unquote (`test <@ assertion @>` syntax). Tests access internal members via `InternalsVisibleTo`.
 
