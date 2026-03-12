@@ -15,27 +15,46 @@ type Priority =
 
 // =============================================================================
 // Command definitions
+//
+// Each union case becomes a CLI command. Case names convert to kebab-case.
+// Nested unions become subcommand groups. Fields become positional arguments.
 // =============================================================================
 
+// example-cli task add "Buy groceries"
+// example-cli task add "Buy groceries" high
+// example-cli task                             ← runs list (CmdDefault)
+// example-cli task complete 5
+// example-cli task remove 3
 type TaskCommand =
     | [<Cmd("Add a new task")>] Add of title: string * priority: Priority option
     | [<Cmd("List all tasks"); CmdDefault>] List
     | [<Cmd("Complete a task")>] Complete of id: int
     | [<Cmd("Remove a task")>] Remove of id: int
 
+// example-cli db migrate
+// example-cli db                               ← runs status (CmdDefault)
+// example-cli db reset
 type DbCommand =
     | [<Cmd("Run database migrations")>] Migrate
     | [<Cmd("Reset the database")>] Reset
     | [<Cmd("Show connection status"); CmdDefault>] Status
 
+// example-cli deploy push staging
+// example-cli deploy status prod
+// example-cli deploy                           ← runs status with no env (CmdDefault)
 type DeployCommand =
     | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
     | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
 
+// example-cli coverage file src/App.fs         ← CmdFileCompletion enables tab-complete
+// example-cli coverage                         ← runs summary (CmdDefault)
 type CoverageCommand =
     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of path: string
     | [<Cmd("Show coverage summary"); CmdDefault>] Summary
 
+// example-cli job start build-assets 1024 true
+// example-cli job status 550e8400-e29b-41d4-a716-446655440000
+// example-cli job                              ← runs list (CmdDefault)
 type JobCommand =
     | [<Cmd("Start a new job")>] Start of name: string * size: int64 * verbose: bool
     | [<Cmd("Check job status")>] Status of id: Guid
