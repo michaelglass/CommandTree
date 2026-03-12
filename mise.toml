@@ -24,6 +24,11 @@ dotnet test \
 """
 depends = ["build"]
 
+[tasks.example]
+description = "Run the example app"
+run = "dotnet run --project examples/ExampleCli"
+depends = ["build"]
+
 [tasks.example-build]
 description = "Build the example app (for CI)"
 run = "dotnet build examples/ExampleCli --warnaserror"
@@ -49,6 +54,11 @@ description = "Check per-file coverage meets minimum threshold"
 run = "dotnet fsi scripts/check-coverage.fsx"
 depends = ["test"]
 
+[tasks.check-api]
+description = "Check API changes since last release"
+run = "dotnet fsi scripts/check-api.fsx"
+depends = ["build"]
+
 [tasks.sync-docs]
 description = "Sync README.md content to docs/index.md"
 run = "dotnet fsi scripts/sync-docs.fsx"
@@ -64,11 +74,6 @@ depends = ["format", "sync-docs", "lint", "coverage-check", "docs", "example-bui
 [tasks.ci]
 description = "Run all CI checks (no auto-fix)"
 depends = ["format-check", "lint", "coverage-check", "sync-docs-check", "docs", "example-build"]
-
-[tasks.check-api]
-description = "Compare public API against latest tag"
-run = "dotnet fsi scripts/check-api.fsx"
-depends = ["build"]
 
 [tasks.pack]
 description = "Create NuGet package"
