@@ -337,3 +337,60 @@ let ``help generates help for leaf node`` () =
     let helpText = CommandTree.help tree [ "greet" ] "cmd"
     test <@ helpText.Contains("greet") @>
     test <@ helpText.Contains("<name>") @>
+
+// =============================================================================
+// findByPath edge cases
+// =============================================================================
+
+[<Fact>]
+let ``findByPath returns None when descending past a leaf`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    // "help" is a leaf; trying to descend further returns None
+    let result = CommandTree.findByPath tree [ "help"; "extra" ]
+    test <@ result.IsNone @>
+
+[<Fact>]
+let ``findByPath returns Some for valid group path`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let result = CommandTree.findByPath tree [ "dev" ]
+    test <@ result.IsSome @>
+
+// =============================================================================
+// helpForPath edge cases
+// =============================================================================
+
+[<Fact>]
+let ``helpForPath falls back to root help for invalid path`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "nonexistent"; "path" ] "cmd"
+    // Falls back to root help
+    test <@ helpText.Contains("dev") @>
+    test <@ helpText.Contains("help") @>
+
+// =============================================================================
+// closestGroupPath edge cases
+// =============================================================================
+
+[<Fact>]
+let ``closestGroupPath returns full path when all segments are groups`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    // "dev" is a valid group, no extra segments
+    let path = CommandTree.closestGroupPath tree [ "dev" ]
+    test <@ path = [ "dev" ] @>
+
+// =============================================================================
+// Nested group default parse error paths
+// =============================================================================
+
+[<Fact>]
+let ``parse returns error when nested group default requires missing args`` () =
+    // DefaultWrapsArgInnerDefault: Inner wraps InnerWithArgDefault
+    // InnerWithArgDefault's default is Execute of count: int
+    // Parsing "inner" with no further args triggers the group-level default
+    // which fails because count is missing
+    let tree = CommandReflection.fromUnion<DefaultWrapsArgInnerDefault> "Test"
+    let result = CommandTree.parse tree [| "inner" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"

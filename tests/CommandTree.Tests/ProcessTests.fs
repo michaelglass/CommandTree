@@ -193,6 +193,21 @@ let ``runParallel completes all tasks`` () =
 // CommandResult record structure
 // =============================================================================
 
+// =============================================================================
+// run — interactive with timing
+// =============================================================================
+
+[<Fact>]
+let ``run throws on non-zero exit code`` () =
+    let ex =
+        Assert.Throws<Exception>(fun () -> UITests.captureStdout (fun () -> Process.run "sh" "-c \"exit 5\"") |> ignore)
+
+    test <@ ex.Message.Contains("exit code") @>
+
+// =============================================================================
+// CommandResult record structure
+// =============================================================================
+
 [<Fact>]
 let ``CommandResult has expected field names`` () =
     let result: CommandResult =

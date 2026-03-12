@@ -24,14 +24,14 @@ let excludedPatterns = [| "Test"; "AssemblyInfo"; "AssemblyAttributes" |]
 /// When adding/improving tests, ratchet these thresholds UP toward 100.
 let overrides =
     Map.ofList
-        [ // Tree.fs: F# compiler-generated branches for nested pattern matching
-          "Tree.fs", (96.0, 90.0)
+        [ // Tree.fs: F# compiler-generated branch for one remaining pattern match
+          "Tree.fs", (98.0, 96.0)
           // Reflection.fs: Compiler-generated branches for type matching, prefix matching, error parsing
-          "Reflection.fs", (90.0, 83.0)
+          "Reflection.fs", (95.0, 86.0)
           // UI.fs: Spinner threads use Console.Write directly; non-interactive path covered
           "UI.fs", (41.0, 84.0)
-          // Process.fs: run is interactive-only; all other paths covered
-          "Process.fs", (98.0, 75.0)
+          // Process.fs: remaining uncovered branch is compiler-generated
+          "Process.fs", (99.0, 75.0)
           // Fish.fs: installHook calls external process + writes to ~/.config
           "Fish.fs", (35.0, 0.0) ]
 
