@@ -5,7 +5,7 @@
 
     <!-- Package metadata -->
     <PackageId>CommandTree</PackageId>
-    <Version>0.1.0-alpha.1</Version>
+    <Version>0.1.0</Version>
     <Authors>Michael Glass</Authors>
     <Description>Type-safe CLI command parsing with discriminated unions and reflection-based tree generation</Description>
     <PackageTags>fsharp;cli;command;parsing;discriminated-union;reflection</PackageTags>
