@@ -5,12 +5,20 @@ Define CLI commands as F# discriminated unions. Get type-safe parsing, help gene
 
 ```fsharp
 // From examples/ExampleCli/Program.fs
+
+// my-cli task add "Buy groceries"
+// my-cli task add "Buy groceries" high
+// my-cli task                             ← runs list (CmdDefault)
+// my-cli task complete 5
 type TaskCommand =
     | [<Cmd("Add a new task")>] Add of title: string * priority: Priority option
     | [<Cmd("List all tasks"); CmdDefault>] List
     | [<Cmd("Complete a task")>] Complete of id: int
     | [<Cmd("Remove a task")>] Remove of id: int
 
+// my-cli task ...
+// my-cli test
+// my-cli help
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Run the test suite")>] Test
@@ -36,19 +44,28 @@ dotnet add package CommandTree
 <!-- sync:howitworks:start -->
 ## How It Works
 
-Case names become kebab-case commands. Nested unions become subcommand groups. Fields become typed arguments.
+Case names become kebab-case commands. Nested unions become subcommand groups. Fields become positional arguments.
 
 ```fsharp
 // From examples/ExampleCli/Program.fs
+
+// my-cli db migrate
+// my-cli db                               ← runs status (CmdDefault)
 type DbCommand =
     | [<Cmd("Run database migrations")>] Migrate
     | [<Cmd("Reset the database")>] Reset
-    | [<Cmd("Show connection status"); CmdDefault>] Status  // default when "db" is invoked alone
+    | [<Cmd("Show connection status"); CmdDefault>] Status
 
+// my-cli deploy push staging
+// my-cli deploy status prod
+// my-cli deploy                           ← runs status with no env (CmdDefault)
 type DeployCommand =
     | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
     | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
 
+// my-cli job start build-assets 1024 true
+// my-cli job status 550e8400-e29b-41d4-a716-446655440000
+// my-cli job                              ← runs list (CmdDefault)
 type JobCommand =
     | [<Cmd("Start a new job")>] Start of name: string * size: int64 * verbose: bool
     | [<Cmd("Check job status")>] Status of id: Guid
@@ -62,6 +79,21 @@ type Command =
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 ```
+
+### Mapping rules
+
+| F# definition | CLI invocation | Notes |
+|---|---|---|
+| `Task of TaskCommand` | `my-cli task ...` | Nested union becomes a subcommand group |
+| `Test` | `my-cli test` | No-field case becomes a simple command |
+| `Add of title: string` | `my-cli task add "Buy groceries"` | Fields become positional args |
+| `Start of name: string * size: int64 * verbose: bool` | `my-cli job start build 1024 true` | Multiple fields in order |
+| `Status of env: string option` | `my-cli deploy status prod` or `my-cli deploy status` | Option fields can be omitted |
+| `Push of env: Priority` | `my-cli deploy push high` or `my-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
+| `[<CmdDefault>] List` | `my-cli task` | Runs when group is invoked without a subcommand |
+| `[<Cmd("desc", Name = "fmt")>] Format` | `my-cli fmt` | `Name` overrides the derived command name |
+
+### Attributes
 
 - `[<Cmd("desc")>]` sets help text; optional `Name = "custom"` overrides the command name
 - `[<CmdDefault>]` marks the default subcommand when a group is invoked without arguments
