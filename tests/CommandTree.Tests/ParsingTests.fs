@@ -60,8 +60,7 @@ type AmbiguousAction =
     | Stop
     | Status
 
-type AmbiguousCmd =
-    | Do of action: AmbiguousAction * count: int
+type AmbiguousCmd = Do of action: AmbiguousAction * count: int
 
 // Types for group-with-no-default error paths
 

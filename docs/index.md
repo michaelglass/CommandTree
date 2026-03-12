@@ -23,13 +23,17 @@ match CommandTree.parse tree argv with
 | Ok Test -> printfn "Running tests"
 | Ok Help -> printfn "%s" (CommandTree.helpFull tree "my-cli")
 | Ok cmd -> printfn "%s" (CommandReflection.formatCmd cmd)
-| Error msg -> UI.fail msg
+| Error(HelpRequested path) -> printfn "%s" (CommandTree.helpForPath tree path "my-cli")
+| Error(UnknownCommand(input, _)) -> UI.fail $"Unknown command: %s{input}"
+| Error(InvalidArguments(cmd, msg)) -> UI.fail $"%s{cmd}: %s{msg}"
+| Error(AmbiguousArgument(input, candidates)) -> UI.fail $"Ambiguous: %s{input}"
 ```
 
 **What you get:**
 - Commands derived from union cases (PascalCase to kebab-case)
 - Nested unions become subcommand groups with optional defaults
-- Arguments parsed from case fields (string, int, int64, bool, Guid, option)
+- Arguments parsed from case fields (string, int, int64, float, decimal, bool, Guid, option)
+- Structured parse errors (`ParseError` DU) with path context
 - Help text auto-generated from the tree structure
 - Fish shell completions from a single function call
 <!-- sync:intro:end -->
@@ -123,7 +127,9 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
         UI.info $"Deploy status for %s{e}: up to date"
     | Coverage(CoverageCommand.File path) -> UI.info $"Coverage for %s{path}: 87.5%%"
     | Coverage CoverageCommand.Summary -> UI.info "Overall: 82.3%%"
-    | Test -> Process.dotnet "test"
+    | Test ->
+        UI.section "Running tests"
+        UI.success "All 42 tests passed"
     | Fish(FishDemoCommand.Generate) -> FishCompletions.writeToFile tree cmdName
     | Fish FishDemoCommand.Preview -> printfn "%s" (FishCompletions.generateContent tree cmdName)
     | Fish(FishDemoCommand.Install) -> FishCompletions.installHook cmdName
@@ -131,23 +137,23 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
 
 [<EntryPoint>]
 let main argv =
-    let args = if argv.Length > 0 then argv else [| "--help" |]
-
-    match CommandTree.parse tree args with
+    match CommandTree.parse tree argv with
     | Ok cmd ->
         run tree cmdName cmd
         0
-    | Error "_help" ->
-        printfn "%s" (CommandTree.help tree [] cmdName)
-        0
-    | Error msg when msg.EndsWith("_help") ->
-        let groupName = msg.Replace("_help", "")
-        printfn "%s" (CommandTree.helpForPath tree [ groupName ] cmdName)
-        0
-    | Error msg ->
-        UI.fail msg
-        let path = CommandTree.closestGroupPath tree (args |> Array.toList)
+    | Error(HelpRequested path) ->
         printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        0
+    | Error(UnknownCommand(input, path)) ->
+        UI.fail $"Unknown command: %s{input}"
+        printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        1
+    | Error(InvalidArguments(cmd, msg)) ->
+        UI.fail $"Invalid arguments for %s{cmd}: %s{msg}"
+        1
+    | Error(AmbiguousArgument(input, candidates)) ->
+        let joined = String.concat ", " candidates
+        UI.fail $"Ambiguous: '{input}' matches: {joined}"
         1
 ```
 <!-- sync:basicusage:end -->
@@ -167,7 +173,7 @@ let main argv =
 ### CommandTree Module
 
 ```fsharp
-CommandTree.parse tree args              // Parse string[] into Result<'Cmd, string>
+CommandTree.parse tree args              // Parse string[] into Result<'Cmd, ParseError>
 CommandTree.help tree path prefix        // Help text for one level
 CommandTree.helpFull tree prefix         // Full help with all subgroups expanded
 CommandTree.helpForPath tree path prefix // Help for a specific subcommand path
@@ -184,7 +190,7 @@ CommandReflection.fromUnion<'Cmd> "desc"     // Build tree from discriminated un
 CommandReflection.formatCmd cmd              // Format command to CLI string (no tree needed)
 CommandReflection.caseName value             // Get kebab-case name of a union value
 CommandReflection.toKebabCase "PascalCase"   // "pascal-case"
-CommandReflection.parseFieldValue type str   // Parse a string into a typed value
+CommandReflection.parseFieldValue type str   // Parse string into Result<obj option, string>
 CommandReflection.formatFieldValue value     // Format a typed value to string
 ```
 
@@ -237,6 +243,8 @@ FishCompletions.installHook "my-tool"           // Install auto-update hook in c
 | `string` | `of name: string` | Any string value |
 | `int` | `of count: int` | Parsed via Int32.TryParse |
 | `int64` | `of id: int64` | Parsed via Int64.TryParse |
+| `float` | `of rate: float` | Parsed via Double.TryParse |
+| `decimal` | `of price: decimal` | Parsed via Decimal.TryParse |
 | `bool` | `of force: bool` | Parsed via Boolean.TryParse |
 | `Guid` | `of id: Guid` | Parsed via Guid.TryParse |
 | `'T option` | `of env: string option` | Optional; None when omitted |
