@@ -238,6 +238,34 @@ module CommandReflection =
 
         FSharpValue.MakeUnion(noneCase, [||])
 
+    /// Convert a parseFieldValue error string to a ParseError for a given command
+    let internal fieldErrorToParseError (cmdName: string) (errMsg: string) : ParseError =
+        // parseFieldValue returns errors like "Ambiguous argument 'X' matches: a, b, c"
+        let ambiguousPrefix = "Ambiguous argument '"
+
+        if errMsg.StartsWith(ambiguousPrefix, StringComparison.Ordinal) then
+            let afterPrefix = errMsg.Substring(ambiguousPrefix.Length)
+            let quoteEnd = afterPrefix.IndexOf("'")
+
+            if quoteEnd >= 0 then
+                let input = afterPrefix.Substring(0, quoteEnd)
+                let matchesPrefix = "matches: "
+                let matchesIdx = afterPrefix.IndexOf(matchesPrefix)
+
+                if matchesIdx >= 0 then
+                    let candidatesStr = afterPrefix.Substring(matchesIdx + matchesPrefix.Length)
+
+                    let candidates =
+                        candidatesStr.Split([| ", " |], StringSplitOptions.RemoveEmptyEntries) |> Array.toList
+
+                    AmbiguousArgument(input, candidates)
+                else
+                    AmbiguousArgument(input, [])
+            else
+                InvalidArguments(cmdName, errMsg)
+        else
+            InvalidArguments(cmdName, errMsg)
+
     /// Parse fields from args array
     let parseFields (fields: Reflection.PropertyInfo array) (args: string array) : Result<obj option, string> array =
         fields
@@ -318,12 +346,7 @@ module CommandReflection =
                                     | Ok _ -> None)
 
                             match firstError with
-                            | Some errMsg ->
-                                if errMsg.Contains("Ambiguous") then
-                                    // Extract input and candidates from error message
-                                    Error(AmbiguousArgument(errMsg, []))
-                                else
-                                    Error(InvalidArguments(dcName, errMsg))
+                            | Some errMsg -> Error(fieldErrorToParseError dcName errMsg)
                             | None ->
                                 if
                                     fieldValues
@@ -364,11 +387,7 @@ module CommandReflection =
                             | Ok _ -> None)
 
                     match firstError with
-                    | Some errMsg ->
-                        if errMsg.Contains("Ambiguous") then
-                            Error(AmbiguousArgument(errMsg, []))
-                        else
-                            Error(InvalidArguments(cmdName, errMsg))
+                    | Some errMsg -> Error(fieldErrorToParseError cmdName errMsg)
                     | None ->
                         if
                             fieldValues
@@ -455,11 +474,7 @@ module CommandReflection =
                                     | Ok _ -> None)
 
                             match firstError with
-                            | Some errMsg ->
-                                if errMsg.Contains("Ambiguous") then
-                                    Error(AmbiguousArgument(errMsg, []))
-                                else
-                                    Error(InvalidArguments(defaultName, errMsg))
+                            | Some errMsg -> Error(fieldErrorToParseError defaultName errMsg)
                             | None ->
                                 if
                                     fieldValues
