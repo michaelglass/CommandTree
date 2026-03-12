@@ -64,6 +64,10 @@ module CommandReflection =
             "int64"
         elif t = typeof<bool> then
             "bool"
+        elif t = typeof<float> then
+            "float"
+        elif t = typeof<decimal> then
+            "decimal"
         elif t = typeof<Guid> then
             "guid"
         elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>> then
@@ -144,6 +148,14 @@ module CommandReflection =
             match Guid.TryParse(value) with
             | true, g -> Ok(Some(box g))
             | _ -> Ok None
+        elif fieldType = typeof<float> then
+            match Double.TryParse(value) with
+            | true, f -> Ok(Some(box f))
+            | _ -> Ok None
+        elif fieldType = typeof<decimal> then
+            match Decimal.TryParse(value) with
+            | true, d -> Ok(Some(box d))
+            | _ -> Ok None
         elif
             fieldType.IsGenericType
             && fieldType.GetGenericTypeDefinition() = typedefof<option<_>>
@@ -202,6 +214,8 @@ module CommandReflection =
         | :? int64 as n -> string<int64> n
         | :? bool as b -> string<bool> b
         | :? Guid as g -> string<Guid> g
+        | :? float as f -> string<float> f
+        | :? decimal as d -> string<decimal> d
         | _ when
             value.GetType().IsGenericType
             && value.GetType().GetGenericTypeDefinition() = typedefof<option<_>>

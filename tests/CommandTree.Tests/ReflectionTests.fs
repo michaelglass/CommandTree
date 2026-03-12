@@ -269,8 +269,28 @@ let ``parseFieldValue returns None for option with invalid inner value`` () =
     test <@ result = Ok None @>
 
 [<Fact>]
-let ``parseFieldValue returns None for unknown type`` () =
+let ``parseFieldValue handles float`` () =
     let result = CommandReflection.parseFieldValue typeof<float> "3.14"
+    test <@ result = Ok(Some(box 3.14)) @>
+
+[<Fact>]
+let ``parseFieldValue returns None for invalid float`` () =
+    let result = CommandReflection.parseFieldValue typeof<float> "notafloat"
+    test <@ result = Ok None @>
+
+[<Fact>]
+let ``parseFieldValue handles decimal`` () =
+    let result = CommandReflection.parseFieldValue typeof<decimal> "99.99"
+    test <@ result = Ok(Some(box 99.99m)) @>
+
+[<Fact>]
+let ``parseFieldValue returns None for invalid decimal`` () =
+    let result = CommandReflection.parseFieldValue typeof<decimal> "notadecimal"
+    test <@ result = Ok None @>
+
+[<Fact>]
+let ``parseFieldValue returns None for unknown type`` () =
+    let result = CommandReflection.parseFieldValue typeof<System.DateTime> "2024-01-01"
     test <@ result = Ok None @>
 
 [<Fact>]
@@ -296,9 +316,19 @@ let ``formatFieldValue handles None option`` () =
     test <@ result = "" @>
 
 [<Fact>]
-let ``formatFieldValue handles unknown type`` () =
+let ``formatFieldValue handles float`` () =
     let result = CommandReflection.formatFieldValue (box 3.14)
     test <@ result = "3.14" @>
+
+[<Fact>]
+let ``formatFieldValue handles decimal`` () =
+    let result = CommandReflection.formatFieldValue (box 99.99m)
+    test <@ result = "99.99" @>
+
+[<Fact>]
+let ``formatFieldValue handles unknown type`` () =
+    let result = CommandReflection.formatFieldValue (box (System.DateTime(2024, 1, 1)))
+    test <@ result = (string<obj> (System.DateTime(2024, 1, 1))) @>
 
 [<Fact>]
 let ``formatFieldValue handles int`` () =
