@@ -1,7 +1,7 @@
 <!-- sync:intro -->
 # CommandTree
 
-Define your CLI commands as F# discriminated unions. Get type-safe parsing, automatic help generation, and fish shell completions -- all from your type definitions.
+Define CLI commands as F# discriminated unions. Get type-safe parsing, help generation, and fish completions from your types.
 
 ```fsharp
 // From examples/ExampleCli/Program.fs
@@ -16,26 +16,15 @@ type Command =
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 
-let tree = CommandReflection.fromUnion<Command> "My CLI tool"
+let tree = CommandReflection.fromUnion<Command> "Example project management CLI"
 
 match CommandTree.parse tree argv with
 | Ok(Task(Add(title, _))) -> printfn "Adding %s" title
-| Ok Test -> printfn "Running tests"
 | Ok Help -> printfn "%s" (CommandTree.helpFull tree "my-cli")
-| Ok cmd -> printfn "%s" (CommandReflection.formatCmd cmd)
 | Error(HelpRequested path) -> printfn "%s" (CommandTree.helpForPath tree path "my-cli")
 | Error(UnknownCommand(input, _)) -> UI.fail $"Unknown command: %s{input}"
-| Error(InvalidArguments(cmd, msg)) -> UI.fail $"%s{cmd}: %s{msg}"
-| Error(AmbiguousArgument(input, candidates)) -> UI.fail $"Ambiguous: %s{input}"
+| _ -> ()
 ```
-
-**What you get:**
-- Commands derived from union cases (PascalCase to kebab-case)
-- Nested unions become subcommand groups with optional defaults
-- Arguments parsed from case fields (string, int, int64, float, decimal, bool, Guid, option)
-- Structured parse errors (`ParseError` DU) with path context
-- Help text auto-generated from the tree structure
-- Fish shell completions from a single function call
 <!-- sync:intro:end -->
 
 ## Installation
@@ -49,18 +38,7 @@ dotnet add package CommandTree
 <!-- sync:howitworks -->
 ## How It Works
 
-Commands are discriminated unions. Case names become command names via kebab-case conversion:
-
-```fsharp
-// From examples/ExampleCli/Program.fs — names derived automatically
-type TaskCommand =
-    | Add of title: string * priority: Priority option  // "add <title> [priority]"
-    | List                                               // "list"
-    | Complete of id: int                                // "complete <id>"
-    | Remove of id: int                                  // "remove <id>"
-```
-
-Nested unions become subcommand groups:
+Case names become kebab-case commands. Nested unions become subcommand groups. Fields become typed arguments.
 
 ```fsharp
 // From examples/ExampleCli/Program.fs
@@ -69,71 +47,41 @@ type DbCommand =
     | [<Cmd("Reset the database")>] Reset
     | [<Cmd("Show connection status"); CmdDefault>] Status  // default when "db" is invoked alone
 
-type Command =
-    | [<Cmd("Database operations")>] Db of DbCommand  // "db migrate", "db reset", "db status"
-    | [<Cmd("Run the test suite")>] Test               // "test"
-```
-
-Fields become arguments with type-safe parsing:
-
-```fsharp
-// From examples/ExampleCli/Program.fs
-type TaskCommand =
-    | Add of title: string * priority: Priority option  // string + optional union
-type JobCommand =
-    | Start of name: string * size: int64 * verbose: bool  // string + int64 + bool
-    | Status of id: Guid                                    // guid
 type DeployCommand =
-    | Push of env: string                                   // required string
-    | Status of env: string option                          // optional string
+    | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
+    | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
+
+type JobCommand =
+    | [<Cmd("Start a new job")>] Start of name: string * size: int64 * verbose: bool
+    | [<Cmd("Check job status")>] Status of id: Guid
+    | [<Cmd("List recent jobs"); CmdDefault>] List
+
+type Command =
+    | [<Cmd("Task management")>] Task of TaskCommand
+    | [<Cmd("Database operations")>] Db of DbCommand
+    | [<Cmd("Deployment")>] Deploy of DeployCommand
+    | [<Cmd("Job management")>] Job of JobCommand
+    | [<Cmd("Run the test suite")>] Test
+    | [<Cmd("Show full help")>] Help
 ```
+
+- `[<Cmd("desc")>]` sets help text; optional `Name = "custom"` overrides the command name
+- `[<CmdDefault>]` marks the default subcommand when a group is invoked without arguments
+- `[<CmdCompletion("a", "b")>]` provides fish shell completion values
+- `[<CmdFileCompletion>]` enables file path completion in fish
 <!-- sync:howitworks:end -->
 
 <!-- sync:basicusage -->
 ## Basic Usage
 
-The full example app is at [`examples/ExampleCli/Program.fs`](examples/ExampleCli/Program.fs). Here are the key parts:
+Full example: [`examples/ExampleCli/Program.fs`](examples/ExampleCli/Program.fs)
 
 ```fsharp
 // From examples/ExampleCli/Program.fs
-open System
 open CommandTree
-
-type CoverageCommand =
-    | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of path: string
-    | [<Cmd("Show coverage summary"); CmdDefault>] Summary
-
-type DeployCommand =
-    | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
-    | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
-
-type Command =
-    | [<Cmd("Deployment")>] Deploy of DeployCommand
-    | [<Cmd("Code coverage")>] Coverage of CoverageCommand
-    | [<Cmd("Run the test suite")>] Test
-    | [<Cmd("Fish shell completions")>] Fish of FishDemoCommand
-    | [<Cmd("Show full help")>] Help
 
 let tree = CommandReflection.fromUnion<Command> "Example project management CLI"
 let cmdName = "example-cli"
-
-let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
-    match cmd with
-    | Deploy(DeployCommand.Push env) ->
-        UI.section $"Deploying to %s{env}"
-        UI.success $"Deployed to %s{env}"
-    | Deploy(DeployCommand.Status env) ->
-        let e = env |> Option.defaultValue "dev"
-        UI.info $"Deploy status for %s{e}: up to date"
-    | Coverage(CoverageCommand.File path) -> UI.info $"Coverage for %s{path}: 87.5%%"
-    | Coverage CoverageCommand.Summary -> UI.info "Overall: 82.3%%"
-    | Test ->
-        UI.section "Running tests"
-        UI.success "All 42 tests passed"
-    | Fish(FishDemoCommand.Generate) -> FishCompletions.writeToFile tree cmdName
-    | Fish FishDemoCommand.Preview -> printfn "%s" (FishCompletions.generateContent tree cmdName)
-    | Fish(FishDemoCommand.Install) -> FishCompletions.installHook cmdName
-    | Help -> printfn "%s" (CommandTree.helpFull tree cmdName)
 
 [<EntryPoint>]
 let main argv =
@@ -161,79 +109,35 @@ let main argv =
 <!-- sync:reference -->
 ## Reference
 
-### Attributes
-
-| Attribute | Target | Purpose |
-|-----------|--------|---------|
-| `[<Cmd("desc")>]` | Case | Set description; optionally `Name = "custom"` to override command name |
-| `[<CmdDefault>]` | Case | Mark as default subcommand for its parent group |
-| `[<CmdCompletion("a", "b")>]` | Case | Provide completion values for fish shell; `FieldIndex` targets specific field |
-| `[<CmdFileCompletion>]` | Case | Enable file path completion in fish shell; `FieldIndex` targets specific field |
-
-### CommandTree Module
+### Parsing & Help
 
 ```fsharp
-CommandTree.parse tree args              // Parse string[] into Result<'Cmd, ParseError>
+CommandTree.parse tree args              // Result<'Cmd, ParseError>
 CommandTree.help tree path prefix        // Help text for one level
-CommandTree.helpFull tree prefix         // Full help with all subgroups expanded
-CommandTree.helpForPath tree path prefix // Help for a specific subcommand path
+CommandTree.helpFull tree prefix         // Full recursive help
+CommandTree.helpForPath tree path prefix // Help for a subcommand path
 CommandTree.format tree cmd path prefix  // Format command back to CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
-CommandTree.closestGroupPath tree args   // Find deepest matching group (for error help)
-CommandTree.fishCompletions tree name    // Generate fish completion commands
+CommandTree.closestGroupPath tree args   // Deepest matching group path
 ```
 
-### CommandReflection Module
+### Reflection
 
 ```fsharp
-CommandReflection.fromUnion<'Cmd> "desc"     // Build tree from discriminated union
-CommandReflection.formatCmd cmd              // Format command to CLI string (no tree needed)
-CommandReflection.caseName value             // Get kebab-case name of a union value
+CommandReflection.fromUnion<'Cmd> "desc"     // Build tree from DU
+CommandReflection.formatCmd cmd              // Format command to CLI string
+CommandReflection.caseName value             // Kebab-case name of union value
 CommandReflection.toKebabCase "PascalCase"   // "pascal-case"
-CommandReflection.parseFieldValue type str   // Parse string into Result<obj option, string>
-CommandReflection.formatFieldValue value     // Format a typed value to string
+CommandReflection.parseFieldValue type str   // Result<obj option, string>
+CommandReflection.formatFieldValue value     // Typed value to string
 ```
 
-### Process Module
+### Fish Completions
 
 ```fsharp
-Process.run "cmd" "args"                     // Run interactively with timing display
-Process.runSilent "cmd" "args"               // Capture output, return (exitCode, stdout, stderr)
-Process.runCommand "cmd" "args"              // Like runSilent but returns CommandResult record
-Process.runAsync "cmd" "args"                // Task-based async execution
-Process.runWithSpinner "msg" "cmd" "args"    // Run with spinner animation
-Process.runInteractive "cmd" "args"          // No capture, returns exit code
-Process.runWithEnv "cmd" "args" env          // Run with extra environment variables
-Process.runSilentWithEnv "cmd" "args" env    // Silent with extra environment variables
-Process.runSilentWithTimeout "cmd" "args" ms // Silent with optional timeout
-Process.dotnet "build"                       // Shorthand for Process.run "dotnet"
-Process.dotnetSpinner "msg" "build"          // Shorthand for Process.runWithSpinner "dotnet"
-Process.runParallel tasks                    // Task.WhenAll wrapper
-```
-
-### UI Module
-
-```fsharp
-UI.title "Section Title"       // Bold cyan header
-UI.section "Subsection"        // Bold cyan with arrow
-UI.success "Done"              // Green checkmark
-UI.fail "Error"                // Red X (to stderr)
-UI.info "Note"                 // Blue info
-UI.warn "Careful"              // Yellow warning
-UI.skip "Skipped"              // Yellow skip marker
-UI.dimInfo "Detail"            // Dim text
-UI.cmd "dotnet" "build"        // Dim command echo
-UI.timing elapsed              // Color-coded duration (green to red)
-UI.withSpinner "msg" action    // Spinner animation during action
-UI.withSpinnerQuiet "msg" action // Spinner that clears on completion
-```
-
-### Fish Shell Completions
-
-```fsharp
-FishCompletions.generateContent tree "my-tool"  // Generate .fish file content
+FishCompletions.generateContent tree "my-tool"  // Generate .fish content
 FishCompletions.writeToFile tree "my-tool"      // Write to ~/.config/fish/completions/
-FishCompletions.installHook "my-tool"           // Install auto-update hook in conf.d
+FishCompletions.installHook "my-tool"           // Auto-update hook in conf.d
 ```
 
 ### Supported Field Types
@@ -241,14 +145,14 @@ FishCompletions.installHook "my-tool"           // Install auto-update hook in c
 | Type | Example | Notes |
 |------|---------|-------|
 | `string` | `of name: string` | Any string value |
-| `int` | `of count: int` | Parsed via Int32.TryParse |
-| `int64` | `of id: int64` | Parsed via Int64.TryParse |
-| `float` | `of rate: float` | Parsed via Double.TryParse |
-| `decimal` | `of price: decimal` | Parsed via Decimal.TryParse |
-| `bool` | `of force: bool` | Parsed via Boolean.TryParse |
-| `Guid` | `of id: Guid` | Parsed via Guid.TryParse |
-| `'T option` | `of env: string option` | Optional; None when omitted |
-| Union types | `of env: EnvKind` | Matched by kebab-case name with prefix matching (min 3 chars) |
+| `int` | `of count: int` | Int32 |
+| `int64` | `of id: int64` | Int64 |
+| `float` | `of rate: float` | Double |
+| `decimal` | `of price: decimal` | Decimal |
+| `bool` | `of force: bool` | Boolean |
+| `Guid` | `of id: Guid` | Guid |
+| `'T option` | `of env: string option` | None when omitted |
+| Union | `of env: Priority` | Kebab-case name, prefix matching (min 3 chars) |
 <!-- sync:reference:end -->
 
 <!-- sync:license -->
