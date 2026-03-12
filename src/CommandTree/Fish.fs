@@ -5,7 +5,9 @@ open System.IO
 
 /// Generic fish shell completion file generation and installation
 module FishCompletions =
-    /// Generate complete .fish file content from a command tree
+    /// Generate complete .fish file content from a command tree.
+    /// Returns a string containing the full fish completion script including
+    /// header comments, file completion disabling, and all command/argument completions.
     let generateContent (tree: CommandTree<'Cmd>) (cmdName: string) : string =
         let completions = CommandTree.fishCompletions tree cmdName
 
@@ -18,7 +20,8 @@ complete -c %s{cmdName} -f
 # Commands, subcommands, and argument completions
 %s{completions}"""
 
-    /// Write completions to ~/.config/fish/completions/
+    /// Write fish completions to ~/.config/fish/completions/{cmdName}.fish.
+    /// Creates the directory if it doesn't exist, then prints reload instructions.
     let writeToFile (tree: CommandTree<'Cmd>) (cmdName: string) =
         UI.title "Generate Fish Completions"
         let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
@@ -35,7 +38,8 @@ complete -c %s{cmdName} -f
         UI.info "To reload completions, run:"
         printfn $"%s{Color.cyan}  source %s{completionsFile}%s{Color.reset}"
 
-    /// Install auto-update hook in conf.d
+    /// Install a fish conf.d hook that auto-regenerates completions when entering
+    /// the project directory. Creates ~/.config/fish/conf.d/{cmdName}-completions.fish.
     let installHook (cmdName: string) =
         UI.title "Install Fish Completions"
 
