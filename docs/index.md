@@ -65,6 +65,14 @@ type DeployCommand =
     | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
     | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
 
+// my-cli files tag v1.0 src/App.fs src/Lib.fs   ← list field collects 1+ remaining args
+// my-cli files diff old.dll new.dll             ← multiple CmdFileCompletion with FieldIndex
+type FilesCommand =
+    | [<Cmd("Tag files with a label"); CmdFileCompletion>] Tag of label: string * files: string list
+    | [<Cmd("Compare two DLLs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>] Diff of
+        oldDll: string *
+        newDll: string
+
 // my-cli job start build-assets 1024 true
 // my-cli job status 550e8400-e29b-41d4-a716-446655440000
 // my-cli job                              ← runs list (CmdDefault)
@@ -77,6 +85,7 @@ type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
     | [<Cmd("Deployment")>] Deploy of DeployCommand
+    | [<Cmd("File operations")>] Files of FilesCommand
     | [<Cmd("Job management")>] Job of JobCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
@@ -92,7 +101,7 @@ type Command =
 | `Start of name: string * size: int64 * verbose: bool` | `my-cli job start build 1024 true` | Multiple fields in order |
 | `Status of env: string option` | `my-cli deploy status prod` or `my-cli deploy status` | Option fields can be omitted |
 | `Push of env: Priority` | `my-cli deploy push high` or `my-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
-| `Tag of tag: string * files: string list` | `my-cli tag v1 a.fs b.fs c.fs` | List field (must be last) collects 1+ remaining args |
+| `Tag of label: string * files: string list` | `my-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
 | `[<CmdDefault>] List` | `my-cli task` | Runs when group is invoked without a subcommand |
 | `[<Cmd("desc", Name = "fmt")>] Format` | `my-cli fmt` | `Name` overrides the derived command name |
 
