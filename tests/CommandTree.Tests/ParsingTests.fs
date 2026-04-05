@@ -587,3 +587,34 @@ let ``parse returns InvalidArguments when flag value missing`` () =
     match result with
     | Error(InvalidArguments _) -> ()
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// Help display for flag commands
+// =============================================================================
+
+[<Fact>]
+let ``help shows flags with long and short names`` () =
+    let tree = CommandReflection.fromUnion<FlagCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "deploy" ] "test"
+    test <@ helpText.Contains("[options]") @>
+    test <@ helpText.Contains("--env") @>
+    test <@ helpText.Contains("-e") @>
+    test <@ helpText.Contains("--dry-run") @>
+    test <@ helpText.Contains("-d") @>
+
+// =============================================================================
+// Format roundtrip for flag commands
+// =============================================================================
+
+[<Fact>]
+let ``format roundtrip for flag command`` () =
+    let tree = CommandReflection.fromUnion<FlagCommand> "Test"
+
+    let cmd =
+        FlagCommand.Deploy
+            { Env = Some "prod"
+              DryRun = true
+              Verbose = false }
+
+    let result = CommandTree.format tree cmd [] "test"
+    test <@ result = Some "test deploy --env prod --dry-run" @>

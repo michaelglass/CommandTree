@@ -47,6 +47,7 @@ type CommandTree<'Cmd> =
         name: string *
         desc: string *
         args: ArgInfo list *
+        flags: FlagInfo list *
         parse: (string array -> Result<'Cmd, ParseError>) *
         formatArgs: ('Cmd -> string list option)
     /// Group: contains subcommands
@@ -61,19 +62,19 @@ module CommandTree =
     /// Get the name of a command tree node
     let name =
         function
-        | Leaf(n, _, _, _, _) -> n
+        | Leaf(n, _, _, _, _, _) -> n
         | Group(n, _, _, _, _) -> n
 
     /// Get the description of a command tree node
     let desc =
         function
-        | Leaf(_, d, _, _, _) -> d
+        | Leaf(_, d, _, _, _, _) -> d
         | Group(_, d, _, _, _) -> d
 
     /// Get argument info for a leaf node
     let args =
         function
-        | Leaf(_, _, a, _, _) -> a
+        | Leaf(_, _, a, _, _, _) -> a
         | Group _ -> []
 
     /// Parse args using tree structure (recursive)
@@ -81,7 +82,7 @@ module CommandTree =
         let rec parseRec (node: CommandTree<'Cmd>) (args: string array) (path: string list) =
             match node, args with
             // Leaf node: delegate to leaf parser
-            | Leaf(_, _, _, leafParse, _), _ -> leafParse args
+            | Leaf(_, _, _, _, leafParse, _), _ -> leafParse args
 
             // Group with no args: use default if available, otherwise show help
             | Group(groupName, _, _, defaultParse, _), [||] ->
@@ -108,7 +109,7 @@ module CommandTree =
     /// Returns the full command string (e.g., "build env edit staging")
     let rec format (tree: CommandTree<'Cmd>) (cmd: 'Cmd) (path: string list) (cmdPrefix: string) : string option =
         match tree with
-        | Leaf(leafName, _, _, _, formatArgs) ->
+        | Leaf(leafName, _, _, _, _, formatArgs) ->
             match formatArgs cmd with
             | Some args ->
                 let parts = path @ [ leafName ] @ args |> List.filter (fun s -> s <> "")
@@ -141,9 +142,34 @@ module CommandTree =
                 cmdPrefix + " " + String.concat " " path
 
         match tree with
-        | Leaf(leafName, leafDesc, leafArgs, _, _) ->
+        | Leaf(leafName, leafDesc, leafArgs, leafFlags, _, _) ->
             let argsStr = formatArgs' leafArgs
-            $"Usage: %s{pathStr} %s{leafName}%s{argsStr}\n\n%s{leafDesc}"
+
+            let optionsStr = if leafFlags.IsEmpty then "" else " [options]"
+
+            let flagsSection =
+                if leafFlags.IsEmpty then
+                    ""
+                else
+                    let flagLines =
+                        leafFlags
+                        |> List.map (fun fi ->
+                            let longPart = $"--%s{fi.LongName}"
+
+                            let shortPart =
+                                match fi.ShortName with
+                                | Some s -> $", -%s{s}"
+                                | None -> ""
+
+                            let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
+
+                            let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
+                            $"%s{label.PadRight(30)} %s{fi.Description}")
+                        |> String.concat "\n"
+
+                    $"\n\nOptions:\n%s{flagLines}"
+
+            $"Usage: %s{pathStr} %s{leafName}%s{argsStr}%s{optionsStr}\n\n%s{leafDesc}%s{flagsSection}"
 
         | Group(groupName, groupDesc, children, _, defChild) ->
             let prefix =
@@ -169,9 +195,12 @@ module CommandTree =
             let pad = String.replicate indent "  "
 
             match node with
-            | Leaf(leafName, leafDesc, leafArgs, _, _) ->
+            | Leaf(leafName, leafDesc, leafArgs, leafFlags, _, _) ->
                 let argsStr = formatArgs' leafArgs
-                let cmdStr = $"%s{leafName}%s{argsStr}"
+
+                let optionsStr = if leafFlags.IsEmpty then "" else " [options]"
+
+                let cmdStr = $"%s{leafName}%s{argsStr}%s{optionsStr}"
                 [ $"%s{pad}%s{cmdStr.PadRight(20)} %s{leafDesc}" ]
 
             | Group(groupName, groupDesc, children, _, defChild) ->
@@ -243,29 +272,47 @@ module CommandTree =
 
         let rec generate (node: CommandTree<'Cmd>) (path: string list) : string list =
             match node with
-            | Leaf(leafName, _, argInfos, _, _) ->
+            | Leaf(leafName, _, argInfos, flagInfos, _, _) ->
                 let leafPath = path @ [ leafName ]
 
-                argInfos
-                |> List.collect (fun arg ->
-                    match arg.Completions with
-                    | Values values ->
+                let argCompletions =
+                    argInfos
+                    |> List.collect (fun arg ->
+                        match arg.Completions with
+                        | Values values ->
+                            let condition =
+                                leafPath
+                                |> List.map (sprintf "__fish_seen_subcommand_from %s")
+                                |> String.concat "; and "
+
+                            values
+                            |> List.map (fun v ->
+                                $"complete -c %s{cmdName} -n \"%s{condition}\" -a \"%s{escape v}\" -d \"%s{escape v}\"")
+                        | FilePath ->
+                            let condition =
+                                leafPath
+                                |> List.map (sprintf "__fish_seen_subcommand_from %s")
+                                |> String.concat "; and "
+
+                            [ $"complete -c %s{cmdName} -n \"%s{condition}\" -F" ]
+                        | NoCompletion -> [])
+
+                let flagCompletions =
+                    flagInfos
+                    |> List.collect (fun fi ->
                         let condition =
                             leafPath
                             |> List.map (sprintf "__fish_seen_subcommand_from %s")
                             |> String.concat "; and "
 
-                        values
-                        |> List.map (fun v ->
-                            $"complete -c %s{cmdName} -n \"%s{condition}\" -a \"%s{escape v}\" -d \"%s{escape v}\"")
-                    | FilePath ->
-                        let condition =
-                            leafPath
-                            |> List.map (sprintf "__fish_seen_subcommand_from %s")
-                            |> String.concat "; and "
+                        let shortPart =
+                            match fi.ShortName with
+                            | Some s -> $" -s %s{s}"
+                            | None -> ""
 
-                        [ $"complete -c %s{cmdName} -n \"%s{condition}\" -F" ]
-                    | NoCompletion -> [])
+                        [ $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape fi.Description}\"" ])
+
+                argCompletions @ flagCompletions
             | Group(groupName, _, children, _, _) ->
                 let currentPath = if groupName = "" then path else path @ [ groupName ]
 
