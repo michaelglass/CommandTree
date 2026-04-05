@@ -269,3 +269,33 @@ let ``fishCompletions generates completions for nested command groups`` () =
     test <@ completions.Contains("-a \"check\"") @>
     test <@ completions.Contains("-a \"build\"") @>
     test <@ completions.Contains("-a \"test\"") @>
+
+// =============================================================================
+// Fish completions for list fields
+// =============================================================================
+
+type ListFileCommand = | [<Cmd("Compare files"); CmdFileCompletion>] Compare of files: string list
+
+[<Fact>]
+let ``CmdFileCompletion works on list field`` () =
+    let tree = CommandReflection.fromUnion<ListFileCommand> "Test"
+
+    match tree with
+    | CommandTree.Group(_, _, children, _, _) ->
+        let node = children |> List.find (fun c -> CommandTree.name c = "compare")
+
+        match node with
+        | CommandTree.Leaf(_, _, args, _, _) ->
+            test <@ args.Length = 1 @>
+            test <@ args.[0].Completions = FilePath @>
+            test <@ args.[0].IsList = true @>
+        | CommandTree.Group _ -> failwith "Expected leaf"
+    | CommandTree.Leaf _ -> failwith "Expected group"
+
+[<Fact>]
+let ``fishCompletions includes file completion for list field`` () =
+    let tree = CommandReflection.fromUnion<ListFileCommand> "Test"
+    let completions = CommandTree.fishCompletions tree "test"
+
+    test <@ completions.Contains("__fish_seen_subcommand_from compare") @>
+    test <@ completions.Contains("-F") @>
