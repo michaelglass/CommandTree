@@ -275,36 +275,25 @@ module CommandTree =
             | Leaf(leafName, _, argInfos, flagInfos, _, _) ->
                 let leafPath = path @ [ leafName ]
 
+                let condition =
+                    leafPath
+                    |> List.map (sprintf "__fish_seen_subcommand_from %s")
+                    |> String.concat "; and "
+
                 let argCompletions =
                     argInfos
                     |> List.collect (fun arg ->
                         match arg.Completions with
                         | Values values ->
-                            let condition =
-                                leafPath
-                                |> List.map (sprintf "__fish_seen_subcommand_from %s")
-                                |> String.concat "; and "
-
                             values
                             |> List.map (fun v ->
                                 $"complete -c %s{cmdName} -n \"%s{condition}\" -a \"%s{escape v}\" -d \"%s{escape v}\"")
-                        | FilePath ->
-                            let condition =
-                                leafPath
-                                |> List.map (sprintf "__fish_seen_subcommand_from %s")
-                                |> String.concat "; and "
-
-                            [ $"complete -c %s{cmdName} -n \"%s{condition}\" -F" ]
+                        | FilePath -> [ $"complete -c %s{cmdName} -n \"%s{condition}\" -F" ]
                         | NoCompletion -> [])
 
                 let flagCompletions =
                     flagInfos
                     |> List.collect (fun fi ->
-                        let condition =
-                            leafPath
-                            |> List.map (sprintf "__fish_seen_subcommand_from %s")
-                            |> String.concat "; and "
-
                         let shortPart =
                             match fi.ShortName with
                             | Some s -> $" -s %s{s}"
