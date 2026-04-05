@@ -33,11 +33,11 @@ dotnet test --coverage --coverage-output-format cobertura --coverage-output "$PW
 
 Six source files in `src/CommandTree/`:
 
-- **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions).
+- **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions), `CmdFlagAttribute` (flag name/short override on record fields).
 
-- **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, and `fishCompletions`.
+- **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, `FlagInfo`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`, `UnknownFlag`, `DuplicateFlag`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, and `fishCompletions`.
 
-- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, list, and nested unions.
+- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, `getFlagInfo` (builds `FlagInfo` list from record types), `parseFlags` (named flag parsing), and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, list, nested unions, and record types (parsed as named `--flags`).
 
 - **UI.fs** -- Terminal output helpers: colored printing (`title`, `section`, `success`, `fail`, `info`, `warn`), timing display with color gradient, spinner animation (`withSpinner`, `withSpinnerQuiet`). `Color` module has ANSI escape codes.
 
@@ -49,11 +49,11 @@ Six source files in `src/CommandTree/`:
 
 **DU-based command parsing:** Define CLI commands as discriminated unions. Cases become commands, nested unions become subcommand groups, case fields become arguments. `CommandReflection.fromUnion<'Cmd>` builds the tree via reflection.
 
-**Attributes:** `[<Cmd("desc")>]` for description/name, `[<CmdDefault>]` for default subcommand, `[<CmdCompletion("a", "b")>]` for argument completions, `[<CmdFileCompletion>]` for file path completions.
+**Attributes:** `[<Cmd("desc")>]` for description/name, `[<CmdDefault>]` for default subcommand, `[<CmdCompletion("a", "b")>]` for argument completions, `[<CmdFileCompletion>]` for file path completions, `[<CmdFlag>]` for overriding flag name/short on record fields.
 
 **Tree structure:** `CommandTree<'Cmd>` is a recursive union of `Leaf` (command with parser) and `Group` (subcommands with optional default). Parsing walks the tree matching args to node names, returning `Result<'Cmd, ParseError>` with structured errors carrying path context.
 
-**Structured parse errors:** `ParseError` is a discriminated union with `HelpRequested of path`, `UnknownCommand of input * groupPath`, `InvalidArguments of command * message`, and `AmbiguousArgument of input * candidates`. Path accumulation during recursive parse gives consumers full context for error display.
+**Structured parse errors:** `ParseError` is a discriminated union with `HelpRequested of path`, `UnknownCommand of input * groupPath`, `InvalidArguments of command * message`, `AmbiguousArgument of input * candidates`, `UnknownFlag of flag * command * validFlags`, and `DuplicateFlag of flag * command`. Path accumulation during recursive parse gives consumers full context for error display.
 
 **Process runner:** The `Process` module wraps `System.Diagnostics.Process` with convenience functions. `ProcessStartInfo` is used directly -- no shell involved, so single quotes are literal.
 

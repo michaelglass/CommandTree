@@ -81,12 +81,18 @@ type JobCommand =
     | [<Cmd("Check job status")>] Status of id: Guid
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
+// my-cli check --config custom.json --verbose
+type CheckOptions =
+    { Config: string option
+      Verbose: bool }
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
     | [<Cmd("Deployment")>] Deploy of DeployCommand
     | [<Cmd("File operations")>] Files of FilesCommand
     | [<Cmd("Job management")>] Job of JobCommand
+    | [<Cmd("Run checks")>] Check of CheckOptions
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 ```
@@ -102,6 +108,7 @@ type Command =
 | `Status of env: string option` | `my-cli deploy status prod` or `my-cli deploy status` | Option fields can be omitted |
 | `Push of env: Priority` | `my-cli deploy push high` or `my-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
 | `Tag of label: string * files: string list` | `my-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
+| `Check of CheckOptions` (record) | `my-cli check --config custom.json --verbose` | Record fields become named flags |
 | `[<CmdDefault>] List` | `my-cli task` | Runs when group is invoked without a subcommand |
 | `[<Cmd("desc", Name = "fmt")>] Format` | `my-cli fmt` | `Name` overrides the derived command name |
 
@@ -111,6 +118,7 @@ type Command =
 - `[<CmdDefault>]` marks the default subcommand when a group is invoked without arguments
 - `[<CmdCompletion("a", "b")>]` provides fish shell completion values
 - `[<CmdFileCompletion>]` enables file path completion in fish (multiple allowed per case with `FieldIndex`)
+- `[<CmdFlag>]` overrides flag name or short flag on record fields (optional — names are auto-derived)
 <!-- sync:howitworks:end -->
 
 <!-- sync:basicusage -->
@@ -144,6 +152,13 @@ let main argv =
     | Error(AmbiguousArgument(input, candidates)) ->
         let joined = String.concat ", " candidates
         UI.fail $"Ambiguous: '{input}' matches: {joined}"
+        1
+    | Error(UnknownFlag(flag, cmd, validFlags)) ->
+        let joined = String.concat ", " validFlags
+        UI.fail $"Unknown flag '%s{flag}' for command '%s{cmd}'. Valid flags: %s{joined}"
+        1
+    | Error(DuplicateFlag(flag, cmd)) ->
+        UI.fail $"Flag '%s{flag}' provided more than once for command '%s{cmd}'"
         1
 ```
 <!-- sync:basicusage:end -->
@@ -196,6 +211,7 @@ FishCompletions.installHook "my-tool"           // Auto-update hook in conf.d
 | `'T option` | `of env: string option` | None when omitted |
 | Union | `of env: Priority` | Kebab-case name, prefix matching (min 3 chars) |
 | `'T list` | `of files: string list` | Collects remaining args (1+, must be last field) |
+| Record | `of opts: CheckOptions` | Record fields become `--flag` options |
 <!-- sync:reference:end -->
 
 <!-- sync:license -->
