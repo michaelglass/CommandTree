@@ -964,3 +964,40 @@ let ``fromUnionWithGlobalsAndEnv resolves env vars for global flags`` () =
         | Error e -> failwith $"Expected Ok, got: %O{e}"
     finally
         System.Environment.SetEnvironmentVariable("APP_VERBOSE", null)
+
+// =============================================================================
+// Env var hints in help tests
+// =============================================================================
+
+[<Fact>]
+let ``help shows env var hints when configured`` () =
+    let tree = CommandReflection.fromUnionWithEnv<EnvTestCmd> "Test" "TEST"
+    let helpText = CommandTree.helpForPath tree [ "run" ] "test"
+    test <@ helpText.Contains("(env: TEST_VERBOSE)") @>
+    test <@ helpText.Contains("(env: TEST_LOG_LEVEL)") @>
+
+[<Fact>]
+let ``help does not show env hints without prefix`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "deploy" ] "test"
+    test <@ not (helpText.Contains("env:")) @>
+
+[<Fact>]
+let ``helpWithGlobals shows global options section`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test CLI"
+    let helpText = CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "test"
+    test <@ helpText.Contains("Global options:") @>
+    test <@ helpText.Contains("--verbose") @>
+    test <@ helpText.Contains("--log-level") @>
+    test <@ helpText.Contains("[global options]") @>
+    test <@ helpText.Contains("Commands:") @>
+    test <@ helpText.Contains("scan") @>
+
+[<Fact>]
+let ``helpWithGlobals shows env hints when configured`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobalsAndEnv<GlobalCmd, GlobalFlag> "Test CLI" "APP"
+
+    let helpText = CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "test"
+    test <@ helpText.Contains("(env: APP_VERBOSE)") @>
+    test <@ helpText.Contains("(env: APP_LOG_LEVEL)") @>
