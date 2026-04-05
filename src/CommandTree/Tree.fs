@@ -179,8 +179,13 @@ module CommandTree =
 
                             let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
 
+                            let envPart =
+                                match fi.EnvVar with
+                                | Some { VarName = v } -> $" (env: %s{v})"
+                                | None -> ""
+
                             let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
-                            $"%s{label.PadRight(30)} %s{fi.Description}")
+                            $"%s{label.PadRight(30)} %s{fi.Description}%s{envPart}")
                         |> String.concat "\n"
 
                     $"\n\nOptions:\n%s{flagLines}"
@@ -267,6 +272,49 @@ module CommandTree =
 
             help subtree parentPath cmdPrefix
         | None -> help tree [] cmdPrefix
+
+    /// Generate help for the root with global options section
+    let helpWithGlobals (globalFlags: FlagInfo list) (tree: CommandTree<'Cmd>) (cmdPrefix: string) : string =
+        let globalSection =
+            if globalFlags.IsEmpty then
+                ""
+            else
+                let flagLines =
+                    globalFlags
+                    |> List.map (fun fi ->
+                        let longPart = $"--%s{fi.LongName}"
+
+                        let shortPart =
+                            match fi.ShortName with
+                            | Some s -> $", -%s{s}"
+                            | None -> ""
+
+                        let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
+
+                        let envPart =
+                            match fi.EnvVar with
+                            | Some { VarName = v } -> $" (env: %s{v})"
+                            | None -> ""
+
+                        let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
+                        $"%s{label.PadRight(30)} %s{fi.Description}%s{envPart}")
+                    |> String.concat "\n"
+
+                $"\nGlobal options:\n%s{flagLines}\n"
+
+        match tree with
+        | Group(_, groupDesc, children, _, defChild) ->
+            let childrenHelp =
+                children
+                |> List.map (fun c ->
+                    let argsStr = formatArgs' (args c)
+                    let cmdStr = $"%s{name c}%s{argsStr}"
+                    let marker = if defChild = Some(name c) then " (default)" else ""
+                    $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
+                |> String.concat "\n"
+
+            $"Usage: %s{cmdPrefix} [global options] <command>\n\n%s{groupDesc}%s{globalSection}\nCommands:\n%s{childrenHelp}"
+        | _ -> help tree [] cmdPrefix
 
     /// Find the deepest valid group path from a list of args.
     /// Used to show help for the nearest matching group when an unknown command is typed.
