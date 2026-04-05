@@ -85,6 +85,16 @@ type DUFlagCommand =
     | [<Cmd("Deploy")>] Deploy of DeployDUFlag list
     | [<Cmd("Help")>] Help
 
+// Types for global flag tests
+
+type GlobalFlag =
+    | Verbose
+    | LogLevel of string
+
+type GlobalCmd =
+    | [<Cmd("Start")>] Start
+    | [<Cmd("Scan")>] Scan
+
 // Types for group-with-no-default error paths
 
 type SubNoDefault =
@@ -632,3 +642,79 @@ let ``formatCmd handles DU flag command`` () =
     let cmd = DUFlagCommand.Deploy [ DeployDUFlag.Env "prod"; DeployDUFlag.DryRun ]
     let result = CommandReflection.formatCmd cmd
     test <@ result = "deploy --env prod --dry-run" @>
+
+// =============================================================================
+// Global flag parsing tests
+// =============================================================================
+
+[<Fact>]
+let ``global flags parsed before command`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test"
+    let result = spec.Parse [| "--verbose"; "scan" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+        test <@ cmd = GlobalCmd.Scan @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``global flags parsed after command`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test"
+    let result = spec.Parse [| "scan"; "--verbose" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+        test <@ cmd = GlobalCmd.Scan @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``global flags interleaved with command`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test"
+    let result = spec.Parse [| "--verbose"; "scan"; "--log-level"; "debug" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+
+        test
+            <@
+                globals
+                |> List.exists (function
+                    | GlobalFlag.LogLevel "debug" -> true
+                    | _ -> false)
+            @>
+
+        test <@ cmd = GlobalCmd.Scan @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``no global flags returns empty list`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test"
+    let result = spec.Parse [| "start" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals = [] @>
+        test <@ cmd = GlobalCmd.Start @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``global flag duplicate rejected`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test"
+    let result = spec.Parse [| "--verbose"; "scan"; "--verbose" |]
+
+    match result with
+    | Error(DuplicateFlag(flag, _)) -> test <@ flag = "--verbose" @>
+    | other -> failwith $"Expected DuplicateFlag, got: %O{other}"
+
+[<Fact>]
+let ``global flag unknown rejected`` () =
+    let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test"
+    let result = spec.Parse [| "--unknown"; "scan" |]
+    // Unknown flags that aren't global should pass through to command parsing
+    // which will then report UnknownCommand since --unknown isn't a command name
+    match result with
+    | Error _ -> ()
+    | other -> failwith $"Expected Error, got: %O{other}"
