@@ -69,16 +69,16 @@ type CmdFileCompletionAttribute() =
     inherit Attribute()
     member val FieldIndex = 0 with get, set
 
-/// Attribute to override the derived flag name or short flag for a record field.
-/// Applied to record fields used as named flags in command options.
-/// Name overrides the long flag name (derived from field name via toKebabCase by default).
-/// Short overrides the auto-derived short flag (first letter of field name by default).
+/// Attribute to override the derived flag name or short flag for a DU flag case.
+/// Applied to union cases in a flag DU (each case = one CLI flag).
+/// Name overrides the long flag name (derived from case name via toKebabCase by default).
+/// Short overrides the auto-derived short flag (first letter of flag name by default).
 ///
 /// Example:
 /// ```fsharp
-/// type Options =
-///     { [<CmdFlag(Name = "conf", Short = "k")>] Config: string option
-///       Verbose: bool }
+/// type CheckFlag =
+///     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+///     | Verbose
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
 type CmdFlagAttribute() =
