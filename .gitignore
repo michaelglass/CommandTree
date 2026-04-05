@@ -63,4 +63,7 @@ artifacts/
 # Plans (local only)
 docs/plans/
 
+# Workspaces (jujutsu/worktrees)
+.workspaces/
+
 .fake
