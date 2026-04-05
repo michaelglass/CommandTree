@@ -61,7 +61,7 @@ type CmdCompletionAttribute([<ParamArray>] values: string[]) =
 /// type CoverageCommand =
 ///     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of sourceFile: string
 /// ```
-[<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
+[<AttributeUsage(AttributeTargets.Property, AllowMultiple = true)>]
 type CmdFileCompletionAttribute() =
     inherit Attribute()
     member val FieldIndex = 0 with get, set
