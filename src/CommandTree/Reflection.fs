@@ -59,6 +59,9 @@ module CommandReflection =
     /// Get the element type from a list type
     let private listElementType (t: Type) = t.GetGenericArguments().[0]
 
+    /// Check if a type is an F# record type
+    let private isRecordType (t: Type) = FSharpType.IsRecord(t)
+
     /// Check if a type is a union type (for detecting nested groups)
     let isUnionType (t: Type) =
         FSharpType.IsUnion(t)
@@ -138,6 +141,73 @@ module CommandReflection =
               IsOptional = isOptionalType f.PropertyType
               IsList = isListType f.PropertyType
               Completions = getCompletionHint case i f })
+        |> Array.toList
+
+    /// Get CmdFlagAttribute from a record field property, if present
+    let private getCmdFlagAttr (prop: Reflection.PropertyInfo) =
+        prop.GetCustomAttributes(typeof<CmdFlagAttribute>, false)
+        |> Array.tryHead
+        |> Option.map (fun a -> a :?> CmdFlagAttribute)
+
+    /// Build FlagInfo list from record fields, with auto-derived short flags
+    let internal getFlagInfo (recordType: Type) : FlagInfo list =
+        let fields = FSharpType.GetRecordFields(recordType)
+
+        let flagData =
+            fields
+            |> Array.map (fun f ->
+                let attr = getCmdFlagAttr f
+
+                let longName =
+                    match attr with
+                    | Some a when not (isNull a.Name) -> a.Name
+                    | _ -> toKebabCase f.Name
+
+                let explicitShort =
+                    match attr with
+                    | Some a when not (isNull a.Short) -> Some a.Short
+                    | _ -> None
+
+                let isBool = f.PropertyType = typeof<bool>
+
+                let typeName =
+                    if isBool then
+                        "bool"
+                    elif isOptionalType f.PropertyType then
+                        getTypeName (f.PropertyType.GetGenericArguments().[0])
+                    else
+                        getTypeName f.PropertyType
+
+                (f, longName, explicitShort, isBool, typeName))
+
+        // Auto-derive short flags from first letter, skip on collision
+        let autoShortCandidates =
+            flagData
+            |> Array.map (fun (_, longName, explicitShort, _, _) ->
+                match explicitShort with
+                | Some s -> Some s
+                | None -> Some(string longName.[0]))
+
+        let shortCounts =
+            autoShortCandidates |> Array.choose id |> Array.countBy id |> Map.ofArray
+
+        flagData
+        |> Array.mapi (fun _i (f, longName, explicitShort, isBool, typeName) ->
+            let shortName =
+                match explicitShort with
+                | Some s -> Some s
+                | None ->
+                    let candidate = string longName.[0]
+
+                    match Map.tryFind candidate shortCounts with
+                    | Some count when count = 1 -> Some candidate
+                    | _ -> None
+
+            { LongName = longName
+              ShortName = shortName
+              TypeName = typeName
+              IsBool = isBool
+              Description = toDescription f.Name })
         |> Array.toList
 
     /// Parse a single field value from string
@@ -413,7 +483,30 @@ module CommandReflection =
                     let caseName = getCommandName outerCase
                     invalidOp $"List field in case '%s{caseName}' must be the last field and there can be only one"
 
-            if fields.Length = 1 && isUnionType fields.[0].PropertyType then
+            if fields.Length = 1 && isRecordType fields.[0].PropertyType then
+                let recordType = fields.[0].PropertyType
+                let recordFields = FSharpType.GetRecordFields(recordType)
+
+                for rf in recordFields do
+                    if rf.PropertyType <> typeof<bool> && not (isOptionalType rf.PropertyType) then
+                        invalidOp
+                            $"Flag field '%s{rf.Name}' in record '%s{recordType.Name}' must be bool or option type"
+
+                let _flagInfo = getFlagInfo recordType
+                // Placeholder leaf -- parsing will be added in Task 5
+                CommandTree.Leaf(
+                    cmdName,
+                    desc,
+                    [],
+                    (fun _ -> Error(InvalidArguments(cmdName, "Flags not yet implemented"))),
+                    (fun _ -> None)
+                )
+            elif
+                fields.Length > 1
+                && (fields |> Array.exists (fun f -> isRecordType f.PropertyType))
+            then
+                invalidOp $"Case '%s{cmdName}' cannot mix positional args with a record options type"
+            elif fields.Length = 1 && isUnionType fields.[0].PropertyType then
                 // Nested union -> Group
                 let nestedType = fields.[0].PropertyType
                 let nestedCases = FSharpType.GetUnionCases(nestedType)

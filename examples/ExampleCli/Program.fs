@@ -475,3 +475,10 @@ let main argv =
         let joined = String.concat ", " candidates
         UI.fail $"Ambiguous: '{input}' matches: {joined}"
         1
+    | Error(UnknownFlag(flag, cmd, validFlags)) ->
+        let joined = String.concat ", " validFlags
+        UI.fail $"Unknown flag '%s{flag}' for command '%s{cmd}'. Valid flags: %s{joined}"
+        1
+    | Error(DuplicateFlag(flag, cmd)) ->
+        UI.fail $"Flag '%s{flag}' provided more than once for command '%s{cmd}'"
+        1
