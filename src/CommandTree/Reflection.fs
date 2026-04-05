@@ -632,6 +632,71 @@ module CommandReflection =
 
             Ok(FSharpValue.MakeRecord(recordType, fieldValues))
 
+    /// Parse DU-based flags from args array, returning an F# list of flag DU values or error
+    let internal parseDUFlags
+        (cmdName: string)
+        (flagType: Type)
+        (lookup: FlagLookup)
+        (args: string array)
+        : Result<obj, ParseError> =
+        let cases = FSharpType.GetUnionCases(flagType)
+        let results = System.Collections.Generic.List<obj>()
+        let mutable i = 0
+        let mutable error: ParseError option = None
+
+        while i < args.Length && error.IsNone do
+            let arg = args.[i]
+
+            let flagIdx =
+                Map.tryFind arg lookup.LongMap
+                |> Option.orElseWith (fun () -> Map.tryFind arg lookup.ShortMap)
+
+            match flagIdx with
+            | None -> error <- Some(UnknownFlag(arg, cmdName, lookup.ValidFlags))
+            | Some idx ->
+                if
+                    results
+                    |> Seq.exists (fun r ->
+                        let c, _ = FSharpValue.GetUnionFields(r, flagType)
+                        c.Tag = idx)
+                then
+                    error <- Some(DuplicateFlag(arg, cmdName))
+                else
+                    let case = cases.[idx]
+                    let fields = case.GetFields()
+
+                    if fields.Length = 0 then
+                        results.Add(FSharpValue.MakeUnion(case, [||]))
+                        i <- i + 1
+                    else if i + 1 >= args.Length then
+                        error <- Some(InvalidArguments(cmdName, $"Flag '%s{arg}' requires a value"))
+                    else
+                        let valueStr = args.[i + 1]
+
+                        match parseFieldValue fields.[0].PropertyType valueStr with
+                        | Ok(Some v) ->
+                            results.Add(FSharpValue.MakeUnion(case, [| v |]))
+                            i <- i + 2
+                        | Ok None ->
+                            error <- Some(InvalidArguments(cmdName, $"Invalid value '%s{valueStr}' for flag '%s{arg}'"))
+                        | Error e -> error <- Some(fieldErrorToParseError cmdName e)
+
+        match error with
+        | Some e -> Error e
+        | None ->
+            let listType = typedefof<list<_>>.MakeGenericType(flagType)
+            let listCases = FSharpType.GetUnionCases(listType)
+            let nilCase = listCases |> Array.find (fun c -> c.Name = "Empty")
+            let consCase = listCases |> Array.find (fun c -> c.Name = "Cons")
+
+            let fsList =
+                Seq.foldBack
+                    (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
+                    results
+                    (FSharpValue.MakeUnion(nilCase, [||]))
+
+            Ok fsList
+
     /// Format a command value to its CLI string using reflection (no tree needed).
     /// Recursively walks nested unions using getCommandName + formatFieldValue.
     /// Example: InfraCommand.Sync(InfraSyncCommand.Ses None) → "sync ses"
@@ -685,7 +750,65 @@ module CommandReflection =
                     let caseName = getCommandName outerCase
                     invalidOp $"List field in case '%s{caseName}' must be the last field and there can be only one"
 
-            if fields.Length = 1 && isRecordType fields.[0].PropertyType then
+            if
+                fields.Length = 1
+                && isListType fields.[0].PropertyType
+                && isUnionType (listElementType fields.[0].PropertyType)
+                && (let duCases = FSharpType.GetUnionCases(listElementType fields.[0].PropertyType)
+
+                    duCases |> Array.exists (fun c -> c.GetFields().Length > 0))
+            then
+                // DU flag list: single field of type `SomeDU list` where SomeDU has value-carrying cases
+                let flagDUType = listElementType fields.[0].PropertyType
+                let flagInfo = getFlagInfoFromDU flagDUType None
+                let flagLookup = buildFlagLookup flagInfo
+
+                let parse (args: string array) : Result<'Cmd, ParseError> =
+                    match parseDUFlags cmdName flagDUType flagLookup args with
+                    | Ok flagList ->
+                        let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| flagList |]))
+                        Ok(cmdValue :?> 'Cmd)
+                    | Error e -> Error e
+
+                let formatArgs (cmd: 'Cmd) : string list option =
+                    let rec findMatch (value: obj) (targetCase: UnionCaseInfo) =
+                        if isNull value then
+                            None
+                        else
+                            let actualType = value.GetType()
+
+                            if FSharpType.IsUnion(actualType, true) then
+                                let c, fs = FSharpValue.GetUnionFields(value, actualType, true)
+
+                                if c.Tag = targetCase.Tag && c.DeclaringType = targetCase.DeclaringType then
+                                    let flagList = fs.[0] :?> System.Collections.IEnumerable
+
+                                    let tokens =
+                                        flagList
+                                        |> Seq.cast<obj>
+                                        |> Seq.collect (fun flagVal ->
+                                            let fc, ffs = FSharpValue.GetUnionFields(flagVal, flagDUType)
+                                            let flagName = $"--%s{toKebabCase fc.Name}"
+
+                                            if ffs.Length = 0 then
+                                                seq { flagName }
+                                            else
+                                                seq {
+                                                    flagName
+                                                    formatFieldValue ffs.[0]
+                                                })
+                                        |> Seq.toList
+
+                                    Some tokens
+                                else
+                                    fs |> Array.tryPick (fun f -> findMatch f targetCase)
+                            else
+                                None
+
+                    findMatch (cmd :> obj) outerCase
+
+                CommandTree.Leaf(cmdName, desc, [], flagInfo, parse, formatArgs)
+            elif fields.Length = 1 && isRecordType fields.[0].PropertyType then
                 let recordType = fields.[0].PropertyType
                 let recordFields = FSharpType.GetRecordFields(recordType)
 
