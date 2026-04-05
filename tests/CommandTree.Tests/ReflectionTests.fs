@@ -568,3 +568,30 @@ let ``formatCmd formats flag command with set flags`` () =
 [<Fact>]
 let ``formatCmd omits unset flags`` () =
     test <@ CommandReflection.formatCmd (FmtFlagCommand.Deploy { Env = None; DryRun = false }) = "deploy" @>
+
+// =============================================================================
+// CmdEnv and CmdEnvRaw attribute tests
+// =============================================================================
+
+type EnvFlag =
+    | [<CmdEnv("LVL")>] LogLevel of string
+    | [<CmdEnvRaw("NO_CACHE")>] NoCache
+    | Verbose
+
+[<Fact>]
+let ``CmdEnv attribute exposes suffix`` () =
+    let cases = FSharp.Reflection.FSharpType.GetUnionCases(typeof<EnvFlag>)
+    let logLevel = cases |> Array.find (fun c -> c.Name = "LogLevel")
+    let attrs = logLevel.GetCustomAttributes(typeof<CmdEnvAttribute>)
+    test <@ attrs.Length = 1 @>
+    let attr = attrs.[0] :?> CmdEnvAttribute
+    test <@ attr.Suffix = "LVL" @>
+
+[<Fact>]
+let ``CmdEnvRaw attribute exposes full var name`` () =
+    let cases = FSharp.Reflection.FSharpType.GetUnionCases(typeof<EnvFlag>)
+    let noCache = cases |> Array.find (fun c -> c.Name = "NoCache")
+    let attrs = noCache.GetCustomAttributes(typeof<CmdEnvRawAttribute>)
+    test <@ attrs.Length = 1 @>
+    let attr = attrs.[0] :?> CmdEnvRawAttribute
+    test <@ attr.VarName = "NO_CACHE" @>
