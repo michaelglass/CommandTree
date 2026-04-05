@@ -142,6 +142,25 @@ module CommandTree =
         elif arg.IsOptional then $"[%s{arg.Name}]"
         else $"<%s{arg.Name}>"
 
+    /// Render a single flag info line for help output
+    let private renderFlagLine (fi: FlagInfo) =
+        let longPart = $"--%s{fi.LongName}"
+
+        let shortPart =
+            match fi.ShortName with
+            | Some s -> $", -%s{s}"
+            | None -> ""
+
+        let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
+
+        let envPart =
+            match fi.EnvVar with
+            | Some { VarName = v } -> $" (env: %s{v})"
+            | None -> ""
+
+        let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
+        $"%s{label.PadRight(30)} %s{fi.Description}%s{envPart}"
+
     /// Format arguments for a command
     let private formatArgs' (argList: ArgInfo list) =
         if argList.IsEmpty then
@@ -167,27 +186,7 @@ module CommandTree =
                 if leafFlags.IsEmpty then
                     ""
                 else
-                    let flagLines =
-                        leafFlags
-                        |> List.map (fun fi ->
-                            let longPart = $"--%s{fi.LongName}"
-
-                            let shortPart =
-                                match fi.ShortName with
-                                | Some s -> $", -%s{s}"
-                                | None -> ""
-
-                            let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
-
-                            let envPart =
-                                match fi.EnvVar with
-                                | Some { VarName = v } -> $" (env: %s{v})"
-                                | None -> ""
-
-                            let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
-                            $"%s{label.PadRight(30)} %s{fi.Description}%s{envPart}")
-                        |> String.concat "\n"
-
+                    let flagLines = leafFlags |> List.map renderFlagLine |> String.concat "\n"
                     $"\n\nOptions:\n%s{flagLines}"
 
             $"Usage: %s{pathStr} %s{leafName}%s{argsStr}%s{optionsStr}\n\n%s{leafDesc}%s{flagsSection}"
@@ -279,27 +278,7 @@ module CommandTree =
             if globalFlags.IsEmpty then
                 ""
             else
-                let flagLines =
-                    globalFlags
-                    |> List.map (fun fi ->
-                        let longPart = $"--%s{fi.LongName}"
-
-                        let shortPart =
-                            match fi.ShortName with
-                            | Some s -> $", -%s{s}"
-                            | None -> ""
-
-                        let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
-
-                        let envPart =
-                            match fi.EnvVar with
-                            | Some { VarName = v } -> $" (env: %s{v})"
-                            | None -> ""
-
-                        let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
-                        $"%s{label.PadRight(30)} %s{fi.Description}%s{envPart}")
-                    |> String.concat "\n"
-
+                let flagLines = globalFlags |> List.map renderFlagLine |> String.concat "\n"
                 $"\nGlobal options:\n%s{flagLines}\n"
 
         match tree with
