@@ -318,3 +318,20 @@ let ``fishCompletions generates flag completions with long and short names`` () 
     test <@ completions.Contains("-s e") @>
     test <@ completions.Contains("-l dry-run") @>
     test <@ completions.Contains("-s d") @>
+
+// =============================================================================
+// Fish completions for DU-based flag commands
+// =============================================================================
+
+type CompDeployFlag =
+    | DryRun
+    | Env of string
+
+type DUFlagCompCommand = | [<Cmd("Deploy")>] Deploy of CompDeployFlag list
+
+[<Fact>]
+let ``fishCompletions includes DU flag completions`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCompCommand> "Test"
+    let completions = CommandTree.fishCompletions tree "test"
+    test <@ completions.Contains("-l dry-run") @>
+    test <@ completions.Contains("-l env") @>
