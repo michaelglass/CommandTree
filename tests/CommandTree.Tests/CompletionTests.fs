@@ -20,6 +20,10 @@ type CompletedCommand =
 
 type UnionArgCommand = | [<Cmd("Optional environment")>] ChooseOpt of env: EnvKind option
 
+type TwoFileCommand =
+    | [<Cmd("Compare APIs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>]
+      CompareApi of oldDll: string * newDll: string
+
 // Nested command types for group completion tests
 type DevSubCmd =
     | [<CmdDefault>] Check
@@ -61,6 +65,22 @@ let ``CmdFileCompletion attribute populates FilePath completion hint`` () =
         | CommandTree.Leaf(_, _, args, _, _) ->
             test <@ args.Length = 1 @>
             test <@ args.[0].Completions = FilePath @>
+        | CommandTree.Group _ -> failwith "Expected leaf"
+    | CommandTree.Leaf _ -> failwith "Expected group"
+
+[<Fact>]
+let ``CmdFileCompletion with multiple FieldIndex values marks both fields`` () =
+    let tree = CommandReflection.fromUnion<TwoFileCommand> "Test"
+
+    match tree with
+    | CommandTree.Group(_, _, children, _, _) ->
+        let node = children |> List.find (fun c -> CommandTree.name c = "compare-api")
+
+        match node with
+        | CommandTree.Leaf(_, _, args, _, _) ->
+            test <@ args.Length = 2 @>
+            test <@ args.[0].Completions = FilePath @>
+            test <@ args.[1].Completions = FilePath @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 
