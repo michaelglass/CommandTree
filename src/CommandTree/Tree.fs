@@ -16,13 +16,29 @@ type ArgInfo =
       IsList: bool
       Completions: ArgCompletionHint }
 
+/// Environment variable binding for a flag
+type EnvVarInfo =
+    {
+        /// Full resolved environment variable name
+        VarName: string
+    }
+
 /// Flag metadata for help generation and parsing
 type FlagInfo =
-    { LongName: string
-      ShortName: string option
-      TypeName: string
-      IsBool: bool
-      Description: string }
+    {
+        /// Long flag name (without -- prefix)
+        LongName: string
+        /// Short flag character (without - prefix), if any
+        ShortName: string option
+        /// Display type name for help text
+        TypeName: string
+        /// Whether this flag is a boolean toggle (no value argument)
+        IsBool: bool
+        /// Human-readable description for help text
+        Description: string
+        /// Environment variable binding, if configured
+        EnvVar: EnvVarInfo option
+    }
 
 /// Structured error from command parsing
 type ParseError =
