@@ -709,3 +709,40 @@ let ``parse returns InvalidArguments when DU flag value missing`` () =
     match result with
     | Error(InvalidArguments _) -> ()
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// DU-based flag help display tests
+// =============================================================================
+
+[<Fact>]
+let ``help shows DU flags with long and short names`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "deploy" ] "test"
+    test <@ helpText.Contains("[options]") @>
+    test <@ helpText.Contains("--env") @>
+    test <@ helpText.Contains("--dry-run") @>
+    test <@ helpText.Contains("--verbose") @>
+
+// =============================================================================
+// DU-based flag format roundtrip tests
+// =============================================================================
+
+[<Fact>]
+let ``format roundtrip for DU flag command`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let cmd = DUFlagCommand.Deploy [ DeployDUFlag.Env "prod"; DeployDUFlag.DryRun ]
+    let result = CommandTree.format tree cmd [] "test"
+    test <@ result = Some "test deploy --env prod --dry-run" @>
+
+[<Fact>]
+let ``format roundtrip for DU flag command with no flags`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let cmd = DUFlagCommand.Deploy []
+    let result = CommandTree.format tree cmd [] "test"
+    test <@ result = Some "test deploy" @>
+
+[<Fact>]
+let ``formatCmd handles DU flag command`` () =
+    let cmd = DUFlagCommand.Deploy [ DeployDUFlag.Env "prod"; DeployDUFlag.DryRun ]
+    let result = CommandReflection.formatCmd cmd
+    test <@ result = "deploy --env prod --dry-run" @>

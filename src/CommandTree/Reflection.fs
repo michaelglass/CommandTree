@@ -713,6 +713,29 @@ module CommandReflection =
 
                     if isUnionType ft then
                         go v ft
+                    elif
+                        isListType ft
+                        && isUnionType (listElementType ft)
+                        && (FSharpType.GetUnionCases(listElementType ft)
+                            |> Array.exists (fun c -> c.GetFields().Length > 0))
+                    then
+                        let elemType = listElementType ft
+                        let items = v :?> System.Collections.IEnumerable
+
+                        items
+                        |> Seq.cast<obj>
+                        |> Seq.collect (fun flagVal ->
+                            let fc, ffs = FSharpValue.GetUnionFields(flagVal, elemType)
+                            let flagName = $"--%s{toKebabCase fc.Name}"
+
+                            if ffs.Length = 0 then
+                                seq { flagName }
+                            else
+                                seq {
+                                    flagName
+                                    formatFieldValue ffs.[0]
+                                })
+                        |> String.concat " "
                     elif isRecordType ft then
                         let fi = getFlagInfo ft
                         renderFlagTokens fi v |> String.concat " "
