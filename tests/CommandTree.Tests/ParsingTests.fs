@@ -95,6 +95,26 @@ type GlobalCmd =
     | [<Cmd("Start")>] Start
     | [<Cmd("Scan")>] Scan
 
+// Types for flag collision detection tests
+
+type CollidingGlobal = Timeout of int
+
+type CollidingScanFlag =
+    | Timeout of int
+    | Watch
+
+type CollidingCmd = | [<Cmd("Scan")>] Scan of CollidingScanFlag list
+
+// Types for combined global + command flag tests
+
+type ScanDUFlag =
+    | Watch
+    | Timeout of int
+
+type GlobalWithCmdFlagCmd =
+    | [<Cmd("Scan")>] Scan of ScanDUFlag list
+    | [<Cmd("Start")>] Start
+
 // Types for group-with-no-default error paths
 
 type SubNoDefault =
@@ -718,3 +738,83 @@ let ``global flag unknown rejected`` () =
     match result with
     | Error _ -> ()
     | other -> failwith $"Expected Error, got: %O{other}"
+
+// =============================================================================
+// Flag collision detection tests
+// =============================================================================
+
+[<Fact>]
+let ``fromUnionWithGlobals rejects duplicate flag names`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnionWithGlobals<CollidingCmd, CollidingGlobal> "Test"
+            |> ignore)
+
+    test <@ ex.Message.Contains("--timeout") @>
+
+// =============================================================================
+// Combined global and per-command flag tests
+// =============================================================================
+
+[<Fact>]
+let ``global and command flags both parsed`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalWithCmdFlagCmd, GlobalFlag> "Test"
+
+    let result =
+        spec.Parse [| "--verbose"; "scan"; "--watch"; "--timeout"; "30"; "--log-level"; "debug" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+
+        test
+            <@
+                globals
+                |> List.exists (function
+                    | GlobalFlag.LogLevel "debug" -> true
+                    | _ -> false)
+            @>
+
+        match cmd with
+        | GlobalWithCmdFlagCmd.Scan flags ->
+            test <@ flags |> List.contains ScanDUFlag.Watch @>
+
+            test
+                <@
+                    flags
+                    |> List.exists (function
+                        | ScanDUFlag.Timeout 30 -> true
+                        | _ -> false)
+                @>
+        | other -> failwith $"Expected Scan, got: %O{other}"
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``global flags work with command that has no flags`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalWithCmdFlagCmd, GlobalFlag> "Test"
+
+    let result = spec.Parse [| "--verbose"; "start" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+        test <@ cmd = GlobalWithCmdFlagCmd.Start @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``command flags after global flags work`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalWithCmdFlagCmd, GlobalFlag> "Test"
+
+    let result = spec.Parse [| "scan"; "--watch"; "--verbose" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+
+        match cmd with
+        | GlobalWithCmdFlagCmd.Scan flags -> test <@ flags |> List.contains ScanDUFlag.Watch @>
+        | other -> failwith $"Expected Scan, got: %O{other}"
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
