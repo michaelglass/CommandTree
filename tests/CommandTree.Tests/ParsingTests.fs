@@ -1001,3 +1001,105 @@ let ``helpWithGlobals shows env hints when configured`` () =
     let helpText = CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "test"
     test <@ helpText.Contains("(env: APP_VERBOSE)") @>
     test <@ helpText.Contains("(env: APP_LOG_LEVEL)") @>
+
+// =============================================================================
+// fromUnionWithGlobalsAndEnv edge case tests
+// =============================================================================
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv rejects duplicate flag names`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnionWithGlobalsAndEnv<CollidingCmd, CollidingGlobal> "Test" "APP"
+            |> ignore)
+
+    test <@ ex.Message.Contains("--timeout") @>
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv global flag duplicate rejected`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobalsAndEnv<GlobalCmd, GlobalFlag> "Test" "APP"
+
+    let result = spec.Parse [| "--verbose"; "scan"; "--verbose" |]
+
+    match result with
+    | Error(DuplicateFlag(flag, _)) -> test <@ flag = "--verbose" @>
+    | other -> failwith $"Expected DuplicateFlag, got: %O{other}"
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv global flag missing value`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobalsAndEnv<GlobalCmd, GlobalFlag> "Test" "APP"
+
+    let result = spec.Parse [| "--log-level" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv with command flags`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobalsAndEnv<GlobalWithCmdFlagCmd, GlobalFlag> "Test" "APP"
+
+    let result = spec.Parse [| "--verbose"; "scan"; "--watch" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test <@ globals |> List.contains GlobalFlag.Verbose @>
+
+        match cmd with
+        | GlobalWithCmdFlagCmd.Scan flags -> test <@ flags |> List.contains ScanDUFlag.Watch @>
+        | other -> failwith $"Expected Scan, got: %O{other}"
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv env var for global flag`` () =
+    System.Environment.SetEnvironmentVariable("GBL_VERBOSE", "1")
+
+    try
+        let spec =
+            CommandReflection.fromUnionWithGlobalsAndEnv<GlobalCmd, GlobalFlag> "Test" "GBL"
+
+        let result = spec.Parse [| "start" |]
+
+        match result with
+        | Ok(globals, cmd) ->
+            test <@ globals |> List.contains GlobalFlag.Verbose @>
+            test <@ cmd = GlobalCmd.Start @>
+        | Error e -> failwith $"Expected Ok, got: %O{e}"
+    finally
+        System.Environment.SetEnvironmentVariable("GBL_VERBOSE", null)
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv short flag works`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobalsAndEnv<GlobalWithCmdFlagCmd, GlobalFlag> "Test" "APP"
+
+    let result = spec.Parse [| "-v"; "scan" |]
+
+    match result with
+    | Ok(globals, _) -> test <@ globals |> List.contains GlobalFlag.Verbose @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+// =============================================================================
+// helpWithGlobals edge case tests
+// =============================================================================
+
+[<Fact>]
+let ``helpWithGlobals with empty global flags omits section`` () =
+    let tree = CommandReflection.fromUnion<GlobalCmd> "Test CLI"
+    let helpText = CommandTree.helpWithGlobals [] tree "test"
+    test <@ not (helpText.Contains("Global options:")) @>
+
+type SingleCmd = | [<Cmd("Do it")>] Do
+
+[<Fact>]
+let ``helpWithGlobals falls back for non-group tree`` () =
+    let tree = CommandReflection.fromUnion<SingleCmd> "Test"
+
+    match tree with
+    | Group(_, _, [ child ], _, _) ->
+        let helpText = CommandTree.helpWithGlobals [] child "test"
+        test <@ helpText.Contains("Do it") @>
+    | _ -> failwith "Expected Group with one child"
