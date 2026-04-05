@@ -432,7 +432,7 @@ let ``fromUnion list field has correct type name`` () =
         let tagNode = children |> List.find (fun c -> CommandTree.name c = "tag")
 
         match tagNode with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             let filesArg = args |> List.find (fun a -> a.Name = "files")
             test <@ filesArg.TypeName = "string list" @>
             test <@ filesArg.IsList = true @>
@@ -549,3 +549,22 @@ let ``fromUnion accepts valid record-based flag command`` () =
         let deploy = children |> List.find (fun c -> CommandTree.name c = "deploy")
         test <@ CommandTree.desc deploy = "Deploy" @>
     | _ -> failwith "Expected group"
+
+// =============================================================================
+// formatCmd for flag commands
+// =============================================================================
+
+type FmtFlagOptions = { Env: string option; DryRun: bool }
+
+type FmtFlagCommand = | [<Cmd("Deploy")>] Deploy of FmtFlagOptions
+
+[<Fact>]
+let ``formatCmd formats flag command with set flags`` () =
+    test
+        <@
+            CommandReflection.formatCmd (FmtFlagCommand.Deploy { Env = Some "prod"; DryRun = true }) = "deploy --env prod --dry-run"
+        @>
+
+[<Fact>]
+let ``formatCmd omits unset flags`` () =
+    test <@ CommandReflection.formatCmd (FmtFlagCommand.Deploy { Env = None; DryRun = false }) = "deploy" @>

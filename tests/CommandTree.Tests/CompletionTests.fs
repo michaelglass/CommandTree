@@ -48,7 +48,7 @@ let ``CmdCompletion attribute populates Values completion hint`` () =
         let editNode = children |> List.find (fun c -> CommandTree.name c = "edit")
 
         match editNode with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             test <@ args.Length = 1 @>
             test <@ args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
         | CommandTree.Group _ -> failwith "Expected leaf"
@@ -63,7 +63,7 @@ let ``CmdFileCompletion attribute populates FilePath completion hint`` () =
         let fileNode = children |> List.find (fun c -> CommandTree.name c = "file-cov")
 
         match fileNode with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             test <@ args.Length = 1 @>
             test <@ args.[0].Completions = FilePath @>
         | CommandTree.Group _ -> failwith "Expected leaf"
@@ -78,7 +78,7 @@ let ``CmdFileCompletion with multiple FieldIndex values marks both fields`` () =
         let node = children |> List.find (fun c -> CommandTree.name c = "compare-api")
 
         match node with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             test <@ args.Length = 2 @>
             test <@ args.[0].Completions = FilePath @>
             test <@ args.[1].Completions = FilePath @>
@@ -94,7 +94,7 @@ let ``No attribute gives NoCompletion for simple types`` () =
         let plainNode = children |> List.find (fun c -> CommandTree.name c = "plain")
 
         match plainNode with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             test <@ args.Length = 1 @>
             test <@ args.[0].Completions = NoCompletion @>
         | CommandTree.Group _ -> failwith "Expected leaf"
@@ -113,7 +113,7 @@ let ``Optional union-typed field auto-detects Values completion`` () =
         let chooseNode = children |> List.find (fun c -> CommandTree.name c = "choose-opt")
 
         match chooseNode with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             test <@ args.Length = 1 @>
             test <@ args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
         | CommandTree.Group _ -> failwith "Expected leaf"
@@ -285,7 +285,7 @@ let ``CmdFileCompletion works on list field`` () =
         let node = children |> List.find (fun c -> CommandTree.name c = "compare")
 
         match node with
-        | CommandTree.Leaf(_, _, args, _, _) ->
+        | CommandTree.Leaf(_, _, args, _, _, _) ->
             test <@ args.Length = 1 @>
             test <@ args.[0].Completions = FilePath @>
             test <@ args.[0].IsList = true @>
@@ -299,3 +299,22 @@ let ``fishCompletions includes file completion for list field`` () =
 
     test <@ completions.Contains("__fish_seen_subcommand_from compare") @>
     test <@ completions.Contains("-F") @>
+
+// =============================================================================
+// Fish completions for flag commands
+// =============================================================================
+
+type FishFlagOptions = { Env: string option; DryRun: bool }
+
+type FishFlagCommand =
+    | [<Cmd("Deploy")>] Deploy of FishFlagOptions
+    | [<Cmd("Help")>] Help
+
+[<Fact>]
+let ``fishCompletions generates flag completions with long and short names`` () =
+    let tree = CommandReflection.fromUnion<FishFlagCommand> "Test"
+    let completions = CommandTree.fishCompletions tree "test"
+    test <@ completions.Contains("-l env") @>
+    test <@ completions.Contains("-s e") @>
+    test <@ completions.Contains("-l dry-run") @>
+    test <@ completions.Contains("-s d") @>

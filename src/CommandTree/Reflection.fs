@@ -526,7 +526,28 @@ module CommandReflection =
                 |> Array.mapi (fun i v ->
                     let ft = caseFields.[i].PropertyType
 
-                    if isUnionType ft then go v ft else formatFieldValue v)
+                    if isUnionType ft then
+                        go v ft
+                    elif isRecordType ft then
+                        let fi = getFlagInfo ft
+
+                        Array.zip (fi |> List.toArray) (FSharpValue.GetRecordFields(v))
+                        |> Array.collect (fun (flagI, rv) ->
+                            if flagI.IsBool then
+                                if unbox<bool> rv then
+                                    [| $"--%s{flagI.LongName}" |]
+                                else
+                                    [||]
+                            else
+                                let formatted = formatFieldValue rv
+
+                                if formatted = "" then
+                                    [||]
+                                else
+                                    [| $"--%s{flagI.LongName}"; formatted |])
+                        |> String.concat " "
+                    else
+                        formatFieldValue v)
                 |> Array.filter (fun s -> s <> "")
 
             if parts.Length = 0 then
@@ -612,7 +633,7 @@ module CommandReflection =
 
                     findMatch (cmd :> obj) outerCase
 
-                CommandTree.Leaf(cmdName, desc, [], parse, formatArgs)
+                CommandTree.Leaf(cmdName, desc, [], flagInfo, parse, formatArgs)
             elif
                 fields.Length > 1
                 && (fields |> Array.exists (fun f -> isRecordType f.PropertyType))
@@ -692,7 +713,7 @@ module CommandReflection =
                     findMatch (cmd :> obj) outerCase
 
                 let argInfo = getArgInfo outerCase fields
-                CommandTree.Leaf(cmdName, desc, argInfo, parse, formatArgs)
+                CommandTree.Leaf(cmdName, desc, argInfo, [], parse, formatArgs)
 
         let children = cases |> Array.map (fun case -> processCase case id) |> Array.toList
 
