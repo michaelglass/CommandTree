@@ -562,6 +562,78 @@ module CommandReflection =
 
             Ok fsList
 
+    /// Build a typed F# list from a sequence of boxed values
+    let internal buildFlagList (flagType: Type) (items: obj seq) : obj =
+        let listType = typedefof<list<_>>.MakeGenericType(flagType)
+        let listCases = FSharpType.GetUnionCases(listType)
+        let nilCase = listCases |> Array.find (fun c -> c.Name = "Empty")
+        let consCase = listCases |> Array.find (fun c -> c.Name = "Cons")
+
+        Seq.foldBack
+            (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
+            items
+            (FSharpValue.MakeUnion(nilCase, [||]))
+
+    /// Resolve env vars for flags not set by CLI, returning additional flag DU values
+    let internal resolveEnvVars
+        (flagType: Type)
+        (flagInfo: FlagInfo list)
+        (cliResults: obj seq)
+        : Result<obj list, ParseError> =
+        let cases = FSharpType.GetUnionCases(flagType)
+
+        let cliTags =
+            cliResults
+            |> Seq.map (fun r ->
+                let c, _ = FSharpValue.GetUnionFields(r, flagType)
+                c.Tag)
+            |> Set.ofSeq
+
+        let mutable error: ParseError option = None
+        let envResults = System.Collections.Generic.List<obj>()
+
+        for i in 0 .. flagInfo.Length - 1 do
+            if not (cliTags.Contains(i)) && error.IsNone then
+                match flagInfo.[i].EnvVar with
+                | Some { VarName = varName } ->
+                    let envVal = System.Environment.GetEnvironmentVariable(varName)
+
+                    if not (isNull envVal) && envVal <> "" then
+                        let case = cases.[i]
+                        let fields = case.GetFields()
+
+                        if fields.Length = 0 then
+                            // Bool flag
+                            match envVal.ToLowerInvariant() with
+                            | "true"
+                            | "1" -> envResults.Add(FSharpValue.MakeUnion(case, [||]))
+                            | "false"
+                            | "0" -> ()
+                            | _ ->
+                                error <-
+                                    Some(
+                                        InvalidArguments(
+                                            "env",
+                                            $"Invalid value '%s{envVal}' for env var '%s{varName}' (expected true/false/1/0)"
+                                        )
+                                    )
+                        else
+                            match parseFieldValue fields.[0].PropertyType envVal with
+                            | Ok(Some v) -> envResults.Add(FSharpValue.MakeUnion(case, [| v |]))
+                            | Ok None ->
+                                error <-
+                                    Some(
+                                        InvalidArguments("env", $"Invalid value '%s{envVal}' for env var '%s{varName}'")
+                                    )
+                            | Error e ->
+                                error <-
+                                    Some(InvalidArguments("env", $"Invalid value for env var '%s{varName}': %s{e}"))
+                | None -> ()
+
+        match error with
+        | Some e -> Error e
+        | None -> Ok(envResults |> Seq.toList)
+
     /// Format a command value to its CLI string using reflection (no tree needed).
     /// Recursively walks nested unions using getCommandName + formatFieldValue.
     /// Example: InfraCommand.Sync(InfraSyncCommand.Ses None) → "sync ses"
@@ -612,8 +684,8 @@ module CommandReflection =
 
         go (cmd :> obj) typeof<'Cmd>
 
-    /// Generate a CommandTree from a union type
-    let fromUnion<'Cmd> (rootDesc: string) : CommandTree<'Cmd> =
+    /// Internal: generate a CommandTree from a union type with optional env prefix
+    let private fromUnionInternal<'Cmd> (envPrefix: string option) (rootDesc: string) : CommandTree<'Cmd> =
         let cmdType = typeof<'Cmd>
         let cases = FSharpType.GetUnionCases(cmdType)
 
@@ -645,14 +717,21 @@ module CommandReflection =
             then
                 // DU flag list: single field of type `SomeDU list` where SomeDU has value-carrying cases
                 let flagDUType = listElementType fields.[0].PropertyType
-                let flagInfo = getFlagInfoFromDU flagDUType None
+                let flagInfo = getFlagInfoFromDU flagDUType envPrefix
                 let flagLookup = buildFlagLookup flagInfo
 
                 let parse (args: string array) : Result<'Cmd, ParseError> =
                     match parseDUFlags cmdName flagDUType flagLookup args with
                     | Ok flagList ->
-                        let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| flagList |]))
-                        Ok(cmdValue :?> 'Cmd)
+                        let cliItems = (flagList :?> System.Collections.IEnumerable) |> Seq.cast<obj>
+
+                        match resolveEnvVars flagDUType flagInfo cliItems with
+                        | Ok envItems ->
+                            let allItems = Seq.append cliItems envItems
+                            let mergedList = buildFlagList flagDUType allItems
+                            let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| mergedList |]))
+                            Ok(cmdValue :?> 'Cmd)
+                        | Error e -> Error e
                     | Error e -> Error e
 
                 let formatArgs (cmd: 'Cmd) : string list option =
@@ -808,10 +887,17 @@ module CommandReflection =
 
         CommandTree.Group("", rootDesc, children, defaultParse, defaultChildName)
 
+    /// Generate a CommandTree from a union type
+    let fromUnion<'Cmd> (rootDesc: string) : CommandTree<'Cmd> = fromUnionInternal<'Cmd> None rootDesc
+
+    /// Generate a CommandTree with env var support for DU-based flags
+    let fromUnionWithEnv<'Cmd> (rootDesc: string) (envPrefix: string) : CommandTree<'Cmd> =
+        fromUnionInternal<'Cmd> (Some envPrefix) rootDesc
+
     /// Generate a GlobalSpec with global flags from union types.
     /// Validates that no flag name collisions exist between global and command flags.
     let fromUnionWithGlobals<'Cmd, 'Globals> (rootDesc: string) : GlobalSpec<'Globals, 'Cmd> =
-        let tree = fromUnion<'Cmd> rootDesc
+        let tree = fromUnionInternal<'Cmd> None rootDesc
         let globalType = typeof<'Globals>
         let globalFlagInfo = getFlagInfoFromDU globalType None
         let globalLookup = buildFlagLookup globalFlagInfo
@@ -913,6 +999,112 @@ module CommandReflection =
                 match CommandTree.parse tree (commandArgs.ToArray()) with
                 | Ok cmd -> Ok(globals, cmd)
                 | Error e -> Error e
+
+        { Tree = tree
+          Parse = parse
+          GlobalFlags = globalFlagInfo }
+
+    /// Generate a GlobalSpec with global flags and env var support.
+    /// Validates that no flag name collisions exist between global and command flags.
+    let fromUnionWithGlobalsAndEnv<'Cmd, 'Globals> (rootDesc: string) (envPrefix: string) : GlobalSpec<'Globals, 'Cmd> =
+        let tree = fromUnionInternal<'Cmd> (Some envPrefix) rootDesc
+        let globalType = typeof<'Globals>
+        let globalFlagInfo = getFlagInfoFromDU globalType (Some envPrefix)
+        let globalLookup = buildFlagLookup globalFlagInfo
+
+        // Collect all flag names (long + short) from global flags
+        let globalFlagNames =
+            globalFlagInfo
+            |> List.collect (fun fi ->
+                $"--%s{fi.LongName}"
+                :: (fi.ShortName |> Option.map (fun s -> $"-%s{s}") |> Option.toList))
+            |> Set.ofList
+
+        // Walk the tree to find all command-level flag names and check for collisions
+        let rec collectCommandFlags (node: CommandTree<'Cmd>) : unit =
+            match node with
+            | Leaf(leafName, _, _, flags, _, _) ->
+                for fi in flags do
+                    let long = $"--%s{fi.LongName}"
+
+                    if globalFlagNames.Contains(long) then
+                        invalidOp $"Flag '%s{long}' on command '%s{leafName}' conflicts with a global flag"
+
+                    match fi.ShortName with
+                    | Some s ->
+                        let short = $"-%s{s}"
+
+                        if globalFlagNames.Contains(short) then
+                            invalidOp $"Flag '%s{short}' on command '%s{leafName}' conflicts with a global flag"
+                    | None -> ()
+            | Group(_, _, children, _, _) -> children |> List.iter collectCommandFlags
+
+        collectCommandFlags tree
+
+        // Parse function: scan args, extract global flags, pass rest to tree, then resolve env vars for globals
+        let parse (args: string array) : Result<'Globals list * 'Cmd, ParseError> =
+            let globalResults = System.Collections.Generic.List<obj>()
+            let commandArgs = System.Collections.Generic.List<string>()
+            let globalCases = FSharpType.GetUnionCases(globalType)
+            let mutable i = 0
+            let mutable error: ParseError option = None
+
+            while i < args.Length && error.IsNone do
+                let arg = args.[i]
+
+                let flagIdx =
+                    Map.tryFind arg globalLookup.LongMap
+                    |> Option.orElseWith (fun () -> Map.tryFind arg globalLookup.ShortMap)
+
+                match flagIdx with
+                | Some idx ->
+                    if
+                        globalResults
+                        |> Seq.exists (fun r ->
+                            let c, _ = FSharpValue.GetUnionFields(r, globalType)
+                            c.Tag = idx)
+                    then
+                        error <- Some(DuplicateFlag(arg, "global"))
+                    else
+                        let case = globalCases.[idx]
+                        let fields = case.GetFields()
+
+                        if fields.Length = 0 then
+                            globalResults.Add(FSharpValue.MakeUnion(case, [||]))
+                            i <- i + 1
+                        else if i + 1 >= args.Length then
+                            error <- Some(InvalidArguments("global", $"Flag '%s{arg}' requires a value"))
+                        else
+                            let valueStr = args.[i + 1]
+
+                            match parseFieldValue fields.[0].PropertyType valueStr with
+                            | Ok(Some v) ->
+                                globalResults.Add(FSharpValue.MakeUnion(case, [| v |]))
+                                i <- i + 2
+                            | Ok None ->
+                                error <-
+                                    Some(InvalidArguments("global", $"Invalid value '%s{valueStr}' for flag '%s{arg}'"))
+                            | Error e -> error <- Some(fieldErrorToParseError "global" e)
+                | None ->
+                    commandArgs.Add(arg)
+                    i <- i + 1
+
+            match error with
+            | Some e -> Error e
+            | None ->
+                // Resolve env vars for global flags not set by CLI
+                let cliItems = globalResults |> Seq.cast<obj>
+
+                match resolveEnvVars globalType globalFlagInfo cliItems with
+                | Error e -> Error e
+                | Ok envItems ->
+                    let allItems = Seq.append cliItems envItems
+                    let mergedList = buildFlagList globalType allItems
+                    let globals = mergedList :?> 'Globals list
+
+                    match CommandTree.parse tree (commandArgs.ToArray()) with
+                    | Ok cmd -> Ok(globals, cmd)
+                    | Error e -> Error e
 
         { Tree = tree
           Parse = parse

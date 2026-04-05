@@ -818,3 +818,149 @@ let ``command flags after global flags work`` () =
         | GlobalWithCmdFlagCmd.Scan flags -> test <@ flags |> List.contains ScanDUFlag.Watch @>
         | other -> failwith $"Expected Scan, got: %O{other}"
     | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+// =============================================================================
+// Types for env var tests
+// =============================================================================
+
+type EnvTestFlag =
+    | Verbose
+    | LogLevel of string
+
+type EnvTestCmd = | [<Cmd("Run")>] Run of EnvTestFlag list
+
+// =============================================================================
+// Env var resolution tests
+// =============================================================================
+
+[<Fact>]
+let ``env var sets flag when CLI flag absent`` () =
+    System.Environment.SetEnvironmentVariable("TEST_VERBOSE", "true")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvTestCmd> "Test" "TEST"
+        let result = CommandTree.parse tree [| "run" |]
+
+        match result with
+        | Ok(EnvTestCmd.Run flags) -> test <@ flags |> List.contains EnvTestFlag.Verbose @>
+        | other -> failwith $"Expected Run with Verbose, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("TEST_VERBOSE", null)
+
+[<Fact>]
+let ``env var sets value flag when CLI flag absent`` () =
+    System.Environment.SetEnvironmentVariable("TEST_LOG_LEVEL", "debug")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvTestCmd> "Test" "TEST"
+        let result = CommandTree.parse tree [| "run" |]
+
+        match result with
+        | Ok(EnvTestCmd.Run flags) ->
+            test
+                <@
+                    flags
+                    |> List.exists (function
+                        | EnvTestFlag.LogLevel "debug" -> true
+                        | _ -> false)
+                @>
+        | other -> failwith $"Expected Run with LogLevel, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("TEST_LOG_LEVEL", null)
+
+[<Fact>]
+let ``CLI flag overrides env var`` () =
+    System.Environment.SetEnvironmentVariable("TEST_LOG_LEVEL", "warn")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvTestCmd> "Test" "TEST"
+        let result = CommandTree.parse tree [| "run"; "--log-level"; "debug" |]
+
+        match result with
+        | Ok(EnvTestCmd.Run flags) ->
+            test
+                <@
+                    flags
+                    |> List.exists (function
+                        | EnvTestFlag.LogLevel "debug" -> true
+                        | _ -> false)
+                @>
+
+            test
+                <@
+                    flags
+                    |> List.exists (function
+                        | EnvTestFlag.LogLevel "warn" -> true
+                        | _ -> false)
+                    |> not
+                @>
+        | other -> failwith $"Expected Run with LogLevel debug, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("TEST_LOG_LEVEL", null)
+
+[<Fact>]
+let ``invalid env var ignored when CLI flag present`` () =
+    System.Environment.SetEnvironmentVariable("TEST_LOG_LEVEL", "")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvTestCmd> "Test" "TEST"
+        let result = CommandTree.parse tree [| "run"; "--log-level"; "debug" |]
+
+        match result with
+        | Ok(EnvTestCmd.Run flags) ->
+            test
+                <@
+                    flags
+                    |> List.exists (function
+                        | EnvTestFlag.LogLevel "debug" -> true
+                        | _ -> false)
+                @>
+        | other -> failwith $"Expected Run, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("TEST_LOG_LEVEL", null)
+
+[<Fact>]
+let ``bool env var false does not set flag`` () =
+    System.Environment.SetEnvironmentVariable("TEST_VERBOSE", "false")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvTestCmd> "Test" "TEST"
+        let result = CommandTree.parse tree [| "run" |]
+
+        match result with
+        | Ok(EnvTestCmd.Run flags) -> test <@ flags |> List.contains EnvTestFlag.Verbose |> not @>
+        | other -> failwith $"Expected Run without Verbose, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("TEST_VERBOSE", null)
+
+[<Fact>]
+let ``no env prefix means no env var resolution`` () =
+    System.Environment.SetEnvironmentVariable("TEST_VERBOSE", "true")
+
+    try
+        let tree = CommandReflection.fromUnion<EnvTestCmd> "Test"
+        let result = CommandTree.parse tree [| "run" |]
+
+        match result with
+        | Ok(EnvTestCmd.Run flags) -> test <@ flags = [] @>
+        | other -> failwith $"Expected Run with empty flags, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("TEST_VERBOSE", null)
+
+[<Fact>]
+let ``fromUnionWithGlobalsAndEnv resolves env vars for global flags`` () =
+    System.Environment.SetEnvironmentVariable("APP_VERBOSE", "1")
+
+    try
+        let spec =
+            CommandReflection.fromUnionWithGlobalsAndEnv<GlobalCmd, GlobalFlag> "Test" "APP"
+
+        let result = spec.Parse [| "scan" |]
+
+        match result with
+        | Ok(globals, cmd) ->
+            test <@ globals |> List.contains GlobalFlag.Verbose @>
+            test <@ cmd = GlobalCmd.Scan @>
+        | Error e -> failwith $"Expected Ok, got: %O{e}"
+    finally
+        System.Environment.SetEnvironmentVariable("APP_VERBOSE", null)
