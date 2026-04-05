@@ -37,7 +37,7 @@ Six source files in `src/CommandTree/`:
 
 - **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, and `fishCompletions`.
 
-- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, and nested unions.
+- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, list, and nested unions.
 
 - **UI.fs** -- Terminal output helpers: colored printing (`title`, `section`, `success`, `fail`, `info`, `warn`), timing display with color gradient, spinner animation (`withSpinner`, `withSpinnerQuiet`). `Color` module has ANSI escape codes.
 
