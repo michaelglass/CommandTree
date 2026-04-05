@@ -87,3 +87,22 @@ type CmdFlagAttribute() =
     member val Name: string = null with get, set
     /// Short flag character override (without - prefix)
     member val Short: string = null with get, set
+
+/// Attribute to override the env var suffix for a flag union case.
+/// The prefix (set via fromUnionWithEnv/fromUnionWithGlobalsAndEnv) is prepended.
+/// E.g., [<CmdEnv("LVL")>] with prefix "MYAPP" resolves to MYAPP_LVL.
+[<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
+type CmdEnvAttribute(suffix: string) =
+    inherit Attribute()
+
+    /// Env var suffix (without prefix)
+    member val Suffix: string = suffix
+
+/// Attribute to set the exact env var name for a flag union case, ignoring the prefix.
+/// E.g., [<CmdEnvRaw("NO_CACHE")>] always resolves to NO_CACHE regardless of prefix.
+[<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
+type CmdEnvRawAttribute(varName: string) =
+    inherit Attribute()
+
+    /// Full env var name (prefix ignored)
+    member val VarName: string = varName
