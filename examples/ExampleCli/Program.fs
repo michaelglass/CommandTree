@@ -69,8 +69,9 @@ type JobCommand =
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
 // example-cli check --config custom.json --verbose
-type CheckOptions =
-    { Config: string option; Verbose: bool }
+type CheckFlag =
+    | Config of string
+    | Verbose
 
 type ProcessDemoCommand =
     | [<Cmd("Run a command visibly with timing")>] Run
@@ -114,7 +115,7 @@ type Command =
     | [<Cmd("Reflection and tree inspection demos")>] Reflect of ReflectionDemoCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Format source code")>] Format
-    | [<Cmd("Run checks")>] Check of CheckOptions
+    | [<Cmd("Run checks")>] Check of CheckFlag list
     | [<Cmd("Fish shell completions")>] Fish of FishDemoCommand
     | [<Cmd("Show full help")>] Help
 
@@ -182,11 +183,22 @@ let handleJob (cmd: JobCommand) =
         printfn "  1. build-assets  (completed)"
         printfn "  2. deploy-prod   (running)"
 
-let handleCheck (opts: CheckOptions) =
-    let config = opts.Config |> Option.defaultValue "default.json"
+let handleCheck (flags: CheckFlag list) =
+    let config =
+        flags
+        |> List.tryPick (function
+            | Config c -> Some c
+            | _ -> None)
+        |> Option.defaultValue "default.json"
+
     UI.info $"Checking with config: %s{config}"
 
-    if opts.Verbose then
+    if
+        flags
+        |> List.exists (function
+            | Verbose -> true
+            | _ -> false)
+    then
         UI.dimInfo "Verbose mode enabled"
 
 let handleProcessDemo (cmd: ProcessDemoCommand) =
@@ -453,7 +465,7 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
     | Coverage c -> handleCoverage c
     | Files f -> handleFiles f
     | Job j -> handleJob j
-    | Check c -> handleCheck c
+    | Check flags -> handleCheck flags
     | Proc p -> handleProcessDemo p
     | Ui u -> handleUiDemo u
     | Reflect r -> handleReflectionDemo tree cmdName (run tree cmdName) r
