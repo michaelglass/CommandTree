@@ -180,16 +180,15 @@ module CommandReflection =
 
                 (f, longName, explicitShort, isBool, typeName))
 
-        // Auto-derive short flags from first letter, skip on collision
-        let autoShortCandidates =
-            flagData
-            |> Array.map (fun (_, longName, explicitShort, _, _) ->
-                match explicitShort with
-                | Some s -> Some s
-                | None -> Some(string longName.[0]))
-
+        // Count auto-derived short flag candidates (excluding explicit overrides) to detect collisions
         let shortCounts =
-            autoShortCandidates |> Array.choose id |> Array.countBy id |> Map.ofArray
+            flagData
+            |> Array.choose (fun (_, longName, explicitShort, _, _) ->
+                match explicitShort with
+                | Some _ -> None
+                | None -> Some(string longName.[0]))
+            |> Array.countBy id
+            |> Map.ofArray
 
         flagData
         |> Array.mapi (fun _i (f, longName, explicitShort, isBool, typeName) ->
@@ -436,25 +435,48 @@ module CommandReflection =
             else
                 Error(InvalidArguments(cmdName, "Invalid arguments"))
 
-    /// Parse named flags from args array, returning a record object or error
-    let internal parseFlags
-        (cmdName: string)
-        (recordType: Type)
-        (flagInfo: FlagInfo list)
-        (args: string array)
-        : Result<obj, ParseError> =
-        let recordFields = FSharpType.GetRecordFields(recordType)
+    /// Render a record value as flag tokens (e.g., ["--env"; "prod"; "--dry-run"])
+    let private renderFlagTokens (flagInfo: FlagInfo list) (recordValue: obj) : string array =
+        Array.zip (flagInfo |> List.toArray) (FSharpValue.GetRecordFields(recordValue))
+        |> Array.collect (fun (fi, v) ->
+            if fi.IsBool then
+                if unbox<bool> v then [| $"--%s{fi.LongName}" |] else [||]
+            else
+                let formatted = formatFieldValue v
 
-        let longMap =
-            flagInfo |> List.mapi (fun i fi -> $"--%s{fi.LongName}", i) |> Map.ofList
+                if formatted = "" then
+                    [||]
+                else
+                    [| $"--%s{fi.LongName}"; formatted |])
 
-        let shortMap =
+    /// Pre-computed lookup tables for flag parsing
+    type internal FlagLookup =
+        { LongMap: Map<string, int>
+          ShortMap: Map<string, int>
+          ValidFlags: string list
+          FlagArray: FlagInfo array }
+
+    /// Build flag lookup tables from FlagInfo (called once at tree construction)
+    let internal buildFlagLookup (flagInfo: FlagInfo list) : FlagLookup =
+        let flagArray = flagInfo |> List.toArray
+
+        { LongMap = flagInfo |> List.mapi (fun i fi -> $"--%s{fi.LongName}", i) |> Map.ofList
+          ShortMap =
             flagInfo
             |> List.mapi (fun i fi -> i, fi)
             |> List.choose (fun (i, fi) -> fi.ShortName |> Option.map (fun s -> $"-%s{s}", i))
             |> Map.ofList
+          ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}")
+          FlagArray = flagArray }
 
-        let validFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}")
+    /// Parse named flags from args array, returning a record object or error
+    let internal parseFlags
+        (cmdName: string)
+        (recordType: Type)
+        (lookup: FlagLookup)
+        (args: string array)
+        : Result<obj, ParseError> =
+        let recordFields = FSharpType.GetRecordFields(recordType)
 
         let values = System.Collections.Generic.Dictionary<int, obj>()
         let mutable i = 0
@@ -464,16 +486,16 @@ module CommandReflection =
             let arg = args.[i]
 
             let flagIdx =
-                Map.tryFind arg longMap
-                |> Option.orElseWith (fun () -> Map.tryFind arg shortMap)
+                Map.tryFind arg lookup.LongMap
+                |> Option.orElseWith (fun () -> Map.tryFind arg lookup.ShortMap)
 
             match flagIdx with
-            | None -> error <- Some(UnknownFlag(arg, cmdName, validFlags))
+            | None -> error <- Some(UnknownFlag(arg, cmdName, lookup.ValidFlags))
             | Some idx ->
                 if values.ContainsKey(idx) then
                     error <- Some(DuplicateFlag(arg, cmdName))
                 else
-                    let fi = flagInfo.[idx]
+                    let fi = lookup.FlagArray.[idx]
 
                     if fi.IsBool then
                         values.[idx] <- box true
@@ -530,22 +552,7 @@ module CommandReflection =
                         go v ft
                     elif isRecordType ft then
                         let fi = getFlagInfo ft
-
-                        Array.zip (fi |> List.toArray) (FSharpValue.GetRecordFields(v))
-                        |> Array.collect (fun (flagI, rv) ->
-                            if flagI.IsBool then
-                                if unbox<bool> rv then
-                                    [| $"--%s{flagI.LongName}" |]
-                                else
-                                    [||]
-                            else
-                                let formatted = formatFieldValue rv
-
-                                if formatted = "" then
-                                    [||]
-                                else
-                                    [| $"--%s{flagI.LongName}"; formatted |])
-                        |> String.concat " "
+                        renderFlagTokens fi v |> String.concat " "
                     else
                         formatFieldValue v)
                 |> Array.filter (fun s -> s <> "")
@@ -590,9 +597,10 @@ module CommandReflection =
                             $"Flag field '%s{rf.Name}' in record '%s{recordType.Name}' must be bool or option type"
 
                 let flagInfo = getFlagInfo recordType
+                let flagLookup = buildFlagLookup flagInfo
 
                 let parse (args: string array) : Result<'Cmd, ParseError> =
-                    match parseFlags cmdName recordType flagInfo args with
+                    match parseFlags cmdName recordType flagLookup args with
                     | Ok recordValue ->
                         let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| recordValue |]))
                         Ok(cmdValue :?> 'Cmd)
@@ -609,22 +617,7 @@ module CommandReflection =
                                 let c, fs = FSharpValue.GetUnionFields(value, actualType, true)
 
                                 if c.Tag = targetCase.Tag && c.DeclaringType = targetCase.DeclaringType then
-                                    let recordValue = fs.[0]
-
-                                    let parts =
-                                        Array.zip (flagInfo |> List.toArray) (FSharpValue.GetRecordFields(recordValue))
-                                        |> Array.collect (fun (fi, v) ->
-                                            if fi.IsBool then
-                                                if unbox<bool> v then [| $"--%s{fi.LongName}" |] else [||]
-                                            else
-                                                let formatted = formatFieldValue v
-
-                                                if formatted = "" then
-                                                    [||]
-                                                else
-                                                    [| $"--%s{fi.LongName}"; formatted |])
-                                        |> Array.toList
-
+                                    let parts = renderFlagTokens flagInfo fs.[0] |> Array.toList
                                     Some parts
                                 else
                                     fs |> Array.tryPick (fun f -> findMatch f targetCase)
