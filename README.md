@@ -90,6 +90,7 @@ type Command =
 | `Start of name: string * size: int64 * verbose: bool` | `my-cli job start build 1024 true` | Multiple fields in order |
 | `Status of env: string option` | `my-cli deploy status prod` or `my-cli deploy status` | Option fields can be omitted |
 | `Push of env: Priority` | `my-cli deploy push high` or `my-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
+| `Tag of tag: string * files: string list` | `my-cli tag v1 a.fs b.fs c.fs` | List field (must be last) collects 1+ remaining args |
 | `[<CmdDefault>] List` | `my-cli task` | Runs when group is invoked without a subcommand |
 | `[<Cmd("desc", Name = "fmt")>] Format` | `my-cli fmt` | `Name` overrides the derived command name |
 
@@ -98,7 +99,7 @@ type Command =
 - `[<Cmd("desc")>]` sets help text; optional `Name = "custom"` overrides the command name
 - `[<CmdDefault>]` marks the default subcommand when a group is invoked without arguments
 - `[<CmdCompletion("a", "b")>]` provides fish shell completion values
-- `[<CmdFileCompletion>]` enables file path completion in fish
+- `[<CmdFileCompletion>]` enables file path completion in fish (multiple allowed per case with `FieldIndex`)
 <!-- sync:howitworks:end -->
 
 <!-- sync:basicusage:start -->
@@ -183,6 +184,7 @@ FishCompletions.installHook "my-tool"           // Auto-update hook in conf.d
 | `Guid` | `of id: Guid` | Guid |
 | `'T option` | `of env: string option` | None when omitted |
 | Union | `of env: Priority` | Kebab-case name, prefix matching (min 3 chars) |
+| `'T list` | `of files: string list` | Collects remaining args (1+, must be last field) |
 <!-- sync:reference:end -->
 
 The library also includes `Process` (process execution helpers) and `UI` (colored terminal output) modules. See the [API docs](https://michaelglass.github.io/CommandTree/) for details.
