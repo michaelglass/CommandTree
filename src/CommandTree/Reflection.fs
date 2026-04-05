@@ -210,6 +210,103 @@ module CommandReflection =
               EnvVar = None })
         |> Array.toList
 
+    /// Convert PascalCase to SCREAMING_SNAKE_CASE (e.g., "LogLevel" -> "LOG_LEVEL", "DryRun" -> "DRY_RUN")
+    let internal toScreamingSnakeCase (s: string) =
+        Regex.Replace(s, "([a-z])([A-Z])", "$1_$2").ToUpperInvariant()
+
+    /// Get CmdEnvAttribute from a union case, if present
+    let private getCmdEnvAttr (case: UnionCaseInfo) =
+        case.GetCustomAttributes(typeof<CmdEnvAttribute>)
+        |> Array.tryHead
+        |> Option.map (fun a -> a :?> CmdEnvAttribute)
+
+    /// Get CmdEnvRawAttribute from a union case, if present
+    let private getCmdEnvRawAttr (case: UnionCaseInfo) =
+        case.GetCustomAttributes(typeof<CmdEnvRawAttribute>)
+        |> Array.tryHead
+        |> Option.map (fun a -> a :?> CmdEnvRawAttribute)
+
+    /// Derive EnvVarInfo for a flag DU case given an optional prefix
+    let private deriveEnvVar (case: UnionCaseInfo) (envPrefix: string option) : EnvVarInfo option =
+        match getCmdEnvRawAttr case with
+        | Some attr -> Some { VarName = attr.VarName }
+        | None ->
+            match envPrefix with
+            | None -> None
+            | Some prefix ->
+                let suffix =
+                    match getCmdEnvAttr case with
+                    | Some attr -> attr.Suffix
+                    | None -> toScreamingSnakeCase case.Name
+
+                Some { VarName = $"%s{prefix}_%s{suffix}" }
+
+    /// Build FlagInfo list from a DU type where each case = one flag.
+    /// No-field cases become boolean flags, single-field cases become value flags.
+    let internal getFlagInfoFromDU (flagType: Type) (envPrefix: string option) : FlagInfo list =
+        let cases = FSharpType.GetUnionCases(flagType)
+
+        let flagData =
+            cases
+            |> Array.map (fun case ->
+                let fields = case.GetFields()
+                let isBool = fields.Length = 0
+
+                let flagAttr =
+                    case.GetCustomAttributes(typeof<CmdFlagAttribute>)
+                    |> Array.tryHead
+                    |> Option.map (fun a -> a :?> CmdFlagAttribute)
+
+                let longName =
+                    match flagAttr with
+                    | Some a when not (isNull a.Name) -> a.Name
+                    | _ -> toKebabCase case.Name
+
+                let explicitShort =
+                    match flagAttr with
+                    | Some a when not (isNull a.Short) -> Some a.Short
+                    | _ -> None
+
+                let typeName =
+                    if isBool then
+                        "bool"
+                    else
+                        getTypeName fields.[0].PropertyType
+
+                let envVar = deriveEnvVar case envPrefix
+
+                (case.Name, longName, explicitShort, isBool, typeName, envVar))
+
+        // Short flag collision detection (same as record-based getFlagInfo)
+        let shortCounts =
+            flagData
+            |> Array.choose (fun (_, longName, explicitShort, _, _, _) ->
+                match explicitShort with
+                | Some _ -> None
+                | None -> Some(string longName.[0]))
+            |> Array.countBy id
+            |> Map.ofArray
+
+        flagData
+        |> Array.map (fun (caseName, longName, explicitShort, isBool, typeName, envVar) ->
+            let shortName =
+                match explicitShort with
+                | Some s -> Some s
+                | None ->
+                    let candidate = string longName.[0]
+
+                    match Map.tryFind candidate shortCounts with
+                    | Some count when count = 1 -> Some candidate
+                    | _ -> None
+
+            { LongName = longName
+              ShortName = shortName
+              TypeName = typeName
+              IsBool = isBool
+              Description = toDescription caseName
+              EnvVar = envVar })
+        |> Array.toList
+
     /// Parse a single field value from string
     let rec parseFieldValue (fieldType: Type) (value: string) : Result<obj option, string> =
         if fieldType = typeof<string> then
