@@ -479,3 +479,28 @@ let ``help shows list field with ellipsis`` () =
     let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
     let helpText = CommandTree.help tree [] "test"
     test <@ helpText.Contains("<files...>") @>
+
+// =============================================================================
+// UnknownFlag and DuplicateFlag error tests
+// =============================================================================
+
+[<Fact>]
+let ``UnknownFlag error carries flag name, command, and valid flags`` () =
+    let err = UnknownFlag("--foo", "deploy", [ "--env"; "--config"; "--dry-run" ])
+
+    match err with
+    | UnknownFlag(flag, cmd, valid) ->
+        test <@ flag = "--foo" @>
+        test <@ cmd = "deploy" @>
+        test <@ valid = [ "--env"; "--config"; "--dry-run" ] @>
+    | _ -> failwith "Expected UnknownFlag"
+
+[<Fact>]
+let ``DuplicateFlag error carries flag name and command`` () =
+    let err = DuplicateFlag("--config", "deploy")
+
+    match err with
+    | DuplicateFlag(flag, cmd) ->
+        test <@ flag = "--config" @>
+        test <@ cmd = "deploy" @>
+    | _ -> failwith "Expected DuplicateFlag"

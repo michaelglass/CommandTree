@@ -16,6 +16,14 @@ type ArgInfo =
       IsList: bool
       Completions: ArgCompletionHint }
 
+/// Flag metadata for help generation and parsing
+type FlagInfo =
+    { LongName: string
+      ShortName: string option
+      TypeName: string
+      IsBool: bool
+      Description: string }
+
 /// Structured error from command parsing
 type ParseError =
     /// User requested help (e.g., no args given). Path is the group where help was requested.
@@ -26,6 +34,10 @@ type ParseError =
     | InvalidArguments of command: string * message: string
     /// Argument value matched multiple union cases.
     | AmbiguousArgument of input: string * candidates: string list
+    /// Flag not recognized for this command. Includes valid flags for suggestions.
+    | UnknownFlag of flag: string * command: string * validFlags: string list
+    /// Same flag provided more than once.
+    | DuplicateFlag of flag: string * command: string
 
 /// Recursive command tree for declarative parsing and help generation
 [<NoComparison; NoEquality>]
