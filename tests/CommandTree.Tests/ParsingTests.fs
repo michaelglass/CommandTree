@@ -583,7 +583,7 @@ let ``parse handles DU flags with no flags`` () =
     let result = CommandTree.parse tree [| "deploy" |]
 
     match result with
-    | Ok(DUFlagCommand.Deploy flags) -> test <@ flags = [] @>
+    | Ok(DUFlagCommand.Deploy flags) -> test <@ List.isEmpty flags @>
     | other -> failwith $"Expected Deploy with empty flags, got: %O{other}"
 
 [<Fact>]
@@ -716,7 +716,7 @@ let ``no global flags returns empty list`` () =
 
     match result with
     | Ok(globals, cmd) ->
-        test <@ globals = [] @>
+        test <@ List.isEmpty globals @>
         test <@ cmd = GlobalCmd.Start @>
     | Error e -> failwith $"Expected Ok, got: %O{e}"
 
@@ -942,7 +942,7 @@ let ``no env prefix means no env var resolution`` () =
         let result = CommandTree.parse tree [| "run" |]
 
         match result with
-        | Ok(EnvTestCmd.Run flags) -> test <@ flags = [] @>
+        | Ok(EnvTestCmd.Run flags) -> test <@ List.isEmpty flags @>
         | other -> failwith $"Expected Run with empty flags, got: %O{other}"
     finally
         System.Environment.SetEnvironmentVariable("TEST_VERBOSE", null)
