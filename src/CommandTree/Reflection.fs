@@ -4,6 +4,20 @@ open System
 open System.Text.RegularExpressions
 open FSharp.Reflection
 
+/// Bundled global options + command tree for parsing with global flags.
+/// 'Globals is a DU where each case is a global flag.
+/// 'Cmd is the command DU.
+[<NoComparison; NoEquality>]
+type GlobalSpec<'Globals, 'Cmd> =
+    {
+        /// Command tree (for help, completions, etc.)
+        Tree: CommandTree<'Cmd>
+        /// Parse args into global flags + command
+        Parse: string array -> Result<'Globals list * 'Cmd, ParseError>
+        /// Flag info for global options (for help rendering)
+        GlobalFlags: FlagInfo list
+    }
+
 /// Reflection-based command tree generation from F# discriminated unions
 module CommandReflection =
 
@@ -793,6 +807,116 @@ module CommandReflection =
         let defaultChildName = rootDefault |> Option.map getCommandName
 
         CommandTree.Group("", rootDesc, children, defaultParse, defaultChildName)
+
+    /// Generate a GlobalSpec with global flags from union types.
+    /// Validates that no flag name collisions exist between global and command flags.
+    let fromUnionWithGlobals<'Cmd, 'Globals> (rootDesc: string) : GlobalSpec<'Globals, 'Cmd> =
+        let tree = fromUnion<'Cmd> rootDesc
+        let globalType = typeof<'Globals>
+        let globalFlagInfo = getFlagInfoFromDU globalType None
+        let globalLookup = buildFlagLookup globalFlagInfo
+
+        // Collect all flag names (long + short) from global flags
+        let globalFlagNames =
+            globalFlagInfo
+            |> List.collect (fun fi ->
+                $"--%s{fi.LongName}"
+                :: (fi.ShortName |> Option.map (fun s -> $"-%s{s}") |> Option.toList))
+            |> Set.ofList
+
+        // Walk the tree to find all command-level flag names and check for collisions
+        let rec collectCommandFlags (node: CommandTree<'Cmd>) : unit =
+            match node with
+            | Leaf(leafName, _, _, flags, _, _) ->
+                for fi in flags do
+                    let long = $"--%s{fi.LongName}"
+
+                    if globalFlagNames.Contains(long) then
+                        invalidOp $"Flag '%s{long}' on command '%s{leafName}' conflicts with a global flag"
+
+                    match fi.ShortName with
+                    | Some s ->
+                        let short = $"-%s{s}"
+
+                        if globalFlagNames.Contains(short) then
+                            invalidOp $"Flag '%s{short}' on command '%s{leafName}' conflicts with a global flag"
+                    | None -> ()
+            | Group(_, _, children, _, _) -> children |> List.iter collectCommandFlags
+
+        collectCommandFlags tree
+
+        // Parse function: scan args, extract global flags, pass rest to tree
+        let parse (args: string array) : Result<'Globals list * 'Cmd, ParseError> =
+            let globalResults = System.Collections.Generic.List<obj>()
+            let commandArgs = System.Collections.Generic.List<string>()
+            let globalCases = FSharpType.GetUnionCases(globalType)
+            let mutable i = 0
+            let mutable error: ParseError option = None
+
+            while i < args.Length && error.IsNone do
+                let arg = args.[i]
+
+                let flagIdx =
+                    Map.tryFind arg globalLookup.LongMap
+                    |> Option.orElseWith (fun () -> Map.tryFind arg globalLookup.ShortMap)
+
+                match flagIdx with
+                | Some idx ->
+                    if
+                        globalResults
+                        |> Seq.exists (fun r ->
+                            let c, _ = FSharpValue.GetUnionFields(r, globalType)
+                            c.Tag = idx)
+                    then
+                        error <- Some(DuplicateFlag(arg, "global"))
+                    else
+                        let case = globalCases.[idx]
+                        let fields = case.GetFields()
+
+                        if fields.Length = 0 then
+                            globalResults.Add(FSharpValue.MakeUnion(case, [||]))
+                            i <- i + 1
+                        else if i + 1 >= args.Length then
+                            error <- Some(InvalidArguments("global", $"Flag '%s{arg}' requires a value"))
+                        else
+                            let valueStr = args.[i + 1]
+
+                            match parseFieldValue fields.[0].PropertyType valueStr with
+                            | Ok(Some v) ->
+                                globalResults.Add(FSharpValue.MakeUnion(case, [| v |]))
+                                i <- i + 2
+                            | Ok None ->
+                                error <-
+                                    Some(InvalidArguments("global", $"Invalid value '%s{valueStr}' for flag '%s{arg}'"))
+                            | Error e -> error <- Some(fieldErrorToParseError "global" e)
+                | None ->
+                    commandArgs.Add(arg)
+                    i <- i + 1
+
+            match error with
+            | Some e -> Error e
+            | None ->
+                // Build typed global flag list
+                let listType = typedefof<list<_>>.MakeGenericType(globalType)
+                let listCases = FSharpType.GetUnionCases(listType)
+                let nilCase = listCases |> Array.find (fun c -> c.Name = "Empty")
+                let consCase = listCases |> Array.find (fun c -> c.Name = "Cons")
+
+                let fsList =
+                    Seq.foldBack
+                        (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
+                        globalResults
+                        (FSharpValue.MakeUnion(nilCase, [||]))
+
+                let globals = fsList :?> 'Globals list
+
+                match CommandTree.parse tree (commandArgs.ToArray()) with
+                | Ok cmd -> Ok(globals, cmd)
+                | Error e -> Error e
+
+        { Tree = tree
+          Parse = parse
+          GlobalFlags = globalFlagInfo }
 
 /// ADT-based command specification for type safety and exhaustiveness checking
 [<NoComparison; NoEquality>]
