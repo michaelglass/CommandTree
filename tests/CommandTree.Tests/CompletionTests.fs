@@ -301,37 +301,22 @@ let ``fishCompletions includes file completion for list field`` () =
     test <@ completions.Contains("-F") @>
 
 // =============================================================================
-// Fish completions for flag commands
-// =============================================================================
-
-type FishFlagOptions = { Env: string option; DryRun: bool }
-
-type FishFlagCommand =
-    | [<Cmd("Deploy")>] Deploy of FishFlagOptions
-    | [<Cmd("Help")>] Help
-
-[<Fact>]
-let ``fishCompletions generates flag completions with long and short names`` () =
-    let tree = CommandReflection.fromUnion<FishFlagCommand> "Test"
-    let completions = CommandTree.fishCompletions tree "test"
-    test <@ completions.Contains("-l env") @>
-    test <@ completions.Contains("-s e") @>
-    test <@ completions.Contains("-l dry-run") @>
-    test <@ completions.Contains("-s d") @>
-
-// =============================================================================
 // Fish completions for DU-based flag commands
 // =============================================================================
 
 type CompDeployFlag =
     | DryRun
-    | Env of string
+    | [<CmdFlag(Short = "e")>] Env of string
 
-type DUFlagCompCommand = | [<Cmd("Deploy")>] Deploy of CompDeployFlag list
+type DUFlagCompCommand =
+    | [<Cmd("Deploy")>] Deploy of CompDeployFlag list
+    | [<Cmd("Help")>] Help
 
 [<Fact>]
-let ``fishCompletions includes DU flag completions`` () =
+let ``fishCompletions generates flag completions with long and short names`` () =
     let tree = CommandReflection.fromUnion<DUFlagCompCommand> "Test"
     let completions = CommandTree.fishCompletions tree "test"
-    test <@ completions.Contains("-l dry-run") @>
     test <@ completions.Contains("-l env") @>
+    test <@ completions.Contains("-s e") @>
+    test <@ completions.Contains("-l dry-run") @>
+    test <@ completions.Contains("-s d") @>
