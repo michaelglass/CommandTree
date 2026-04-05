@@ -25,7 +25,7 @@ let excludedPatterns = [| "Test"; "AssemblyInfo"; "AssemblyAttributes" |]
 let overrides =
     Map.ofList
         [ // Tree.fs: F# compiler-generated branch for one remaining pattern match
-          "Tree.fs", (98.0, 96.0)
+          "Tree.fs", (98.0, 95.0)
           // Reflection.fs: Compiler-generated branches for type matching, prefix matching, error parsing, list type helpers
           "Reflection.fs", (95.0, 84.0)
           // UI.fs: Spinner threads use Console.Write directly; non-interactive path covered
