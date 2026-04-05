@@ -48,12 +48,9 @@ module CommandReflection =
     let isDefault (case: UnionCaseInfo) =
         case.GetCustomAttributes(typeof<CmdDefaultAttribute>) |> Array.isEmpty |> not
 
-    /// Check if a type is a union type (for detecting nested groups)
-    let isUnionType (t: Type) =
-        FSharpType.IsUnion(t)
-        && t <> typeof<string>
-        && not (t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>>)
-        && not (t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<list<_>>)
+    /// Check if a type is optional
+    let private isOptionalType (t: Type) =
+        t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>>
 
     /// Check if a type is a list type
     let private isListType (t: Type) =
@@ -61,6 +58,13 @@ module CommandReflection =
 
     /// Get the element type from a list type
     let private listElementType (t: Type) = t.GetGenericArguments().[0]
+
+    /// Check if a type is a union type (for detecting nested groups)
+    let isUnionType (t: Type) =
+        FSharpType.IsUnion(t)
+        && t <> typeof<string>
+        && not (isOptionalType t)
+        && not (isListType t)
 
     /// Get a readable type name for display
     let rec private getTypeName (t: Type) =
@@ -78,7 +82,7 @@ module CommandReflection =
             "decimal"
         elif t = typeof<Guid> then
             "guid"
-        elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>> then
+        elif isOptionalType t then
             let inner = t.GetGenericArguments().[0]
             getTypeName inner
         elif isListType t then
@@ -86,10 +90,6 @@ module CommandReflection =
             getTypeName inner + " list"
         else
             t.Name.ToLowerInvariant()
-
-    /// Check if a type is optional
-    let private isOptionalType (t: Type) =
-        t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>>
 
     /// Get the inner type, unwrapping option if needed
     let private unwrapOptionType (t: Type) =
@@ -168,10 +168,7 @@ module CommandReflection =
             match Decimal.TryParse(value) with
             | true, d -> Ok(Some(box d))
             | _ -> Ok None
-        elif
-            fieldType.IsGenericType
-            && fieldType.GetGenericTypeDefinition() = typedefof<option<_>>
-        then
+        elif isOptionalType fieldType then
             let innerType = fieldType.GetGenericArguments().[0]
 
             if String.IsNullOrEmpty(value) then
@@ -228,10 +225,7 @@ module CommandReflection =
         | :? Guid as g -> string<Guid> g
         | :? float as f -> string<float> f
         | :? decimal as d -> string<decimal> d
-        | _ when
-            value.GetType().IsGenericType
-            && value.GetType().GetGenericTypeDefinition() = typedefof<option<_>>
-            ->
+        | _ when isOptionalType (value.GetType()) ->
             let case, fields = FSharpValue.GetUnionFields(value, value.GetType())
 
             if case.Name = "Some" then
@@ -297,7 +291,7 @@ module CommandReflection =
                 let remaining = if i < args.Length then args.[i..] else [||]
 
                 if remaining.Length = 0 then
-                    Ok None // Non-empty list required — will become InvalidArguments
+                    Ok None
                 else
                     let parsed = remaining |> Array.map (fun arg -> parseFieldValue elemType arg)
 
@@ -321,20 +315,21 @@ module CommandReflection =
                         if values.Length <> remaining.Length then
                             Ok None
                         else
-                            // Build typed F# list via reflection
-                            let listModule =
-                                typeof<list<_>>.Assembly.GetType("Microsoft.FSharp.Collections.ListModule")
+                            let listType = typedefof<list<_>>.MakeGenericType(elemType)
+                            let cases = FSharpType.GetUnionCases(listType)
+                            let nilCase = cases |> Array.find (fun c -> c.Name = "Empty")
+                            let consCase = cases |> Array.find (fun c -> c.Name = "Cons")
 
-                            let ofArray = listModule.GetMethod("OfArray").MakeGenericMethod(elemType)
-                            let arr = System.Array.CreateInstance(elemType, values.Length)
-                            values |> Array.iteri (fun j v -> arr.SetValue(v, j))
-                            Ok(Some(ofArray.Invoke(null, [| arr |])))
+                            let fsList =
+                                Array.foldBack
+                                    (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
+                                    values
+                                    (FSharpValue.MakeUnion(nilCase, [||]))
+
+                            Ok(Some fsList)
             elif i < args.Length then
                 parseFieldValue field.PropertyType args.[i]
-            elif
-                field.PropertyType.IsGenericType
-                && field.PropertyType.GetGenericTypeDefinition() = typedefof<option<_>>
-            then
+            elif isOptionalType field.PropertyType then
                 Ok(Some(makeNone field.PropertyType))
             else
                 Ok None)
