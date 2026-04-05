@@ -1,5 +1,7 @@
 // Run with: dotnet run --project examples/ExampleCli -- <command>
-// Example: dotnet run --project examples/ExampleCli -- task add "Buy groceries"
+// Example: dotnet run --project examples/ExampleCli -- --verbose task add "Buy groceries"
+// Global flags: --verbose, --log-level <level>
+// Env vars: EXAMPLE_VERBOSE=true, EXAMPLE_LOG_LEVEL=debug
 
 open System
 open CommandTree
@@ -12,6 +14,10 @@ type Priority =
     | Low
     | Medium
     | High
+
+type GlobalFlag =
+    | [<Cmd("Enable verbose output")>] Verbose
+    | [<Cmd("Set log level")>] LogLevel of string
 
 // =============================================================================
 // Command definitions
@@ -341,7 +347,9 @@ let handleUiDemo (cmd: UiDemoCommand) =
 // Entry point
 // =============================================================================
 
-let tree = CommandReflection.fromUnion<Command> "Example project management CLI"
+let spec =
+    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "Example project management CLI" "EXAMPLE"
+
 let cmdName = "example-cli"
 
 let handleReflectionDemo
@@ -403,15 +411,15 @@ let handleReflectionDemo
         UI.title "CommandSpec Usage"
         UI.info "CommandSpec bundles tree + format + execute:"
 
-        let spec: CommandSpec<Command> =
+        let cmdSpec: CommandSpec<Command> =
             { Tree = tree
               Format = CommandReflection.formatCmd
               Execute = runCmd }
 
-        UI.dimInfo $"Tree root desc: %s{CommandTree.desc spec.Tree}"
-        UI.dimInfo $"Format example: %s{spec.Format(Test)}"
+        UI.dimInfo $"Tree root desc: %s{CommandTree.desc cmdSpec.Tree}"
+        UI.dimInfo $"Format example: %s{cmdSpec.Format(Test)}"
         UI.info "Executing 'test' via spec.Execute:"
-        spec.Execute Test
+        cmdSpec.Execute Test
 
     | ReflectionDemoCommand.TreeInfo ->
         UI.title "Tree Inspection"
@@ -476,22 +484,32 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
         UI.section "Formatting code"
         UI.success "Formatted 12 files"
     | Fish f -> handleFishDemo tree cmdName f
-    | Help -> printfn "%s" (CommandTree.helpFull tree cmdName)
+    | Help -> printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags tree cmdName)
 
 [<EntryPoint>]
 let main argv =
-    let args = argv
+    match spec.Parse argv with
+    | Ok(globals, cmd) ->
+        if globals |> List.contains GlobalFlag.Verbose then
+            UI.dimInfo "Verbose mode enabled"
 
-    match CommandTree.parse tree args with
-    | Ok cmd ->
-        run tree cmdName cmd
+        globals
+        |> List.iter (function
+            | GlobalFlag.LogLevel level -> UI.dimInfo $"Log level: %s{level}"
+            | _ -> ())
+
+        run spec.Tree cmdName cmd
         0
     | Error(HelpRequested path) ->
-        printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        if path.IsEmpty then
+            printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree cmdName)
+        else
+            printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
+
         0
     | Error(UnknownCommand(input, path)) ->
         UI.fail $"Unknown command: %s{input}"
-        printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
         1
     | Error(InvalidArguments(cmd, msg)) ->
         UI.fail $"Invalid arguments for %s{cmd}: %s{msg}"
