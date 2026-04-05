@@ -578,6 +578,11 @@ type EnvFlag =
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
     | Verbose
 
+type DeployFlag =
+    | DryRun
+    | [<CmdFlag(Short = "e")>] Env of string
+    | Verbose
+
 [<Fact>]
 let ``CmdEnv attribute exposes suffix`` () =
     let cases = FSharp.Reflection.FSharpType.GetUnionCases(typeof<EnvFlag>)
@@ -595,3 +600,60 @@ let ``CmdEnvRaw attribute exposes full var name`` () =
     test <@ attrs.Length = 1 @>
     let attr = attrs.[0] :?> CmdEnvRawAttribute
     test <@ attr.VarName = "NO_CACHE" @>
+
+// =============================================================================
+// DU-based flag info tests
+// =============================================================================
+
+[<Fact>]
+let ``getFlagInfoFromDU generates flag info from union cases`` () =
+    let flagInfo = CommandReflection.getFlagInfoFromDU typeof<DeployFlag> None
+    test <@ flagInfo.Length = 3 @>
+
+    let dryRun = flagInfo |> List.find (fun f -> f.LongName = "dry-run")
+    test <@ dryRun.IsBool = true @>
+    test <@ dryRun.TypeName = "bool" @>
+    test <@ dryRun.EnvVar = None @>
+
+    let env = flagInfo |> List.find (fun f -> f.LongName = "env")
+    test <@ env.IsBool = false @>
+    test <@ env.TypeName = "string" @>
+    test <@ env.ShortName = Some "e" @>
+
+    let verbose = flagInfo |> List.find (fun f -> f.LongName = "verbose")
+    test <@ verbose.IsBool = true @>
+
+[<Fact>]
+let ``getFlagInfoFromDU with env prefix auto-derives env var names`` () =
+    let flagInfo = CommandReflection.getFlagInfoFromDU typeof<DeployFlag> (Some "MYAPP")
+
+    let dryRun = flagInfo |> List.find (fun f -> f.LongName = "dry-run")
+    test <@ dryRun.EnvVar = Some { VarName = "MYAPP_DRY_RUN" } @>
+
+    let env = flagInfo |> List.find (fun f -> f.LongName = "env")
+    test <@ env.EnvVar = Some { VarName = "MYAPP_ENV" } @>
+
+    let verbose = flagInfo |> List.find (fun f -> f.LongName = "verbose")
+    test <@ verbose.EnvVar = Some { VarName = "MYAPP_VERBOSE" } @>
+
+[<Fact>]
+let ``getFlagInfoFromDU respects CmdEnv suffix override`` () =
+    let flagInfo = CommandReflection.getFlagInfoFromDU typeof<EnvFlag> (Some "MYAPP")
+    let logLevel = flagInfo |> List.find (fun f -> f.LongName = "log-level")
+    test <@ logLevel.EnvVar = Some { VarName = "MYAPP_LVL" } @>
+
+[<Fact>]
+let ``getFlagInfoFromDU respects CmdEnvRaw full override`` () =
+    let flagInfo = CommandReflection.getFlagInfoFromDU typeof<EnvFlag> (Some "MYAPP")
+    let noCache = flagInfo |> List.find (fun f -> f.LongName = "no-cache")
+    test <@ noCache.EnvVar = Some { VarName = "NO_CACHE" } @>
+
+[<Fact>]
+let ``getFlagInfoFromDU short flag collision avoidance`` () =
+    // DeployFlag: DryRun and Verbose don't collide (d vs v)
+    // but if two flags started with same letter, short would be None
+    let flagInfo = CommandReflection.getFlagInfoFromDU typeof<DeployFlag> None
+    let dryRun = flagInfo |> List.find (fun f -> f.LongName = "dry-run")
+    test <@ dryRun.ShortName = Some "d" @>
+    let verbose = flagInfo |> List.find (fun f -> f.LongName = "verbose")
+    test <@ verbose.ShortName = Some "v" @>
