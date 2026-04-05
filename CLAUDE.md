@@ -33,11 +33,11 @@ dotnet test --coverage --coverage-output-format cobertura --coverage-output "$PW
 
 Six source files in `src/CommandTree/`:
 
-- **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions), `CmdFlagAttribute` (flag name/short override on record fields).
+- **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions), `CmdFlagAttribute` (flag name/short override on DU flag cases), `CmdEnvAttribute` (env var suffix override), `CmdEnvRawAttribute` (exact env var name override).
 
 - **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, `FlagInfo`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`, `UnknownFlag`, `DuplicateFlag`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, and `fishCompletions`.
 
-- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, `getFlagInfo` (builds `FlagInfo` list from record types), `parseFlags` (named flag parsing), and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, list, nested unions, and record types (parsed as named `--flags`).
+- **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, `getFlagInfoFromDU` (builds `FlagInfo` list from DU flag types), `parseDUFlags` (DU-based flag parsing), and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, list, nested unions, and DU flag lists (parsed as named `--flags`).
 
 - **UI.fs** -- Terminal output helpers: colored printing (`title`, `section`, `success`, `fail`, `info`, `warn`), timing display with color gradient, spinner animation (`withSpinner`, `withSpinnerQuiet`). `Color` module has ANSI escape codes.
 
