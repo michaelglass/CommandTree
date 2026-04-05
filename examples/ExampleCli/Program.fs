@@ -52,6 +52,14 @@ type CoverageCommand =
     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of path: string
     | [<Cmd("Show coverage summary"); CmdDefault>] Summary
 
+// example-cli tag v1.0 src/App.fs src/Lib.fs   ← list field collects 1+ remaining args
+// example-cli diff old.dll new.dll             ← multiple CmdFileCompletion with FieldIndex
+type FilesCommand =
+    | [<Cmd("Tag files with a label"); CmdFileCompletion>] Tag of label: string * files: string list
+    | [<Cmd("Compare two DLLs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>] Diff of
+        oldDll: string *
+        newDll: string
+
 // example-cli job start build-assets 1024 true
 // example-cli job status 550e8400-e29b-41d4-a716-446655440000
 // example-cli job                              ← runs list (CmdDefault)
@@ -95,6 +103,7 @@ type Command =
     | [<Cmd("Database operations")>] Db of DbCommand
     | [<Cmd("Deployment")>] Deploy of DeployCommand
     | [<Cmd("Code coverage")>] Coverage of CoverageCommand
+    | [<Cmd("File operations")>] Files of FilesCommand
     | [<Cmd("Job management")>] Job of JobCommand
     | [<Cmd("Process execution demos")>] Proc of ProcessDemoCommand
     | [<Cmd("UI and color demos")>] Ui of UiDemoCommand
@@ -148,6 +157,15 @@ let handleCoverage (cmd: CoverageCommand) =
         printfn "  Overall: 82.3%%"
         printfn "  src/App.fs: 91.0%%"
         printfn "  src/Lib.fs: 73.5%%"
+
+let handleFiles (cmd: FilesCommand) =
+    match cmd with
+    | FilesCommand.Tag(label, files) ->
+        UI.success $"Tagged %d{files.Length} file(s) as \"%s{label}\":"
+
+        for f in files do
+            UI.dimInfo $"  %s{f}"
+    | FilesCommand.Diff(oldDll, newDll) -> UI.info $"Comparing %s{oldDll} → %s{newDll}"
 
 let handleJob (cmd: JobCommand) =
     match cmd with
@@ -421,6 +439,7 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
     | Db d -> handleDb d
     | Deploy d -> handleDeploy d
     | Coverage c -> handleCoverage c
+    | Files f -> handleFiles f
     | Job j -> handleJob j
     | Proc p -> handleProcessDemo p
     | Ui u -> handleUiDemo u

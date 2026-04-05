@@ -55,11 +55,14 @@ type CmdCompletionAttribute([<ParamArray>] values: string[]) =
 /// Attribute to mark a case's argument as accepting file path completions.
 /// Fish shell will use its built-in file completion for this argument.
 /// FieldIndex specifies which field (0-based) the completions apply to (default: 0).
+/// Multiple attributes can be applied to a single case to mark different fields.
 ///
 /// Example:
 /// ```fsharp
 /// type CoverageCommand =
 ///     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of sourceFile: string
+///     | [<Cmd("Compare APIs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>]
+///       CompareApi of oldDll: string * newDll: string
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = true)>]
 type CmdFileCompletionAttribute() =
