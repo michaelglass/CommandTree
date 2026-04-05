@@ -395,3 +395,70 @@ let ``parse and format roundtrip for Guid command`` () =
         CommandTree.parse tree [| "lookup"; "12345678-1234-1234-1234-123456789abc" |]
 
     Assert.Equal(Ok(TypesCommand.Lookup guid), result)
+
+// =============================================================================
+// List field validation tests
+// =============================================================================
+
+type ListFormatCommand = | [<Cmd("Tag files")>] Tag of tag: string * files: string list
+
+type InvalidListPosition = Bad of files: string list * tag: string
+type MultipleListFields = Bad of files: string list * more: string list
+
+[<Fact>]
+let ``formatFieldValue handles list of strings`` () =
+    let value: string list = [ "a.fs"; "b.fs"; "c.fs" ]
+    let result = CommandReflection.formatFieldValue (box value)
+    test <@ result = "a.fs b.fs c.fs" @>
+
+[<Fact>]
+let ``formatFieldValue handles list of ints`` () =
+    let value: int list = [ 1; 2; 3 ]
+    let result = CommandReflection.formatFieldValue (box value)
+    test <@ result = "1 2 3" @>
+
+[<Fact>]
+let ``formatFieldValue handles empty list`` () =
+    let value: string list = []
+    let result = CommandReflection.formatFieldValue (box value)
+    test <@ result = "" @>
+
+[<Fact>]
+let ``fromUnion list field has correct type name`` () =
+    let tree = CommandReflection.fromUnion<ListFormatCommand> "Test"
+
+    match tree with
+    | CommandTree.Group(_, _, children, _, _) ->
+        let tagNode = children |> List.find (fun c -> CommandTree.name c = "tag")
+
+        match tagNode with
+        | CommandTree.Leaf(_, _, args, _, _) ->
+            let filesArg = args |> List.find (fun a -> a.Name = "files")
+            test <@ filesArg.TypeName = "string list" @>
+            test <@ filesArg.IsList = true @>
+            test <@ filesArg.IsOptional = false @>
+        | CommandTree.Group _ -> failwith "Expected leaf"
+    | CommandTree.Leaf _ -> failwith "Expected group"
+
+[<Fact>]
+let ``formatCmd formats command with list field`` () =
+    test <@ CommandReflection.formatCmd (ListFormatCommand.Tag("v1", [ "a.fs"; "b.fs" ])) = "tag v1 a.fs b.fs" @>
+
+[<Fact>]
+let ``format roundtrip for list field command`` () =
+    let tree = CommandReflection.fromUnion<ListFormatCommand> "Test"
+
+    let result =
+        CommandTree.format tree (ListFormatCommand.Tag("v1", [ "a.fs"; "b.fs" ])) [] "cmd"
+
+    Assert.Equal(Some "cmd tag v1 a.fs b.fs", result)
+
+[<Fact>]
+let ``fromUnion throws when list field is not last`` () =
+    Assert.Throws<System.InvalidOperationException>(fun () ->
+        CommandReflection.fromUnion<InvalidListPosition> "Test" |> ignore)
+
+[<Fact>]
+let ``fromUnion throws when multiple list fields`` () =
+    Assert.Throws<System.InvalidOperationException>(fun () ->
+        CommandReflection.fromUnion<MultipleListFields> "Test" |> ignore)

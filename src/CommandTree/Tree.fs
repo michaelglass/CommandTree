@@ -13,6 +13,7 @@ type ArgInfo =
     { Name: string
       TypeName: string
       IsOptional: bool
+      IsList: bool
       Completions: ArgCompletionHint }
 
 /// Structured error from command parsing
@@ -108,10 +109,9 @@ module CommandTree =
 
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =
-        if arg.IsOptional then
-            $"[%s{arg.Name}]"
-        else
-            $"<%s{arg.Name}>"
+        if arg.IsList then $"<%s{arg.Name}...>"
+        elif arg.IsOptional then $"[%s{arg.Name}]"
+        else $"<%s{arg.Name}>"
 
     /// Format arguments for a command
     let private formatArgs' (argList: ArgInfo list) =
