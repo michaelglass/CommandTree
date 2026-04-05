@@ -85,6 +85,17 @@ type FlagCommand =
     | [<Cmd("Deploy")>] Deploy of DeployOptions
     | [<Cmd("Help")>] Help
 
+// Types for DU-based flag parsing tests
+
+type DeployDUFlag =
+    | DryRun
+    | Env of string
+    | Verbose
+
+type DUFlagCommand =
+    | [<Cmd("Deploy")>] Deploy of DeployDUFlag list
+    | [<Cmd("Help")>] Help
+
 // Types for group-with-no-default error paths
 
 type SubNoDefault =
@@ -618,3 +629,83 @@ let ``format roundtrip for flag command`` () =
 
     let result = CommandTree.format tree cmd [] "test"
     test <@ result = Some "test deploy --env prod --dry-run" @>
+
+// =============================================================================
+// DU-based flag parsing tests
+// =============================================================================
+
+[<Fact>]
+let ``parse handles DU flags in any order`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "--dry-run"; "--env"; "prod" |]
+
+    match result with
+    | Ok(DUFlagCommand.Deploy flags) ->
+        test <@ flags |> List.contains DeployDUFlag.DryRun @>
+
+        test
+            <@
+                flags
+                |> List.exists (function
+                    | DeployDUFlag.Env "prod" -> true
+                    | _ -> false)
+            @>
+
+        test
+            <@
+                flags
+                |> List.exists (function
+                    | DeployDUFlag.Verbose -> true
+                    | _ -> false)
+                |> not
+            @>
+    | other -> failwith $"Expected Deploy, got: %O{other}"
+
+[<Fact>]
+let ``parse handles DU flags with no flags`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy" |]
+
+    match result with
+    | Ok(DUFlagCommand.Deploy flags) -> test <@ flags = [] @>
+    | other -> failwith $"Expected Deploy with empty flags, got: %O{other}"
+
+[<Fact>]
+let ``parse handles DU short flags`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "-d" |]
+
+    match result with
+    | Ok(DUFlagCommand.Deploy flags) -> test <@ flags |> List.contains DeployDUFlag.DryRun @>
+    | other -> failwith $"Expected Deploy with DryRun, got: %O{other}"
+
+[<Fact>]
+let ``parse returns UnknownFlag for unrecognized DU flag`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "--foo" |]
+
+    match result with
+    | Error(UnknownFlag(flag, cmd, _)) ->
+        test <@ flag = "--foo" @>
+        test <@ cmd = "deploy" @>
+    | other -> failwith $"Expected UnknownFlag, got: %O{other}"
+
+[<Fact>]
+let ``parse returns DuplicateFlag for repeated DU flag`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "--env"; "a"; "--env"; "b" |]
+
+    match result with
+    | Error(DuplicateFlag(flag, cmd)) ->
+        test <@ flag = "--env" @>
+        test <@ cmd = "deploy" @>
+    | other -> failwith $"Expected DuplicateFlag, got: %O{other}"
+
+[<Fact>]
+let ``parse returns InvalidArguments when DU flag value missing`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "--env" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
