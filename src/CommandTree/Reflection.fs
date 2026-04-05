@@ -206,7 +206,8 @@ module CommandReflection =
               ShortName = shortName
               TypeName = typeName
               IsBool = isBool
-              Description = toDescription f.Name })
+              Description = toDescription f.Name
+              EnvVar = None })
         |> Array.toList
 
     /// Parse a single field value from string
