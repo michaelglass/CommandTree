@@ -53,6 +53,16 @@ type DefaultWrapsArgInnerDefault =
     | [<CmdDefault>] Inner of InnerWithArgDefault
     | Other
 
+// Types for list field tests
+
+type ListArgCommand =
+    | [<Cmd("Tag files")>] Tag of tag: string * files: string list
+    | [<Cmd("List items")>] List
+
+type IntListCommand = | [<Cmd("Sum numbers")>] Sum of values: int list
+
+type ListOnlyCommand = | [<Cmd("Run files")>] Run of files: string list
+
 // Types for ambiguous argument tests
 
 type AmbiguousAction =
@@ -61,6 +71,8 @@ type AmbiguousAction =
     | Status
 
 type AmbiguousCmd = Do of action: AmbiguousAction * count: int
+
+type ListAmbiguousCommand = | [<Cmd("Do actions")>] DoActions of actions: AmbiguousAction list
 
 // Types for group-with-no-default error paths
 
@@ -394,3 +406,76 @@ let ``parse returns error when nested group default requires missing args`` () =
     match result with
     | Error(InvalidArguments _) -> ()
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// List field parsing tests
+// =============================================================================
+
+[<Fact>]
+let ``parse handles list field collecting remaining args`` () =
+    let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
+    let result = CommandTree.parse tree [| "tag"; "v1"; "a.fs"; "b.fs" |]
+    Assert.Equal(Ok(ListArgCommand.Tag("v1", [ "a.fs"; "b.fs" ])), result)
+
+[<Fact>]
+let ``parse handles list field with single element`` () =
+    let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
+    let result = CommandTree.parse tree [| "tag"; "v1"; "file.fs" |]
+    Assert.Equal(Ok(ListArgCommand.Tag("v1", [ "file.fs" ])), result)
+
+[<Fact>]
+let ``parse rejects list field with no elements`` () =
+    let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
+    let result = CommandTree.parse tree [| "tag"; "v1" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``parse handles list field with int elements`` () =
+    let tree = CommandReflection.fromUnion<IntListCommand> "Test"
+    let result = CommandTree.parse tree [| "sum"; "1"; "2"; "3" |]
+    Assert.Equal(Ok(IntListCommand.Sum [ 1; 2; 3 ]), result)
+
+[<Fact>]
+let ``parse rejects list field with invalid element type`` () =
+    let tree = CommandReflection.fromUnion<IntListCommand> "Test"
+    let result = CommandTree.parse tree [| "sum"; "1"; "abc"; "3" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``parse returns error when list element is ambiguous union`` () =
+    let tree = CommandReflection.fromUnion<ListAmbiguousCommand> "Test"
+    // "sta" matches both "start" and "status"
+    let result = CommandTree.parse tree [| "do-actions"; "sta" |]
+
+    match result with
+    | Error(AmbiguousArgument(input, candidates)) ->
+        test <@ input = "sta" @>
+        test <@ candidates = [ "start"; "status" ] @>
+    | other -> failwith $"Expected AmbiguousArgument, got: %O{other}"
+
+[<Fact>]
+let ``parse handles list-only command`` () =
+    let tree = CommandReflection.fromUnion<ListOnlyCommand> "Test"
+    let result = CommandTree.parse tree [| "run"; "a.fs"; "b.fs" |]
+    Assert.Equal(Ok(ListOnlyCommand.Run [ "a.fs"; "b.fs" ]), result)
+
+[<Fact>]
+let ``parse rejects list-only command with no args`` () =
+    let tree = CommandReflection.fromUnion<ListOnlyCommand> "Test"
+    let result = CommandTree.parse tree [| "run" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``help shows list field with ellipsis`` () =
+    let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
+    let helpText = CommandTree.help tree [] "test"
+    test <@ helpText.Contains("<files...>") @>

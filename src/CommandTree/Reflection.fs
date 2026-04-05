@@ -53,6 +53,14 @@ module CommandReflection =
         FSharpType.IsUnion(t)
         && t <> typeof<string>
         && not (t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>>)
+        && not (t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<list<_>>)
+
+    /// Check if a type is a list type
+    let private isListType (t: Type) =
+        t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<list<_>>
+
+    /// Get the element type from a list type
+    let private listElementType (t: Type) = t.GetGenericArguments().[0]
 
     /// Get a readable type name for display
     let rec private getTypeName (t: Type) =
@@ -73,6 +81,9 @@ module CommandReflection =
         elif t.IsGenericType && t.GetGenericTypeDefinition() = typedefof<option<_>> then
             let inner = t.GetGenericArguments().[0]
             getTypeName inner
+        elif isListType t then
+            let inner = t.GetGenericArguments().[0]
+            getTypeName inner + " list"
         else
             t.Name.ToLowerInvariant()
 
@@ -125,6 +136,7 @@ module CommandReflection =
             { Name = toKebabCase f.Name
               TypeName = getTypeName f.PropertyType
               IsOptional = isOptionalType f.PropertyType
+              IsList = isListType f.PropertyType
               Completions = getCompletionHint case i f })
         |> Array.toList
 
@@ -226,6 +238,14 @@ module CommandReflection =
                 formatFieldValue fields.[0]
             else
                 ""
+        | _ when isListType (value.GetType()) ->
+            let items = value :?> System.Collections.IEnumerable
+
+            items
+            |> Seq.cast<obj>
+            |> Seq.map formatFieldValue
+            |> Seq.filter (fun s -> s <> "")
+            |> String.concat " "
         | _ when isUnionType (value.GetType()) ->
             let case, _ = FSharpValue.GetUnionFields(value, value.GetType())
             toKebabCase case.Name
@@ -271,7 +291,45 @@ module CommandReflection =
     let parseFields (fields: Reflection.PropertyInfo array) (args: string array) : Result<obj option, string> array =
         fields
         |> Array.mapi (fun i field ->
-            if i < args.Length then
+            if isListType field.PropertyType then
+                // List field: consume all remaining args from index i onward
+                let elemType = listElementType field.PropertyType
+                let remaining = if i < args.Length then args.[i..] else [||]
+
+                if remaining.Length = 0 then
+                    Ok None // Non-empty list required — will become InvalidArguments
+                else
+                    let parsed = remaining |> Array.map (fun arg -> parseFieldValue elemType arg)
+
+                    let firstError =
+                        parsed
+                        |> Array.tryPick (fun r ->
+                            match r with
+                            | Error e -> Some e
+                            | _ -> None)
+
+                    match firstError with
+                    | Some e -> Error e
+                    | None ->
+                        let values =
+                            parsed
+                            |> Array.choose (fun r ->
+                                match r with
+                                | Ok(Some v) -> Some v
+                                | _ -> None)
+
+                        if values.Length <> remaining.Length then
+                            Ok None
+                        else
+                            // Build typed F# list via reflection
+                            let listModule =
+                                typeof<list<_>>.Assembly.GetType("Microsoft.FSharp.Collections.ListModule")
+
+                            let ofArray = listModule.GetMethod("OfArray").MakeGenericMethod(elemType)
+                            let arr = System.Array.CreateInstance(elemType, values.Length)
+                            values |> Array.iteri (fun j v -> arr.SetValue(v, j))
+                            Ok(Some(ofArray.Invoke(null, [| arr |])))
+            elif i < args.Length then
                 parseFieldValue field.PropertyType args.[i]
             elif
                 field.PropertyType.IsGenericType
@@ -346,6 +404,19 @@ module CommandReflection =
             let cmdName = getCommandName outerCase
             let desc = getDescription outerCase
             let fields = outerCase.GetFields()
+
+            let listFieldIndices =
+                fields
+                |> Array.mapi (fun i f -> i, f)
+                |> Array.filter (fun (_, f) -> isListType f.PropertyType)
+                |> Array.map fst
+
+            if listFieldIndices.Length > 0 then
+                let lastIdx = fields.Length - 1
+
+                if listFieldIndices.Length > 1 || listFieldIndices.[0] <> lastIdx then
+                    let caseName = getCommandName outerCase
+                    invalidOp $"List field in case '%s{caseName}' must be the last field and there can be only one"
 
             if fields.Length = 1 && isUnionType fields.[0].PropertyType then
                 // Nested union -> Group

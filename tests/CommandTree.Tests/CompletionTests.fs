@@ -21,8 +21,9 @@ type CompletedCommand =
 type UnionArgCommand = | [<Cmd("Optional environment")>] ChooseOpt of env: EnvKind option
 
 type TwoFileCommand =
-    | [<Cmd("Compare APIs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>]
-      CompareApi of oldDll: string * newDll: string
+    | [<Cmd("Compare APIs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>] CompareApi of
+        oldDll: string *
+        newDll: string
 
 // Nested command types for group completion tests
 type DevSubCmd =
