@@ -17,7 +17,7 @@ type Priority =
 
 type GlobalFlag =
     | [<Cmd("Enable verbose output")>] Verbose
-    | [<Cmd("Set log level")>] LogLevel of string
+    | [<Cmd("Set log level"); CmdEnv("LVL")>] LogLevel of string
 
 // =============================================================================
 // Command definitions
