@@ -13,15 +13,18 @@ Uses `mise` as task runner (see `mise.toml`). All commands also work with `dotne
 ```bash
 mise run build              # Build solution (restores deps first)
 mise run test               # Run tests with coverage (Cobertura XML)
-mise run coverage-check     # Check per-file coverage thresholds
+mise run coverage-check     # Check per-file coverage (CoverageRatchet)
+mise run coverage-ratchet   # Tighten coverage thresholds to current values
 mise run lint               # FSharpLint
 mise run format             # Format with Fantomas (src/ tests/ examples/)
 mise run example-build      # Build example app with --warnaserror
 mise run docs               # Generate API docs via fsdocs
-mise run sync-docs          # Sync README.md sections to docs/index.md
+mise run sync-docs          # Sync README.md sections to docs/index.md (SyncDocs)
 mise run check              # All checks with auto-fix
 mise run ci                 # All CI checks without auto-fix
 mise run pack               # Create NuGet package
+mise run release            # Release new version (FsSemanticTagger)
+mise run release-alpha      # Start alpha pre-release
 ```
 
 **Running tests directly:**
@@ -78,5 +81,5 @@ Uses xUnit v3 + Unquote (`test <@ assertion @>` syntax). Tests access internal m
 - **Linting**: FSharpLint -- 4-space indent, 120 char max line, 1000 line max file, 500 line max source length
 - **Naming**: PascalCase for types/modules/records/unions, camelCase for values/params
 - **Build strictness**: `TreatWarningsAsErrors` is enabled; `GenerateDocumentationFile` requires XML docs on public members
-- **Coverage**: Per-file coverage enforced via `scripts/check-coverage.fsx` (100% default, with overrides for I/O modules). Tests cover all public API surface including edge cases (ambiguous union prefix matching, optional fields, nested defaults)
-- **Documentation**: fsdocs generates API docs; `scripts/sync-docs.fsx` syncs README sections to `docs/index.md` via `<!-- sync:name:start -->` tags
+- **Coverage**: Per-file coverage enforced via CoverageRatchet tool (`coverage-ratchet-CommandTree.json` (100% default, with overrides for I/O modules). Tests cover all public API surface including edge cases (ambiguous union prefix matching, optional fields, nested defaults)
+- **Documentation**: fsdocs generates API docs; SyncDocs tool syncs README sections to `docs/index.md` via `<!-- sync:name:start -->` tags

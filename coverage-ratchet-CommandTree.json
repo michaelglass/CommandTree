@@ -1,0 +1,29 @@
+{
+  "overrides": {
+    "Fish.fs": {
+      "line": 35.714285714285715,
+      "branch": 0,
+      "reason": "installHook calls external process \u002B writes to ~/.config"
+    },
+    "Process.fs": {
+      "line": 99.06542056074767,
+      "branch": 75,
+      "reason": "Remaining uncovered branch is compiler-generated"
+    },
+    "Reflection.fs": {
+      "line": 93.72056514913658,
+      "branch": 85.31746031746032,
+      "reason": "Compiler-generated branches for type matching, prefix matching, duplicated env parse logic"
+    },
+    "Tree.fs": {
+      "line": 98.72611464968153,
+      "branch": 95.45454545454545,
+      "reason": "F# compiler-generated branch for helpWithGlobals Leaf fallback"
+    },
+    "UI.fs": {
+      "line": 41.80327868852459,
+      "branch": 84.61538461538461,
+      "reason": "Spinner threads use Console.Write directly; non-interactive path covered"
+    }
+  }
+}

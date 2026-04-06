@@ -1,0 +1,13 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    uses: michaelglass/MichaelsWackyFsPackageTools/.github/workflows/michaels-wacky-release.yml@main
+    with:
+      package-name: CommandTree
+      fsproj-path: src/CommandTree/CommandTree.fsproj
