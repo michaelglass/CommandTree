@@ -10,7 +10,8 @@
     <Description>Type-safe CLI command parsing with discriminated unions and reflection-based tree generation</Description>
     <PackageTags>fsharp;cli;command;parsing;discriminated-union;reflection</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/michaelglass/command-tree</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/michaelglass/CommandTree</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -21,6 +22,10 @@
     <!-- FS0052: string indexer copy warning - harmless -->
     <NoWarn>$(NoWarn);NETSDK1188;FS0052</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
