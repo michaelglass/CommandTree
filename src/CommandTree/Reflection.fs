@@ -699,11 +699,8 @@ module CommandReflection =
                 fields.Length = 1
                 && isListType fields.[0].PropertyType
                 && isUnionType (listElementType fields.[0].PropertyType)
-                && (let duCases = FSharpType.GetUnionCases(listElementType fields.[0].PropertyType)
-
-                    duCases |> Array.exists (fun c -> c.GetFields().Length > 0))
             then
-                // DU flag list: single field of type `SomeDU list` where SomeDU has value-carrying cases
+                // DU flag list: single field of type `SomeDU list` — parsed as named flags
                 let flagDUType = listElementType fields.[0].PropertyType
                 let flagInfo = getFlagInfoFromDU flagDUType envPrefix
                 let flagLookup = buildFlagLookup flagInfo

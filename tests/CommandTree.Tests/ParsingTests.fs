@@ -489,16 +489,24 @@ let ``parse rejects list field with invalid element type`` () =
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
 
 [<Fact>]
-let ``parse returns error when list element is ambiguous union`` () =
+let ``parse DU list as flags — unknown input is UnknownFlag`` () =
     let tree = CommandReflection.fromUnion<ListAmbiguousCommand> "Test"
-    // "sta" matches both "start" and "status"
+    // "sta" is not a valid flag (needs --start or --status)
     let result = CommandTree.parse tree [| "do-actions"; "sta" |]
 
     match result with
-    | Error(AmbiguousArgument(input, candidates)) ->
-        test <@ input = "sta" @>
-        test <@ candidates = [ "start"; "status" ] @>
-    | other -> failwith $"Expected AmbiguousArgument, got: %O{other}"
+    | Error(UnknownFlag("sta", _, _)) -> ()
+    | other -> failwith $"Expected UnknownFlag, got: %O{other}"
+
+[<Fact>]
+let ``parse DU list as flags — valid flags are accepted`` () =
+    let tree = CommandReflection.fromUnion<ListAmbiguousCommand> "Test"
+    let result = CommandTree.parse tree [| "do-actions"; "--start"; "--stop" |]
+
+    match result with
+    | Ok(ListAmbiguousCommand.DoActions flags) ->
+        test <@ flags.Length = 2 @>
+    | other -> failwith $"Expected Ok(DoActions), got: %O{other}"
 
 [<Fact>]
 let ``parse handles list-only command`` () =
