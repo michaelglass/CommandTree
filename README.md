@@ -16,20 +16,24 @@ type TaskCommand =
     | [<Cmd("Complete a task")>] Complete of id: int
     | [<Cmd("Remove a task")>] Remove of id: int
 
-// my-cli task ...
-// my-cli test
-// my-cli help
+// my-cli --verbose task add "Buy groceries"   ← global flag before command
+// my-cli task add "Buy groceries" --verbose   ← global flag after command
+type GlobalFlag =
+    | [<Cmd("Enable verbose output")>] Verbose
+    | [<Cmd("Set log level"); CmdEnv("LVL")>] LogLevel of string
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 
-let tree = CommandReflection.fromUnion<Command> "Example project management CLI"
+let spec =
+    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "My CLI" "MYAPP"
 
-match CommandTree.parse tree argv with
-| Ok(Task(Add(title, _))) -> printfn "Adding %s" title
-| Ok Help -> printfn "%s" (CommandTree.helpFull tree "my-cli")
-| Error(HelpRequested path) -> printfn "%s" (CommandTree.helpForPath tree path "my-cli")
+match spec.Parse argv with
+| Ok(globals, Task(Add(title, _))) -> printfn "Adding %s" title
+| Ok(_, Help) -> printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "my-cli")
+| Error(HelpRequested path) -> printfn "%s" (CommandTree.helpForPath spec.Tree path "my-cli")
 | Error(UnknownCommand(input, _)) -> UI.fail $"Unknown command: %s{input}"
 | _ -> ()
 ```
@@ -79,10 +83,11 @@ type JobCommand =
     | [<Cmd("Check job status")>] Status of id: Guid
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
-// my-cli check --config custom.json --verbose
-type CheckOptions =
-    { Config: string option
-      Verbose: bool }
+// my-cli check --conf custom.json --strict --no-cache
+type CheckFlag =
+    | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<Cmd("Enable strict checking")>] Strict
+    | [<CmdEnvRaw("NO_CACHE")>] NoCache
 
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
@@ -90,7 +95,7 @@ type Command =
     | [<Cmd("Deployment")>] Deploy of DeployCommand
     | [<Cmd("File operations")>] Files of FilesCommand
     | [<Cmd("Job management")>] Job of JobCommand
-    | [<Cmd("Run checks")>] Check of CheckOptions
+    | [<Cmd("Run checks")>] Check of CheckFlag list
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 ```
@@ -106,7 +111,7 @@ type Command =
 | `Status of env: string option` | `my-cli deploy status prod` or `my-cli deploy status` | Option fields can be omitted |
 | `Push of env: Priority` | `my-cli deploy push high` or `my-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
 | `Tag of label: string * files: string list` | `my-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
-| `Check of CheckOptions` (record) | `my-cli check --config custom.json --verbose` | Record fields become named flags |
+| `Check of CheckFlag list` | `my-cli check --conf x.json --strict` | DU flag list becomes named flags |
 | `[<CmdDefault>] List` | `my-cli task` | Runs when group is invoked without a subcommand |
 | `[<Cmd("desc", Name = "fmt")>] Format` | `my-cli fmt` | `Name` overrides the derived command name |
 
@@ -116,7 +121,9 @@ type Command =
 - `[<CmdDefault>]` marks the default subcommand when a group is invoked without arguments
 - `[<CmdCompletion("a", "b")>]` provides fish shell completion values
 - `[<CmdFileCompletion>]` enables file path completion in fish (multiple allowed per case with `FieldIndex`)
-- `[<CmdFlag>]` overrides flag name or short flag on record fields (optional — names are auto-derived)
+- `[<CmdFlag(Name = "conf", Short = "k")>]` overrides flag name or short flag on DU flag cases (optional — names are auto-derived)
+- `[<CmdEnv("SUFFIX")>]` overrides the env var suffix for a flag (prefix still applied)
+- `[<CmdEnvRaw("VAR_NAME")>]` sets the exact env var name, ignoring the prefix
 <!-- sync:howitworks:end -->
 
 <!-- sync:basicusage:start -->
@@ -124,25 +131,64 @@ type Command =
 
 Full example: [`examples/ExampleCli/Program.fs`](examples/ExampleCli/Program.fs)
 
+### Without global options
+
 ```fsharp
-// From examples/ExampleCli/Program.fs
 open CommandTree
 
-let tree = CommandReflection.fromUnion<Command> "Example project management CLI"
-let cmdName = "example-cli"
+let tree = CommandReflection.fromUnion<Command> "My CLI"
 
 [<EntryPoint>]
 let main argv =
     match CommandTree.parse tree argv with
     | Ok cmd ->
-        run tree cmdName cmd
+        run cmd
         0
     | Error(HelpRequested path) ->
-        printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        printfn "%s" (CommandTree.helpForPath tree path "my-cli")
+        0
+    | Error e ->
+        // UnknownCommand, InvalidArguments, AmbiguousArgument, UnknownFlag, DuplicateFlag
+        UI.fail $"%A{e}"
+        1
+```
+
+### With global options and env vars
+
+```fsharp
+// From examples/ExampleCli/Program.fs
+// GlobalFlag defined above in the intro
+open CommandTree
+
+let spec =
+    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "Example project management CLI" "EXAMPLE"
+
+let cmdName = "example-cli"
+
+[<EntryPoint>]
+let main argv =
+    match spec.Parse argv with
+    | Ok(globals, cmd) ->
+        if globals |> List.contains GlobalFlag.Verbose then
+            UI.dimInfo "Verbose mode enabled"
+
+        globals
+        |> List.iter (function
+            | GlobalFlag.LogLevel level -> UI.dimInfo $"Log level: %s{level}"
+            | _ -> ())
+
+        run spec.Tree cmdName cmd
+        0
+    | Error(HelpRequested path) ->
+        if path.IsEmpty then
+            printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree cmdName)
+        else
+            printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
+
         0
     | Error(UnknownCommand(input, path)) ->
         UI.fail $"Unknown command: %s{input}"
-        printfn "%s" (CommandTree.helpForPath tree path cmdName)
+        printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
         1
     | Error(InvalidArguments(cmd, msg)) ->
         UI.fail $"Invalid arguments for %s{cmd}: %s{msg}"
@@ -159,6 +205,8 @@ let main argv =
         UI.fail $"Flag '%s{flag}' provided more than once for command '%s{cmd}'"
         1
 ```
+
+Global flags can appear **anywhere** in the arg list — before, after, or interleaved with command args. Duplicate flag names between global and command-level flags are rejected at tree construction time.
 <!-- sync:basicusage:end -->
 
 <!-- sync:reference:start -->
@@ -171,6 +219,7 @@ CommandTree.parse tree args              // Result<'Cmd, ParseError>
 CommandTree.help tree path prefix        // Help text for one level
 CommandTree.helpFull tree prefix         // Full recursive help
 CommandTree.helpForPath tree path prefix // Help for a subcommand path
+CommandTree.helpWithGlobals flags tree prefix // Help with global options section
 CommandTree.format tree cmd path prefix  // Format command back to CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path
@@ -179,13 +228,57 @@ CommandTree.closestGroupPath tree args   // Deepest matching group path
 ### Reflection
 
 ```fsharp
-CommandReflection.fromUnion<'Cmd> "desc"     // Build tree from DU
+// Without global options
+CommandReflection.fromUnion<'Cmd> "desc"                          // CommandTree<'Cmd>
+CommandReflection.fromUnionWithEnv<'Cmd> "desc" "PREFIX"          // CommandTree<'Cmd> (with env vars)
+
+// With global options (returns GlobalSpec with .Tree, .Parse, .GlobalFlags)
+CommandReflection.fromUnionWithGlobals<'Cmd, 'G> "desc"           // GlobalSpec<'G, 'Cmd>
+CommandReflection.fromUnionWithGlobalsAndEnv<'Cmd, 'G> "desc" "P" // GlobalSpec<'G, 'Cmd> (with env vars)
+
+// Utilities
 CommandReflection.formatCmd cmd              // Format command to CLI string
 CommandReflection.caseName value             // Kebab-case name of union value
 CommandReflection.toKebabCase "PascalCase"   // "pascal-case"
 CommandReflection.parseFieldValue type str   // Result<obj option, string>
 CommandReflection.formatFieldValue value     // Typed value to string
 ```
+
+### DU-Based Flags
+
+Define flags as discriminated unions. No-field cases become boolean flags, single-field cases become value flags:
+
+```fsharp
+// From examples/ExampleCli/Program.fs
+
+// example-cli check --conf custom.json --strict --no-cache
+type CheckFlag =
+    | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<Cmd("Enable strict checking")>] Strict
+    | [<CmdEnvRaw("NO_CACHE")>] NoCache
+
+type Command =
+    | [<Cmd("Run checks")>] Check of CheckFlag list
+```
+
+Short flags are auto-derived from the first letter (collision detection prevents duplicates). Use `[<CmdFlag>]` to override.
+
+### Env Var Binding
+
+When an env prefix is configured, every DU flag case gets an auto-derived env var: `PREFIX_SCREAMING_SNAKE_CASE`.
+
+```fsharp
+// From examples/ExampleCli/Program.fs
+
+type GlobalFlag =
+    | [<Cmd("Enable verbose output")>] Verbose                     // env: EXAMPLE_VERBOSE
+    | [<Cmd("Set log level"); CmdEnv("LVL")>] LogLevel of string   // env: EXAMPLE_LVL (suffix override)
+
+type CheckFlag =
+    | [<CmdEnvRaw("NO_CACHE")>] NoCache                            // env: NO_CACHE (exact name)
+```
+
+Resolution order: CLI flag > env var > absent. For boolean flags, env var values `"true"`/`"1"` mean present, `"false"`/`"0"`/unset mean absent.
 
 ### Fish Completions
 
@@ -209,7 +302,7 @@ FishCompletions.installHook "my-tool"           // Auto-update hook in conf.d
 | `'T option` | `of env: string option` | None when omitted |
 | Union | `of env: Priority` | Kebab-case name, prefix matching (min 3 chars) |
 | `'T list` | `of files: string list` | Collects remaining args (1+, must be last field) |
-| Record | `of opts: CheckOptions` | Record fields become `--flag` options |
+| `'Flag list` | `of CheckFlag list` | DU flag list becomes named `--flags` |
 <!-- sync:reference:end -->
 
 The library also includes `Process` (process execution helpers) and `UI` (colored terminal output) modules. See the [API docs](https://michaelglass.github.io/CommandTree/) for details.
