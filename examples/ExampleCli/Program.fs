@@ -1,7 +1,7 @@
 // Run with: dotnet run --project examples/ExampleCli -- <command>
 // Example: dotnet run --project examples/ExampleCli -- --verbose task add "Buy groceries"
-// Global flags: --verbose, --log-level <level>
-// Env vars: EXAMPLE_VERBOSE=true, EXAMPLE_LOG_LEVEL=debug
+// Global flags: --verbose, --log-level <level> (env: EXAMPLE_VERBOSE, EXAMPLE_LVL)
+// Check flags: --conf <file>, --strict, --no-cache (env: EXAMPLE_CONF, EXAMPLE_STRICT, NO_CACHE)
 
 open System
 open CommandTree
@@ -74,10 +74,11 @@ type JobCommand =
     | [<Cmd("Check job status")>] Status of id: Guid
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
-// example-cli check --config custom.json --verbose
+// example-cli check --conf custom.json --strict --no-cache
 type CheckFlag =
-    | Config of string
-    | Verbose
+    | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<Cmd("Enable strict checking")>] Strict
+    | [<CmdEnvRaw("NO_CACHE")>] NoCache
 
 type ProcessDemoCommand =
     | [<Cmd("Run a command visibly with timing")>] Run
@@ -199,13 +200,11 @@ let handleCheck (flags: CheckFlag list) =
 
     UI.info $"Checking with config: %s{config}"
 
-    if
-        flags
-        |> List.exists (function
-            | Verbose -> true
-            | _ -> false)
-    then
-        UI.dimInfo "Verbose mode enabled"
+    if flags |> List.contains Strict then
+        UI.dimInfo "Strict mode enabled"
+
+    if flags |> List.contains NoCache then
+        UI.dimInfo "Cache disabled"
 
 let handleProcessDemo (cmd: ProcessDemoCommand) =
     match cmd with
