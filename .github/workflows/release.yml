@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   release:
     uses: michaelglass/MichaelsWackyFsPackageTools/.github/workflows/michaels-wacky-release.yml@main
