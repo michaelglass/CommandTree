@@ -17,8 +17,8 @@
     },
     "Tree.fs": {
       "line": 98.72611464968153,
-      "branch": 95.45454545454545,
-      "reason": "F# compiler-generated branch for helpWithGlobals Leaf fallback"
+      "branch": 92.5925925925926,
+      "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag"
     },
     "UI.fs": {
       "line": 41.80327868852459,
