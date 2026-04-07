@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Suppress SourceLink source-control warnings in jj repos (no .git directory) -->
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <EnableSourceLink>false</EnableSourceLink>
+  </PropertyGroup>
+</Project>
