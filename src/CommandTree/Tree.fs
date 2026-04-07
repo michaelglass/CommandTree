@@ -44,6 +44,8 @@ type FlagInfo =
 type ParseError =
     /// User requested help (e.g., no args given). Path is the group where help was requested.
     | HelpRequested of path: string list
+    /// User requested version info (--version or version at root level).
+    | VersionRequested
     /// Command name not recognized. Includes what was typed and the group path for context.
     | UnknownCommand of input: string * groupPath: string list
     /// Arguments couldn't be parsed for a known command.
@@ -93,12 +95,28 @@ module CommandTree =
         | Leaf(_, _, a, _, _, _) -> a
         | Group _ -> []
 
+    /// Check if args contain --help
+    let private hasHelpFlag (args: string array) = args |> Array.contains "--help"
+
+    /// Check if args contain --version
+    let private hasVersionFlag (args: string array) = args |> Array.contains "--version"
+
+    /// Check if a flag list contains an explicit --help flag (override)
+    let private hasExplicitHelpFlag (flags: FlagInfo list) =
+        flags |> List.exists (fun fi -> fi.LongName = "help")
+
     /// Parse args using tree structure (recursive)
     let parse (tree: CommandTree<'Cmd>) (args: string array) : Result<'Cmd, ParseError> =
         let rec parseRec (node: CommandTree<'Cmd>) (args: string array) (path: string list) =
             match node, args with
-            // Leaf node: delegate to leaf parser
-            | Leaf(_, _, _, _, leafParse, _), _ -> leafParse args
+            // Leaf node: check for --help unless leaf has explicit help flag
+            | Leaf(leafName, _, _, leafFlags, leafParse, _), _ ->
+                let currentPath = path @ [ leafName ]
+
+                if hasHelpFlag args && not (hasExplicitHelpFlag leafFlags) then
+                    Error(HelpRequested currentPath)
+                else
+                    leafParse args
 
             // Group with no args: use default if available, otherwise show help
             | Group(groupName, _, _, defaultParse, _), [||] ->
@@ -108,16 +126,21 @@ module CommandTree =
                 | Some p -> p [||]
                 | None -> Error(HelpRequested currentPath)
 
-            // Group with args: find matching child
+            // Group with args: try routing into child first, then check --help
             | Group(groupName, _, children, _, _), _ ->
                 let currentPath = if groupName = "" then path else path @ [ groupName ]
-
                 let subCmd = args.[0]
                 let rest = args |> Array.skip 1
 
                 match children |> List.tryFind (fun c -> name c = subCmd) with
                 | Some child -> parseRec child rest currentPath
-                | None -> Error(UnknownCommand(subCmd, currentPath))
+                | None ->
+                    if hasHelpFlag args then
+                        Error(HelpRequested currentPath)
+                    elif List.isEmpty currentPath && (subCmd = "version" || hasVersionFlag args) then
+                        Error VersionRequested
+                    else
+                        Error(UnknownCommand(subCmd, currentPath))
 
         parseRec tree args []
 

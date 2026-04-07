@@ -506,6 +506,9 @@ let main argv =
             printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
 
         0
+    | Error VersionRequested ->
+        printfn "example-cli version 0.0.1"
+        0
     | Error(UnknownCommand(input, path)) ->
         UI.fail $"Unknown command: %s{input}"
         printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)

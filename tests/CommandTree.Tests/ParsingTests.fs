@@ -95,6 +95,16 @@ type GlobalCmd =
     | [<Cmd("Start")>] Start
     | [<Cmd("Scan")>] Scan
 
+// Types for global --help override tests
+
+type GlobalWithHelp =
+    | [<Cmd("Show help")>] Help
+    | Verbose
+
+type GlobalHelpCmd =
+    | [<Cmd("Start")>] Start
+    | [<Cmd("Scan")>] Scan
+
 // Types for flag collision detection tests
 
 type CollidingGlobal = Timeout of int
@@ -124,6 +134,28 @@ type SubNoDefault =
 type NestNoDefault =
     | Inner of SubNoDefault
     | Other
+
+// Types for --version override tests
+
+type VersionOverrideCommand =
+    | [<Cmd("Run")>] Run
+    | [<Cmd("Show version")>] Version
+
+// Types for flags with short names (help display)
+
+type ShortNameFlag =
+    | [<CmdFlag(Short = "v")>] Verbose
+    | [<CmdFlag(Short = "d")>] DryRun
+
+type ShortNameFlagCmd = | [<Cmd("Deploy")>] Deploy of ShortNameFlag list
+
+// Types for --help override tests
+
+type HelpOverrideFlag =
+    | [<Cmd("Show help")>] Help
+    | Verbose
+
+type HelpOverrideCmd = | [<Cmd("Run")>] Run of HelpOverrideFlag list
 
 // =============================================================================
 // Simple parsing tests
@@ -366,6 +398,56 @@ let ``parse returns help error when nested group has no default and no args`` ()
     let tree = CommandReflection.fromUnion<NestNoDefault> "Test"
     let result = CommandTree.parse tree [| "inner" |]
     test <@ result = Error(HelpRequested [ "inner" ]) @>
+
+// =============================================================================
+// --help flag recognition tests
+// =============================================================================
+
+[<Fact>]
+let ``parse returns HelpRequested when --help passed at root`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "--help" |]
+    test <@ result = Error(HelpRequested []) @>
+
+[<Fact>]
+let ``parse returns HelpRequested when --help mixed with command at root`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "--help"; "check" |]
+    test <@ result = Error(HelpRequested []) @>
+
+[<Fact>]
+let ``parse returns HelpRequested when --help passed at nested group`` () =
+    let tree = CommandReflection.fromUnion<NestNoDefault> "Test"
+    let result = CommandTree.parse tree [| "inner"; "--help" |]
+    test <@ result = Error(HelpRequested [ "inner" ]) @>
+
+[<Fact>]
+let ``parse returns HelpRequested when --help passed at leaf`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "check"; "--help" |]
+    test <@ result = Error(HelpRequested [ "check" ]) @>
+
+[<Fact>]
+let ``parse returns HelpRequested when --help passed at group with default`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let result = CommandTree.parse tree [| "dev"; "--help" |]
+    test <@ result = Error(HelpRequested [ "dev" ]) @>
+
+[<Fact>]
+let ``parse passes --help to leaf parser when leaf has explicit help flag`` () =
+    let tree = CommandReflection.fromUnion<HelpOverrideCmd> "Test"
+    let result = CommandTree.parse tree [| "run"; "--help" |]
+
+    match result with
+    | Ok(HelpOverrideCmd.Run flags) ->
+        test
+            <@
+                flags
+                |> List.exists (function
+                    | HelpOverrideFlag.Help -> true
+                    | _ -> false)
+            @>
+    | other -> failwith $"Expected Ok with Help flag, got: %O{other}"
 
 // =============================================================================
 // Ambiguous argument tests (through parse)
@@ -646,6 +728,15 @@ let ``help shows DU flags with long and short names`` () =
     test <@ helpText.Contains("--dry-run") @>
     test <@ helpText.Contains("--verbose") @>
 
+[<Fact>]
+let ``help shows short flag aliases in options`` () =
+    let tree = CommandReflection.fromUnion<ShortNameFlagCmd> "Test"
+    let helpText = CommandTree.helpForPath tree [ "deploy" ] "test"
+    test <@ helpText.Contains("-v") @>
+    test <@ helpText.Contains("-d") @>
+    test <@ helpText.Contains("--verbose") @>
+    test <@ helpText.Contains("--dry-run") @>
+
 // =============================================================================
 // DU-based flag format roundtrip tests
 // =============================================================================
@@ -745,6 +836,30 @@ let ``global flag unknown rejected`` () =
     match result with
     | Error _ -> ()
     | other -> failwith $"Expected Error, got: %O{other}"
+
+// =============================================================================
+// Global --help override tests
+// =============================================================================
+
+[<Fact>]
+let ``global --help flag overrides built-in help`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalHelpCmd, GlobalWithHelp> "Test"
+
+    let result = spec.Parse [| "--help"; "start" |]
+
+    match result with
+    | Ok(globals, cmd) ->
+        test
+            <@
+                globals
+                |> List.exists (function
+                    | GlobalWithHelp.Help -> true
+                    | _ -> false)
+            @>
+
+        test <@ cmd = GlobalHelpCmd.Start @>
+    | Error e -> failwith $"Expected Ok with Help global, got: %O{e}"
 
 // =============================================================================
 // Flag collision detection tests
@@ -1110,3 +1225,49 @@ let ``helpWithGlobals falls back for non-group tree`` () =
         let helpText = CommandTree.helpWithGlobals [] child "test"
         test <@ helpText.Contains("Do it") @>
     | _ -> failwith "Expected Group with one child"
+
+// =============================================================================
+// Built-in --version tests
+// =============================================================================
+
+[<Fact>]
+let ``parse returns VersionRequested when --version passed at root`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "--version" |]
+    test <@ result = Error VersionRequested @>
+
+[<Fact>]
+let ``parse returns VersionRequested when version subcommand passed at root`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "version" |]
+    test <@ result = Error VersionRequested @>
+
+[<Fact>]
+let ``parse does not return VersionRequested for --version at nested level`` () =
+    let tree = CommandReflection.fromUnion<NestNoDefault> "Test"
+    let result = CommandTree.parse tree [| "inner"; "--version" |]
+
+    match result with
+    | Error VersionRequested -> failwith "Should not return VersionRequested at nested level"
+    | _ -> ()
+
+[<Fact>]
+let ``parse routes to explicit version command instead of built-in`` () =
+    let tree = CommandReflection.fromUnion<VersionOverrideCommand> "Test"
+    let result = CommandTree.parse tree [| "version" |]
+    test <@ result = Ok(VersionOverrideCommand.Version) @>
+
+[<Fact>]
+let ``parse returns VersionRequested when --version mixed with other args at root`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "unknown"; "--version" |]
+    test <@ result = Error VersionRequested @>
+
+[<Fact>]
+let ``parse does not return VersionRequested for version subcommand at nested level`` () =
+    let tree = CommandReflection.fromUnion<NestNoDefault> "Test"
+    let result = CommandTree.parse tree [| "inner"; "version" |]
+
+    match result with
+    | Error VersionRequested -> failwith "Should not return VersionRequested at nested level"
+    | _ -> ()
