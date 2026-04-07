@@ -504,8 +504,7 @@ let ``parse DU list as flags — valid flags are accepted`` () =
     let result = CommandTree.parse tree [| "do-actions"; "--start"; "--stop" |]
 
     match result with
-    | Ok(ListAmbiguousCommand.DoActions flags) ->
-        test <@ flags.Length = 2 @>
+    | Ok(ListAmbiguousCommand.DoActions flags) -> test <@ flags.Length = 2 @>
     | other -> failwith $"Expected Ok(DoActions), got: %O{other}"
 
 [<Fact>]
