@@ -17,5 +17,3 @@ jobs:
     with:
       solution: CommandTree.slnx
       fantomas-paths: 'src/ tests/ examples/'
-      has-examples: true
-      example-path: 'examples/ExampleCli'
