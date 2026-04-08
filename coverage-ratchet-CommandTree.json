@@ -11,9 +11,9 @@
       "reason": "Remaining uncovered branch is compiler-generated"
     },
     "Reflection.fs": {
-      "line": 90.7,
-      "branch": 82.8,
-      "reason": "Compiler-generated branches for type matching, prefix matching, duplicated env parse logic, record formatArgs findMatch null checks"
+      "line": 97.7,
+      "branch": 87.5,
+      "reason": "Remaining uncovered: inline caseName (coverage artifact), defensive null/unreachable branches, parseFieldValue Error paths only reachable for union types but called from non-union contexts"
     },
     "Tree.fs": {
       "line": 98.72611464968153,
