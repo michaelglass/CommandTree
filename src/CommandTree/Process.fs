@@ -12,12 +12,6 @@ type CommandResult =
 
 /// Process execution helpers
 module Process =
-    /// Apply optional working directory to a ProcessStartInfo
-    let private applyWorkDir (workDir: string option) (psi: ProcessStartInfo) =
-        match workDir with
-        | Some dir -> psi.WorkingDirectory <- dir
-        | None -> ()
-
     /// Run a command and wait for it to complete
     let run (command: string) (args: string) =
         UI.cmd command args
@@ -155,7 +149,7 @@ module Process =
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
         psi.CreateNoWindow <- true
-        applyWorkDir (Some workDir) psi
+        psi.WorkingDirectory <- workDir
 
         use proc = Diagnostics.Process.Start(psi)
         let stdoutTask = proc.StandardOutput.ReadToEndAsync()
@@ -203,7 +197,7 @@ module Process =
     let runInteractiveInDir (command: string) (args: string) (workDir: string) : int =
         let psi = ProcessStartInfo(command, args)
         psi.UseShellExecute <- false
-        applyWorkDir (Some workDir) psi
+        psi.WorkingDirectory <- workDir
         use proc = Diagnostics.Process.Start(psi)
         proc.WaitForExit()
         proc.ExitCode
