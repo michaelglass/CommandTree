@@ -157,6 +157,18 @@ type HelpOverrideFlag =
 
 type HelpOverrideCmd = | [<Cmd("Run")>] Run of HelpOverrideFlag list
 
+// Types for record-typed argument tests
+
+type RecordOptions = { publish: bool }
+
+type RecordCommand =
+    | [<Cmd("Alpha command")>] Alpha of RecordOptions
+    | [<Cmd("Beta command")>] Beta
+
+type RecordWithOptional = { name: string option; verbose: bool }
+
+type RecordOptCommand = | [<Cmd("Run command")>] Run of RecordWithOptional
+
 // =============================================================================
 // Simple parsing tests
 // =============================================================================
@@ -1271,3 +1283,62 @@ let ``parse does not return VersionRequested for version subcommand at nested le
     match result with
     | Error VersionRequested -> failwith "Should not return VersionRequested at nested level"
     | _ -> ()
+
+// =============================================================================
+// Bug fix: zero-arg commands must reject trailing arguments
+// =============================================================================
+
+[<Fact>]
+let ``parse rejects trailing flag on zero-arg command`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "check"; "--bogus" |]
+
+    match result with
+    | Error(UnknownFlag("--bogus", "check", [])) -> ()
+    | other -> failwith $"Expected UnknownFlag, got: %O{other}"
+
+[<Fact>]
+let ``parse rejects trailing positional arg on zero-arg command`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "check"; "extra" |]
+
+    match result with
+    | Error(InvalidArguments("check", _)) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``parse rejects trailing args on nested zero-arg command`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let result = CommandTree.parse tree [| "dev"; "build"; "--verbose" |]
+
+    match result with
+    | Error(UnknownFlag("--verbose", "build", [])) -> ()
+    | other -> failwith $"Expected UnknownFlag, got: %O{other}"
+
+// =============================================================================
+// Bug fix: record-typed arguments should default missing fields
+// =============================================================================
+
+[<Fact>]
+let ``parse defaults bool field in record arg`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let result = CommandTree.parse tree [| "alpha" |]
+    Assert.Equal(Ok(RecordCommand.Alpha { publish = false }), result)
+
+[<Fact>]
+let ``parse accepts explicit bool value in record arg`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let result = CommandTree.parse tree [| "alpha"; "true" |]
+    Assert.Equal(Ok(RecordCommand.Alpha { publish = true }), result)
+
+[<Fact>]
+let ``parse defaults optional and bool fields in record arg`` () =
+    let tree = CommandReflection.fromUnion<RecordOptCommand> "Test"
+    let result = CommandTree.parse tree [| "run" |]
+    Assert.Equal(Ok(RecordOptCommand.Run { name = None; verbose = false }), result)
+
+[<Fact>]
+let ``parse accepts partial record args`` () =
+    let tree = CommandReflection.fromUnion<RecordOptCommand> "Test"
+    let result = CommandTree.parse tree [| "run"; "hello" |]
+    Assert.Equal(Ok(RecordOptCommand.Run { name = Some "hello"; verbose = false }), result)

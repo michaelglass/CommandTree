@@ -73,6 +73,9 @@ module CommandReflection =
     /// Get the element type from a list type
     let private listElementType (t: Type) = t.GetGenericArguments().[0]
 
+    /// Check if a type is a record type
+    let private isRecordType (t: Type) = FSharpType.IsRecord(t)
+
     /// Check if a type is a union type (for detecting nested groups)
     let isUnionType (t: Type) =
         FSharpType.IsUnion(t)
@@ -772,17 +775,101 @@ module CommandReflection =
                 let defaultChildName = defaultCase |> Option.map (fun dc -> getCommandName dc)
 
                 CommandTree.Group(cmdName, desc, nestedChildren, defaultParse, defaultChildName)
+            elif fields.Length = 1 && isRecordType fields.[0].PropertyType then
+                // Record-typed argument: expand record fields as positional args with defaults
+                let recordType = fields.[0].PropertyType
+                let recordFields = FSharpType.GetRecordFields(recordType)
+
+                let parse (args: string array) : Result<'Cmd, ParseError> =
+                    // Reject unconsumed args beyond record fields
+                    if args.Length > recordFields.Length then
+                        let extra = args.[recordFields.Length]
+
+                        if extra.StartsWith("-", StringComparison.Ordinal) then
+                            Error(UnknownFlag(extra, cmdName, []))
+                        else
+                            Error(InvalidArguments(cmdName, $"Unexpected argument '%s{extra}'"))
+                    else
+                        let fieldValues =
+                            recordFields
+                            |> Array.mapi (fun i rf ->
+                                if i < args.Length then
+                                    parseFieldValue rf.PropertyType args.[i]
+                                elif rf.PropertyType = typeof<bool> then
+                                    Ok(Some(box false))
+                                elif isOptionalType rf.PropertyType then
+                                    Ok(Some(makeNone rf.PropertyType))
+                                else
+                                    Ok None)
+
+                        match validateFields cmdName fieldValues with
+                        | Ok values ->
+                            let recordValue = FSharpValue.MakeRecord(recordType, values)
+                            let innerValue = FSharpValue.MakeUnion(outerCase, [| recordValue |])
+                            let cmdValue = wrapValue innerValue
+                            Ok(cmdValue :?> 'Cmd)
+                        | Error e -> Error e
+
+                let formatArgs (cmd: 'Cmd) : string list option =
+                    let rec findMatch (value: obj) (targetCase: UnionCaseInfo) =
+                        if isNull value then
+                            None
+                        else
+                            let actualType = value.GetType()
+
+                            if FSharpType.IsUnion(actualType, true) then
+                                let c, fs = FSharpValue.GetUnionFields(value, actualType, true)
+
+                                if c.Tag = targetCase.Tag && c.DeclaringType = targetCase.DeclaringType then
+                                    let recordVal = fs.[0]
+                                    let rFields = FSharpValue.GetRecordFields(recordVal)
+
+                                    Some(
+                                        rFields
+                                        |> Array.map formatFieldValue
+                                        |> Array.filter (fun s -> s <> "")
+                                        |> Array.toList
+                                    )
+                                else
+                                    fs |> Array.tryPick (fun f -> findMatch f targetCase)
+                            else
+                                None
+
+                    findMatch (cmd :> obj) outerCase
+
+                let argInfo =
+                    recordFields
+                    |> Array.map (fun f ->
+                        { Name = toKebabCase f.Name
+                          TypeName = getTypeName f.PropertyType
+                          IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
+                          IsList = false
+                          Completions = NoCompletion })
+                    |> Array.toList
+
+                CommandTree.Leaf(cmdName, desc, argInfo, [], parse, formatArgs)
             else
                 // Leaf case
-                let parse (args: string array) : Result<'Cmd, ParseError> =
-                    let fieldValues = parseFields fields args
+                let hasListField = fields |> Array.exists (fun f -> isListType f.PropertyType)
 
-                    match validateFields cmdName fieldValues with
-                    | Ok values ->
-                        let innerValue = FSharpValue.MakeUnion(outerCase, values)
-                        let cmdValue = wrapValue innerValue
-                        Ok(cmdValue :?> 'Cmd)
-                    | Error e -> Error e
+                let parse (args: string array) : Result<'Cmd, ParseError> =
+                    // Reject unconsumed args (only when no list field to absorb them)
+                    if not hasListField && args.Length > fields.Length then
+                        let extra = args.[fields.Length]
+
+                        if extra.StartsWith("-", StringComparison.Ordinal) then
+                            Error(UnknownFlag(extra, cmdName, []))
+                        else
+                            Error(InvalidArguments(cmdName, $"Unexpected argument '%s{extra}'"))
+                    else
+                        let fieldValues = parseFields fields args
+
+                        match validateFields cmdName fieldValues with
+                        | Ok values ->
+                            let innerValue = FSharpValue.MakeUnion(outerCase, values)
+                            let cmdValue = wrapValue innerValue
+                            Ok(cmdValue :?> 'Cmd)
+                        | Error e -> Error e
 
                 let formatArgs (cmd: 'Cmd) : string list option =
                     // Navigate through nested unions to find the target case

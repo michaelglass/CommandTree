@@ -11,9 +11,9 @@
       "reason": "Remaining uncovered branch is compiler-generated"
     },
     "Reflection.fs": {
-      "line": 93.53312302839116,
-      "branch": 86.4,
-      "reason": "Compiler-generated branches for type matching, prefix matching, duplicated env parse logic"
+      "line": 90.7,
+      "branch": 82.8,
+      "reason": "Compiler-generated branches for type matching, prefix matching, duplicated env parse logic, record formatArgs findMatch null checks"
     },
     "Tree.fs": {
       "line": 98.72611464968153,
