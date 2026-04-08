@@ -12,6 +12,12 @@ type CommandResult =
 
 /// Process execution helpers
 module Process =
+    /// Apply optional working directory to a ProcessStartInfo
+    let private applyWorkDir (workDir: string option) (psi: ProcessStartInfo) =
+        match workDir with
+        | Some dir -> psi.WorkingDirectory <- dir
+        | None -> ()
+
     /// Run a command and wait for it to complete
     let run (command: string) (args: string) =
         UI.cmd command args
@@ -142,6 +148,38 @@ module Process =
             let stderr = stderrTask.Result
             (proc.ExitCode, stdout.Trim(), stderr.Trim())
 
+    /// Run a command silently with optional timeout in a specific directory
+    let runSilentWithTimeoutInDir (command: string) (args: string) (timeout: int option) (workDir: string) =
+        let psi = ProcessStartInfo(command, args)
+        psi.UseShellExecute <- false
+        psi.RedirectStandardOutput <- true
+        psi.RedirectStandardError <- true
+        psi.CreateNoWindow <- true
+        applyWorkDir (Some workDir) psi
+
+        use proc = Diagnostics.Process.Start(psi)
+        let stdoutTask = proc.StandardOutput.ReadToEndAsync()
+        let stderrTask = proc.StandardError.ReadToEndAsync()
+
+        let exited =
+            match timeout with
+            | Some ms -> proc.WaitForExit(ms)
+            | None ->
+                proc.WaitForExit()
+                true
+
+        if not exited then
+            proc.Kill(entireProcessTree = true)
+            (-1, "", $"Process timed out after %d{timeout.Value}ms")
+        else
+            let stdout = stdoutTask.Result
+            let stderr = stderrTask.Result
+            (proc.ExitCode, stdout.Trim(), stderr.Trim())
+
+    /// Run a command silently in a specific directory
+    let runSilentInDir (command: string) (args: string) (workDir: string) =
+        runSilentWithTimeoutInDir command args None workDir
+
     /// Run a command silently and return exit code, stdout, stderr as tuple
     let runSilent (command: string) (args: string) = runSilentWithTimeout command args None
 
@@ -157,6 +195,15 @@ module Process =
     let runInteractive (command: string) (args: string) : int =
         let psi = ProcessStartInfo(command, args)
         psi.UseShellExecute <- false
+        use proc = Diagnostics.Process.Start(psi)
+        proc.WaitForExit()
+        proc.ExitCode
+
+    /// Run a command interactively in a specific directory
+    let runInteractiveInDir (command: string) (args: string) (workDir: string) : int =
+        let psi = ProcessStartInfo(command, args)
+        psi.UseShellExecute <- false
+        applyWorkDir (Some workDir) psi
         use proc = Diagnostics.Process.Start(psi)
         proc.WaitForExit()
         proc.ExitCode
