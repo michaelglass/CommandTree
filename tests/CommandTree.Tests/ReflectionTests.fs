@@ -551,3 +551,108 @@ let ``getFlagInfoFromDU short flag collision avoidance`` () =
     test <@ dryRun.ShortName = Some "d" @>
     let verbose = flagInfo |> List.find (fun f -> f.LongName = "verbose")
     test <@ verbose.ShortName = Some "v" @>
+
+// =============================================================================
+// Coverage: getTypeName for float and decimal fields
+// =============================================================================
+
+type FloatCommand = | [<Cmd("Compute")>] Compute of value: float
+
+type DecimalCommand = | [<Cmd("Price")>] Price of amount: decimal
+
+[<Fact>]
+let ``fromUnion generates correct typeName for float field`` () =
+    let tree = CommandReflection.fromUnion<FloatCommand> "Test"
+
+    match tree with
+    | CommandTree.Group(_, _, [ child ], _, _) ->
+        let args = CommandTree.args child
+        test <@ args.Length = 1 @>
+        test <@ args.[0].TypeName = "float" @>
+    | _ -> failwith "Expected group with one child"
+
+[<Fact>]
+let ``fromUnion generates correct typeName for decimal field`` () =
+    let tree = CommandReflection.fromUnion<DecimalCommand> "Test"
+
+    match tree with
+    | CommandTree.Group(_, _, [ child ], _, _) ->
+        let args = CommandTree.args child
+        test <@ args.Length = 1 @>
+        test <@ args.[0].TypeName = "decimal" @>
+    | _ -> failwith "Expected group with one child"
+
+// =============================================================================
+// Coverage: parseFieldValue error propagation for option with ambiguous inner union
+// =============================================================================
+
+type AmbigUnion =
+    | Start
+    | Stop
+    | Status
+
+[<Fact>]
+let ``parseFieldValue returns Error for option with ambiguous union inner`` () =
+    // "sta" matches start and status — ambiguous
+    let result = CommandReflection.parseFieldValue typeof<AmbigUnion option> "sta"
+
+    match result with
+    | Error msg -> test <@ msg.Contains("Ambiguous") @>
+    | _ -> failwith "Expected Error for ambiguous union in option"
+
+// =============================================================================
+// Coverage: DU flag parsing with invalid typed value
+// =============================================================================
+
+type IntFlag =
+    | Count of int
+    | Verbose
+
+type IntFlagCmd = | [<Cmd("Run")>] Run of IntFlag list
+
+[<Fact>]
+let ``parse returns InvalidArguments for unparseable DU flag value`` () =
+    let tree = CommandReflection.fromUnion<IntFlagCmd> "Test"
+    let result = CommandTree.parse tree [| "run"; "--count"; "notanumber" |]
+
+    match result with
+    | Error(InvalidArguments("run", msg)) -> test <@ msg.Contains("Invalid value") @>
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// Coverage: env var error paths
+// =============================================================================
+
+type EnvBoolFlag =
+    | Verbose
+    | Count of int
+
+type EnvBoolCmd = | [<Cmd("Run")>] Run of EnvBoolFlag list
+
+[<Fact>]
+let ``env var with invalid boolean value returns error`` () =
+    System.Environment.SetEnvironmentVariable("ENVT_VERBOSE", "maybe")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvBoolCmd> "Test" "ENVT"
+        let result = CommandTree.parse tree [| "run" |]
+
+        match result with
+        | Error(InvalidArguments("env", msg)) -> test <@ msg.Contains("expected true/false/1/0") @>
+        | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("ENVT_VERBOSE", null)
+
+[<Fact>]
+let ``env var with invalid typed value returns error`` () =
+    System.Environment.SetEnvironmentVariable("ENVT_COUNT", "notanumber")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<EnvBoolCmd> "Test" "ENVT"
+        let result = CommandTree.parse tree [| "run" |]
+
+        match result with
+        | Error(InvalidArguments("env", msg)) -> test <@ msg.Contains("Invalid value") @>
+        | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("ENVT_COUNT", null)

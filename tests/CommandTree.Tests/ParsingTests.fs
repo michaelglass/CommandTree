@@ -115,6 +115,34 @@ type CollidingScanFlag =
 
 type CollidingCmd = | [<Cmd("Scan")>] Scan of CollidingScanFlag list
 
+// Types for short-name flag collision detection tests
+
+type ShortCollidingGlobal = | [<CmdFlag(Short = "t")>] Trace
+
+type ShortCollidingLeafFlag = | [<CmdFlag(Short = "t")>] Terse
+
+type ShortCollidingCmd = | [<Cmd("Scan")>] Scan of ShortCollidingLeafFlag list
+
+// Types for flag with no short name (collision avoidance suppresses short)
+
+type NoShortFlag =
+    | Timeout of int
+    | Trace
+
+type NoShortCmd = | [<Cmd("Run")>] Run of NoShortFlag list
+
+type NoShortGlobal = | Debug
+
+// Types for global flag with typed field (invalid value tests)
+
+type TypedGlobalFlag =
+    | Count of int
+    | Verbose
+
+type TypedGlobalCmd =
+    | [<Cmd("Start")>] Start
+    | [<Cmd("Scan")>] Scan
+
 // Types for combined global + command flag tests
 
 type ScanDUFlag =
@@ -164,6 +192,10 @@ type RecordOptions = { publish: bool }
 type RecordCommand =
     | [<Cmd("Alpha command")>] Alpha of RecordOptions
     | [<Cmd("Beta command")>] Beta
+
+type RecordWithRequired = { target: string; publish: bool }
+
+type RecordReqCommand = | [<Cmd("Deploy command")>] Deploy of RecordWithRequired
 
 type RecordWithOptional = { name: string option; verbose: bool }
 
@@ -1342,3 +1374,133 @@ let ``parse accepts partial record args`` () =
     let tree = CommandReflection.fromUnion<RecordOptCommand> "Test"
     let result = CommandTree.parse tree [| "run"; "hello" |]
     Assert.Equal(Ok(RecordOptCommand.Run { name = Some "hello"; verbose = false }), result)
+
+[<Fact>]
+let ``parse rejects extra positional arg on record command`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let result = CommandTree.parse tree [| "alpha"; "true"; "extra" |]
+
+    match result with
+    | Error(InvalidArguments("alpha", msg)) -> test <@ msg.Contains("Unexpected argument") @>
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``parse rejects extra flag on record command`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let result = CommandTree.parse tree [| "alpha"; "true"; "--unknown" |]
+
+    match result with
+    | Error(UnknownFlag("--unknown", "alpha", [])) -> ()
+    | other -> failwith $"Expected UnknownFlag, got: %O{other}"
+
+[<Fact>]
+let ``format roundtrip for record command`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let cmd = RecordCommand.Alpha { publish = true }
+    let result = CommandTree.format tree cmd [] "test"
+    test <@ result = Some "test alpha True" @>
+
+[<Fact>]
+let ``format roundtrip for record command with default values`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let cmd = RecordCommand.Alpha { publish = false }
+    let result = CommandTree.format tree cmd [] "test"
+    test <@ result = Some "test alpha False" @>
+
+[<Fact>]
+let ``parse rejects record with missing required field`` () =
+    let tree = CommandReflection.fromUnion<RecordReqCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy" |]
+
+    match result with
+    | Error(InvalidArguments("deploy", _)) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``parse handles record with required field provided`` () =
+    let tree = CommandReflection.fromUnion<RecordReqCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "prod" |]
+    Assert.Equal(Ok(RecordReqCommand.Deploy { target = "prod"; publish = false }), result)
+
+// =============================================================================
+// Coverage: short name flag collision detection
+// =============================================================================
+
+[<Fact>]
+let ``fromUnionWithGlobals rejects short flag name collision`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnionWithGlobals<ShortCollidingCmd, ShortCollidingGlobal> "Test"
+            |> ignore)
+
+    test <@ ex.Message.Contains("-t") @>
+
+[<Fact>]
+let ``fromUnionWithGlobals accepts command flags with no short names`` () =
+    // NoShortFlag has Timeout and Trace both starting with 't', so no short names
+    // This exercises the None -> () branch in short name collision check
+    let spec = CommandReflection.fromUnionWithGlobals<NoShortCmd, NoShortGlobal> "Test"
+    let result = spec.Parse [| "run"; "--timeout"; "30" |]
+
+    match result with
+    | Ok(_, cmd) ->
+        match cmd with
+        | NoShortCmd.Run flags ->
+            test
+                <@
+                    flags
+                    |> List.exists (function
+                        | NoShortFlag.Timeout 30 -> true
+                        | _ -> false)
+                @>
+    | Error e -> failwith $"Expected Ok, got: %O{e}"
+
+// =============================================================================
+// Coverage: global flag with invalid typed value
+// =============================================================================
+
+[<Fact>]
+let ``global flag with invalid typed value returns InvalidArguments`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<TypedGlobalCmd, TypedGlobalFlag> "Test"
+
+    let result = spec.Parse [| "--count"; "notanumber"; "start" |]
+
+    match result with
+    | Error(InvalidArguments("global", msg)) -> test <@ msg.Contains("Invalid value") @>
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// Coverage: global env var error propagation
+// =============================================================================
+
+[<Fact>]
+let ``global env var with invalid value returns error`` () =
+    System.Environment.SetEnvironmentVariable("GENV_COUNT", "notanumber")
+
+    try
+        let spec =
+            CommandReflection.fromUnionWithGlobalsAndEnv<TypedGlobalCmd, TypedGlobalFlag> "Test" "GENV"
+
+        let result = spec.Parse [| "start" |]
+
+        match result with
+        | Error(InvalidArguments("env", msg)) -> test <@ msg.Contains("Invalid value") @>
+        | other -> failwith $"Expected error, got: %O{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("GENV_COUNT", null)
+
+// =============================================================================
+// Coverage: list field with error in element parsing
+// =============================================================================
+
+type IntListCmd = | [<Cmd("Sum values")>] Sum of values: int list
+
+[<Fact>]
+let ``parse returns error for list field with invalid element`` () =
+    let tree = CommandReflection.fromUnion<IntListCmd> "Test"
+    let result = CommandTree.parse tree [| "sum"; "1"; "abc"; "3" |]
+
+    match result with
+    | Error(InvalidArguments _) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
