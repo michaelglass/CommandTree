@@ -2,6 +2,44 @@
 
 All notable changes to CommandTree are documented in this file.
 
+## Unreleased
+
+- Bump tool versions (CoverageRatchet 0.10.0-alpha.1, SyncDocs 0.10.0-alpha.1, FsSemanticTagger 0.10.0-alpha.1, FsProjLint 0.7.0-alpha.1)
+
+## [0.3.5] - 2026-04-08
+
+### Changed
+
+- Simplified record/leaf parsing internals; improved branch coverage to 97.8%
+
+### Fixed
+
+- Reject trailing arguments on zero-arg commands
+- Default bool fields in record-typed arguments
+
+## [0.3.4] - 2026-04-08
+
+### Added
+
+- `InDir` variants for `Process` functions (`runInDir`, `runSilentInDir`, etc.) to run subprocesses in a specified working directory
+
+### Fixed
+
+- Inline `workDir` to fix coverage pass on CI
+
+### Changed
+
+- Updated NuGet dependencies to latest versions
+
+## [0.3.3] - 2026-04-08
+
+### Added
+
+- **Breaking:** Built-in `--help` and `--version` flags handled automatically during command tree parsing
+- SourceLink support and `Directory.Build.props` for improved NuGet packaging metadata
+- FsProjLint integration for project structure validation
+- Auto-discovering example projects in CI workflow
+
 ## [0.3.2] - 2026-04-07
 
 ### Fixed
