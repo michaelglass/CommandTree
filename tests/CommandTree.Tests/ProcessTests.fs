@@ -195,7 +195,8 @@ let ``runParallel completes all tasks`` () =
 
 [<Fact>]
 let ``runInteractiveInDir runs in specified directory`` () =
-    let code = Process.runInteractiveInDir "sh" "-c \"test -d .git || test -d .jj\"" "/tmp"
+    let code =
+        Process.runInteractiveInDir "sh" "-c \"test -d .git || test -d .jj\"" "/tmp"
     // /tmp won't have .git or .jj, so this should fail
     test <@ code <> 0 @>
 
@@ -217,7 +218,9 @@ let ``runSilentInDir runs in specified directory`` () =
 
 [<Fact>]
 let ``runSilentWithTimeoutInDir respects timeout`` () =
-    let (code, _, stderr) = Process.runSilentWithTimeoutInDir "sleep" "30" (Some 100) "/tmp"
+    let (code, _, stderr) =
+        Process.runSilentWithTimeoutInDir "sleep" "30" (Some 100) "/tmp"
+
     test <@ code = -1 @>
     test <@ stderr.Contains("timed out") @>
 
