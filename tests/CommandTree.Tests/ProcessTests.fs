@@ -190,8 +190,36 @@ let ``runParallel completes all tasks`` () =
         test <@ code = 0 @>
 
 // =============================================================================
-// CommandResult record structure
+// runInteractiveInDir — interactive with working directory
 // =============================================================================
+
+[<Fact>]
+let ``runInteractiveInDir runs in specified directory`` () =
+    let code = Process.runInteractiveInDir "sh" "-c \"test -d .git || test -d .jj\"" "/tmp"
+    // /tmp won't have .git or .jj, so this should fail
+    test <@ code <> 0 @>
+
+[<Fact>]
+let ``runInteractiveInDir returns zero for successful command`` () =
+    let code = Process.runInteractiveInDir "pwd" "" "/tmp"
+    test <@ code = 0 @>
+
+// =============================================================================
+// runSilentInDir — silent with working directory
+// =============================================================================
+
+[<Fact>]
+let ``runSilentInDir runs in specified directory`` () =
+    let (code, stdout, _) = Process.runSilentInDir "pwd" "" "/tmp"
+    test <@ code = 0 @>
+    // macOS resolves /tmp to /private/tmp
+    test <@ stdout.Contains("tmp") @>
+
+[<Fact>]
+let ``runSilentWithTimeoutInDir respects timeout`` () =
+    let (code, _, stderr) = Process.runSilentWithTimeoutInDir "sleep" "30" (Some 100) "/tmp"
+    test <@ code = -1 @>
+    test <@ stderr.Contains("timed out") @>
 
 // =============================================================================
 // run — interactive with timing
