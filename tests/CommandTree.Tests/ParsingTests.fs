@@ -1151,7 +1151,7 @@ let ``help does not show env hints without prefix`` () =
 [<Fact>]
 let ``helpWithGlobals shows global options section`` () =
     let spec = CommandReflection.fromUnionWithGlobals<GlobalCmd, GlobalFlag> "Test CLI"
-    let helpText = CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "test"
+    let helpText = CommandTree.helpWithGlobals spec.Tree spec.GlobalFlags "test"
     test <@ helpText.Contains("Global options:") @>
     test <@ helpText.Contains("--verbose") @>
     test <@ helpText.Contains("--log-level") @>
@@ -1164,7 +1164,7 @@ let ``helpWithGlobals shows env hints when configured`` () =
     let spec =
         CommandReflection.fromUnionWithGlobalsAndEnv<GlobalCmd, GlobalFlag> "Test CLI" "APP"
 
-    let helpText = CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "test"
+    let helpText = CommandTree.helpWithGlobals spec.Tree spec.GlobalFlags "test"
     test <@ helpText.Contains("(env: APP_VERBOSE)") @>
     test <@ helpText.Contains("(env: APP_LOG_LEVEL)") @>
 
@@ -1255,7 +1255,7 @@ let ``fromUnionWithGlobalsAndEnv short flag works`` () =
 [<Fact>]
 let ``helpWithGlobals with empty global flags omits section`` () =
     let tree = CommandReflection.fromUnion<GlobalCmd> "Test CLI"
-    let helpText = CommandTree.helpWithGlobals [] tree "test"
+    let helpText = CommandTree.helpWithGlobals tree [] "test"
     test <@ not (helpText.Contains("Global options:")) @>
 
 type SingleCmd = | [<Cmd("Do it")>] Do
@@ -1266,7 +1266,7 @@ let ``helpWithGlobals falls back for non-group tree`` () =
 
     match tree with
     | Group { Children = [ child ] } ->
-        let helpText = CommandTree.helpWithGlobals [] child "test"
+        let helpText = CommandTree.helpWithGlobals child [] "test"
         test <@ helpText.Contains("Do it") @>
     | _ -> failwith "Expected Group with one child"
 

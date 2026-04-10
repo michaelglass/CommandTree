@@ -347,7 +347,7 @@ module CommandTree =
         | None -> help tree [] cmdPrefix
 
     /// Generate help for the root with global options section
-    let helpWithGlobals (globalFlags: FlagInfo list) (tree: CommandTree<'Cmd>) (cmdPrefix: string) : string =
+    let helpWithGlobals (tree: CommandTree<'Cmd>) (globalFlags: FlagInfo list) (cmdPrefix: string) : string =
         let globalSection =
             if globalFlags.IsEmpty then
                 ""
