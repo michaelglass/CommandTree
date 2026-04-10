@@ -236,8 +236,20 @@ module CommandTree =
         else
             " " + (argList |> List.map formatArg |> String.concat " ")
 
+    /// Render the children of a group as a help listing
+    let private renderChildrenHelp (group: GroupData<'Cmd>) : string =
+        let defChild = group.Default |> Option.map (fun d -> d.ChildName)
+
+        group.Children
+        |> List.map (fun c ->
+            let argsStr = formatArgs' (args c)
+            let cmdStr = $"%s{name c}%s{argsStr}"
+            let marker = if defChild = Some(name c) then " (default)" else ""
+            $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
+        |> String.concat "\n"
+
     /// Generate help for a tree node (single level)
-    let rec help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
+    let help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
         let pathStr =
             if path.IsEmpty then
                 cmdPrefix
@@ -266,20 +278,7 @@ module CommandTree =
                 else
                     $"%s{pathStr} %s{group.Name}"
 
-            let defChild = group.Default |> Option.map (fun d -> d.ChildName)
-
-            let childrenHelp =
-                group.Children
-                |> List.map (fun c ->
-                    let argsStr = formatArgs' (args c)
-                    let cmdStr = $"%s{name c}%s{argsStr}"
-
-                    let marker = if defChild = Some(name c) then " (default)" else ""
-
-                    $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
-                |> String.concat "\n"
-
-            $"Usage: %s{prefix} <command>\n\n%s{group.Description}\n\nCommands:\n%s{childrenHelp}"
+            $"Usage: %s{prefix} <command>\n\n%s{group.Description}\n\nCommands:\n%s{renderChildrenHelp group}"
 
     /// Generate full help with all subtrees expanded
     let helpFull (tree: CommandTree<'Cmd>) (cmdPrefix: string) : string =
@@ -357,20 +356,7 @@ module CommandTree =
 
         match tree with
         | Group group ->
-            let defChild = group.Default |> Option.map (fun d -> d.ChildName)
-
-            let childrenHelp =
-                group.Children
-                |> List.map (fun c ->
-                    let argsStr = formatArgs' (args c)
-                    let cmdStr = $"%s{name c}%s{argsStr}"
-
-                    let marker = if defChild = Some(name c) then " (default)" else ""
-
-                    $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
-                |> String.concat "\n"
-
-            $"Usage: %s{cmdPrefix} [global options] <command>\n\n%s{group.Description}%s{globalSection}\nCommands:\n%s{childrenHelp}"
+            $"Usage: %s{cmdPrefix} [global options] <command>\n\n%s{group.Description}%s{globalSection}\nCommands:\n%s{renderChildrenHelp group}"
         | _ -> help tree [] cmdPrefix
 
     /// Find the deepest valid group path from a list of args.

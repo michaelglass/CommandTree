@@ -12,13 +12,13 @@
     },
     "Reflection.fs": {
       "line": 97.7,
-      "branch": 87.5,
-      "reason": "Remaining uncovered: inline caseName (coverage artifact), defensive null/unreachable branches, parseFieldValue Error paths only reachable for union types but called from non-union contexts"
+      "branch": 87,
+      "reason": "Remaining uncovered: inline caseName (coverage artifact), defensive null/unreachable branches, parseFieldValue Error paths only reachable for union types but called from non-union contexts, compiler-generated branches from parseFlagsLoop closure"
     },
     "Tree.fs": {
       "line": 98.72611464968153,
-      "branch": 92.5925925925926,
-      "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag"
+      "branch": 90,
+      "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching"
     },
     "UI.fs": {
       "line": 41.80327868852459,

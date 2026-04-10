@@ -4,6 +4,20 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **Breaking:** `CommandTree` variants use named record fields (`LeafData`, `GroupData`) instead of positional tuples
+- **Breaking:** `parseFieldValue` returns `Result<obj option, ParseFieldError>` instead of `Result<obj option, string>`
+- **Breaking:** `helpWithGlobals` parameter order changed from `(globalFlags, tree, prefix)` to `(tree, globalFlags, prefix)` for consistency
+- **Breaking:** `format` no longer takes an internal `path` parameter
+- Collapsed `DefaultParse`/`DefaultChild` into a single `DefaultCommand` record type
+- Added `ParseFieldError` discriminated union (`AmbiguousValue` | `InvalidValue`) for structured field parse errors
+- Extracted `renderChildrenHelp` to deduplicate help rendering between `help` and `helpWithGlobals`
+- Unified `parseDUFlags`/`scanGlobalFlags` into shared `parseFlagsLoop` helper
+- Removed unused `FlagArray` field from `FlagLookup`
+- Reused `buildTypedList` (renamed from `buildFlagList`) in `parseFields` list construction
+- Reused `makeNone` in `parseFieldValue` optional type branch
+- Removed spurious `rec` from `help` function
 - Bump tool versions (CoverageRatchet 0.10.0-alpha.1, SyncDocs 0.10.0-alpha.1, FsSemanticTagger 0.10.0-alpha.1, FsProjLint 0.7.0-alpha.1)
 
 ## [0.3.5] - 2026-04-08
