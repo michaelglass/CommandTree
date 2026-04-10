@@ -82,6 +82,15 @@ type LeafData<'Cmd> =
         FormatArgs: 'Cmd -> string list option
     }
 
+/// Default subcommand for a group (collapses name + parse into one value)
+and [<NoComparison; NoEquality>] DefaultCommand<'Cmd> =
+    {
+        /// Name of the default child command
+        ChildName: string
+        /// Parse function for the default subcommand
+        Parse: string array -> Result<'Cmd, ParseError>
+    }
+
 /// Data for a group (subcommand container) node
 and [<NoComparison; NoEquality>] GroupData<'Cmd> =
     {
@@ -91,10 +100,8 @@ and [<NoComparison; NoEquality>] GroupData<'Cmd> =
         Description: string
         /// Child command nodes
         Children: CommandTree<'Cmd> list
-        /// Default subcommand parse function, if any
-        DefaultParse: (string array -> Result<'Cmd, ParseError>) option
-        /// Name of the default child, if any
-        DefaultChild: string option
+        /// Default subcommand, if any
+        Default: DefaultCommand<'Cmd> option
     }
 
 /// Recursive command tree for declarative parsing and help generation
@@ -150,8 +157,8 @@ module CommandTree =
             | Group group, [||] ->
                 let currentPath = if group.Name = "" then path else path @ [ group.Name ]
 
-                match group.DefaultParse with
-                | Some p -> p [||]
+                match group.Default with
+                | Some def -> def.Parse [||]
                 | None -> Error(HelpRequested currentPath)
 
             // Group with args: try routing into child first, then check --help
@@ -249,17 +256,15 @@ module CommandTree =
                 else
                     $"%s{pathStr} %s{group.Name}"
 
+            let defChild = group.Default |> Option.map (fun d -> d.ChildName)
+
             let childrenHelp =
                 group.Children
                 |> List.map (fun c ->
                     let argsStr = formatArgs' (args c)
                     let cmdStr = $"%s{name c}%s{argsStr}"
 
-                    let marker =
-                        if group.DefaultChild = Some(name c) then
-                            " (default)"
-                        else
-                            ""
+                    let marker = if defChild = Some(name c) then " (default)" else ""
 
                     $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
                 |> String.concat "\n"
@@ -289,12 +294,14 @@ module CommandTree =
 
                 let childIndent = if group.Name = "" then indent else indent + 1
 
+                let defChild = group.Default |> Option.map (fun d -> d.ChildName)
+
                 let childLines =
                     group.Children
                     |> List.collect (fun c ->
                         let lines = formatNode c childIndent
 
-                        match group.DefaultChild, lines with
+                        match defChild, lines with
                         | Some dc, first :: rest when name c = dc -> (first + " (default)") :: rest
                         | _ -> lines)
 
@@ -340,17 +347,15 @@ module CommandTree =
 
         match tree with
         | Group group ->
+            let defChild = group.Default |> Option.map (fun d -> d.ChildName)
+
             let childrenHelp =
                 group.Children
                 |> List.map (fun c ->
                     let argsStr = formatArgs' (args c)
                     let cmdStr = $"%s{name c}%s{argsStr}"
 
-                    let marker =
-                        if group.DefaultChild = Some(name c) then
-                            " (default)"
-                        else
-                            ""
+                    let marker = if defChild = Some(name c) then " (default)" else ""
 
                     $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
                 |> String.concat "\n"

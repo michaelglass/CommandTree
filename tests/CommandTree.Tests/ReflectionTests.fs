@@ -170,7 +170,7 @@ let ``fromUnion handles CmdDefault attribute`` () =
         let devNode = group.Children |> List.find (fun c -> CommandTree.name c = "dev")
 
         match devNode with
-        | CommandTree.Group devGroup -> test <@ devGroup.DefaultParse.IsSome @>
+        | CommandTree.Group devGroup -> test <@ devGroup.Default.IsSome @>
         | CommandTree.Leaf _ -> failwith "Expected dev to be a group"
     | CommandTree.Leaf _ -> failwith "Expected root group"
 
