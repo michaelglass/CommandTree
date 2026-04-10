@@ -155,7 +155,7 @@ let ``roundtrip format for optional union arg`` () =
     let tree = CommandReflection.fromUnion<UnionArgCommand> "Test"
 
     let result =
-        CommandTree.format tree (UnionArgCommand.ChooseOpt(Some EnvKind.Prod)) [] "cmd"
+        CommandTree.format tree (UnionArgCommand.ChooseOpt(Some EnvKind.Prod)) "cmd"
 
     test <@ result = Some "cmd choose-opt prod" @>
 

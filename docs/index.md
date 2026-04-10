@@ -222,7 +222,7 @@ CommandTree.help tree path prefix        // Help text for one level
 CommandTree.helpFull tree prefix         // Full recursive help
 CommandTree.helpForPath tree path prefix // Help for a subcommand path
 CommandTree.helpWithGlobals flags tree prefix // Help with global options section
-CommandTree.format tree cmd path prefix  // Format command back to CLI string
+CommandTree.format tree cmd prefix       // Format command back to CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path
 ```

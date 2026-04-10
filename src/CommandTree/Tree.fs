@@ -179,9 +179,13 @@ module CommandTree =
 
         parseRec tree args []
 
-    /// Format a command by walking the tree to find matching leaf
-    /// Returns the full command string (e.g., "build env edit staging")
-    let rec format (tree: CommandTree<'Cmd>) (cmd: 'Cmd) (path: string list) (cmdPrefix: string) : string option =
+    /// Format a command by walking the tree to find matching leaf (internal recursive)
+    let rec private formatRec
+        (tree: CommandTree<'Cmd>)
+        (cmd: 'Cmd)
+        (path: string list)
+        (cmdPrefix: string)
+        : string option =
         match tree with
         | Leaf leaf ->
             match leaf.FormatArgs cmd with
@@ -192,7 +196,13 @@ module CommandTree =
 
         | Group group ->
             let newPath = if group.Name = "" then path else path @ [ group.Name ]
-            group.Children |> List.tryPick (fun child -> format child cmd newPath cmdPrefix)
+
+            group.Children
+            |> List.tryPick (fun child -> formatRec child cmd newPath cmdPrefix)
+
+    /// Format a command value to its full CLI string (e.g., "mycli build env edit staging")
+    let format (tree: CommandTree<'Cmd>) (cmd: 'Cmd) (cmdPrefix: string) : string option =
+        formatRec tree cmd [] cmdPrefix
 
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =

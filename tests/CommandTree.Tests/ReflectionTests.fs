@@ -377,7 +377,7 @@ let ``parse and format roundtrip for int64 command`` () =
     let tree = CommandReflection.fromUnion<TypesCommand> "Test"
     let result = CommandTree.parse tree [| "run"; "100" |]
     Assert.Equal(Ok(TypesCommand.Run 100L), result)
-    let formatted = CommandTree.format tree (TypesCommand.Run 100L) [] "cmd"
+    let formatted = CommandTree.format tree (TypesCommand.Run 100L) "cmd"
     Assert.Equal(Some "cmd run 100", formatted)
 
 [<Fact>]
@@ -449,7 +449,7 @@ let ``format roundtrip for list field command`` () =
     let tree = CommandReflection.fromUnion<ListFormatCommand> "Test"
 
     let result =
-        CommandTree.format tree (ListFormatCommand.Tag("v1", [ "a.fs"; "b.fs" ])) [] "cmd"
+        CommandTree.format tree (ListFormatCommand.Tag("v1", [ "a.fs"; "b.fs" ])) "cmd"
 
     Assert.Equal(Some "cmd tag v1 a.fs b.fs", result)
 

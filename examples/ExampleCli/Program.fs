@@ -371,7 +371,7 @@ let handleReflectionDemo
             let formatted = CommandReflection.formatCmd ex
             UI.info $"%s{formatted}"
 
-            match CommandTree.format tree ex [] cmdName with
+            match CommandTree.format tree ex cmdName with
             | Some full -> UI.dimInfo $"Full: %s{full}"
             | None -> UI.dimInfo "Could not format via tree"
 

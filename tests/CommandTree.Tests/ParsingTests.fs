@@ -366,19 +366,19 @@ let ``helpFull expands nested commands`` () =
 [<Fact>]
 let ``format returns command string`` () =
     let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
-    let result = CommandTree.format tree SimpleCommand.Check [] "cmd"
+    let result = CommandTree.format tree SimpleCommand.Check "cmd"
     Assert.Equal(Some "cmd check", result)
 
 [<Fact>]
 let ``format includes arguments`` () =
     let tree = CommandReflection.fromUnion<CommandWithArgs> "Test"
-    let result = CommandTree.format tree (CommandWithArgs.Greet "World") [] "cmd"
+    let result = CommandTree.format tree (CommandWithArgs.Greet "World") "cmd"
     Assert.Equal(Some "cmd greet World", result)
 
 [<Fact>]
 let ``format handles nested commands`` () =
     let tree = CommandReflection.fromUnion<RootCommand> "Test"
-    let result = CommandTree.format tree (RootCommand.Dev DevCommand.Build) [] "cmd"
+    let result = CommandTree.format tree (RootCommand.Dev DevCommand.Build) "cmd"
     Assert.Equal(Some "cmd dev build", result)
 
 // =============================================================================
@@ -789,14 +789,14 @@ let ``help shows short flag aliases in options`` () =
 let ``format roundtrip for DU flag command`` () =
     let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
     let cmd = DUFlagCommand.Deploy [ DeployDUFlag.Env "prod"; DeployDUFlag.DryRun ]
-    let result = CommandTree.format tree cmd [] "test"
+    let result = CommandTree.format tree cmd "test"
     test <@ result = Some "test deploy --env prod --dry-run" @>
 
 [<Fact>]
 let ``format roundtrip for DU flag command with no flags`` () =
     let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
     let cmd = DUFlagCommand.Deploy []
-    let result = CommandTree.format tree cmd [] "test"
+    let result = CommandTree.format tree cmd "test"
     test <@ result = Some "test deploy" @>
 
 [<Fact>]
@@ -1397,14 +1397,14 @@ let ``parse rejects extra flag on record command`` () =
 let ``format roundtrip for record command`` () =
     let tree = CommandReflection.fromUnion<RecordCommand> "Test"
     let cmd = RecordCommand.Alpha { publish = true }
-    let result = CommandTree.format tree cmd [] "test"
+    let result = CommandTree.format tree cmd "test"
     test <@ result = Some "test alpha True" @>
 
 [<Fact>]
 let ``format roundtrip for record command with default values`` () =
     let tree = CommandReflection.fromUnion<RecordCommand> "Test"
     let cmd = RecordCommand.Alpha { publish = false }
-    let result = CommandTree.format tree cmd [] "test"
+    let result = CommandTree.format tree cmd "test"
     test <@ result = Some "test alpha False" @>
 
 [<Fact>]
