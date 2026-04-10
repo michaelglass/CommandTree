@@ -212,7 +212,7 @@ let ``parseFieldValue ambiguous prefix returns Error`` () =
         test <@ input = "sta" @>
         test <@ candidates |> List.contains "start" @>
         test <@ candidates |> List.contains "status" @>
-    | Ok _ -> failwith "Expected Error for ambiguous prefix"
+    | other -> failwith $"Expected Error(AmbiguousValue), got %A{other}"
 
 // =============================================================================
 // Fish completions with argument values
