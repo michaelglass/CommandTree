@@ -251,6 +251,13 @@ module CommandReflection =
               EnvVar = envVar })
         |> Array.toList
 
+    /// Make a None value for an option type
+    let makeNone (optionType: Type) =
+        let noneCase =
+            FSharpType.GetUnionCases(optionType) |> Array.find (fun c -> c.Name = "None")
+
+        FSharpValue.MakeUnion(noneCase, [||])
+
     /// Parse a single field value from string
     let rec parseFieldValue (fieldType: Type) (value: string) : Result<obj option, ParseFieldError> =
         if fieldType = typeof<string> then
@@ -283,10 +290,7 @@ module CommandReflection =
             let innerType = fieldType.GetGenericArguments().[0]
 
             if String.IsNullOrEmpty(value) then
-                let noneCase =
-                    FSharpType.GetUnionCases(fieldType) |> Array.find (fun c -> c.Name = "None")
-
-                Ok(Some(FSharpValue.MakeUnion(noneCase, [||])))
+                Ok(Some(makeNone fieldType))
             else
                 match parseFieldValue innerType value with
                 | Ok(Some v) ->
@@ -355,18 +359,23 @@ module CommandReflection =
             toKebabCase case.Name
         | _ -> string<obj> value
 
-    /// Make a None value for an option type
-    let makeNone (optionType: Type) =
-        let noneCase =
-            FSharpType.GetUnionCases(optionType) |> Array.find (fun c -> c.Name = "None")
-
-        FSharpValue.MakeUnion(noneCase, [||])
-
     /// Convert a ParseFieldError to a ParseError for a given command
     let internal fieldErrorToParseError (cmdName: string) (fieldError: ParseFieldError) : ParseError =
         match fieldError with
         | AmbiguousValue(input, candidates) -> AmbiguousArgument(input, candidates)
         | InvalidValue msg -> InvalidArguments(cmdName, msg)
+
+    /// Build a typed F# list from a sequence of boxed values
+    let internal buildTypedList (elemType: Type) (items: obj seq) : obj =
+        let listType = typedefof<list<_>>.MakeGenericType(elemType)
+        let listCases = FSharpType.GetUnionCases(listType)
+        let nilCase = listCases |> Array.find (fun c -> c.Name = "Empty")
+        let consCase = listCases |> Array.find (fun c -> c.Name = "Cons")
+
+        Seq.foldBack
+            (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
+            items
+            (FSharpValue.MakeUnion(nilCase, [||]))
 
     /// Parse fields from args array
     let parseFields
@@ -405,18 +414,7 @@ module CommandReflection =
                         if values.Length <> remaining.Length then
                             Ok None
                         else
-                            let listType = typedefof<list<_>>.MakeGenericType(elemType)
-                            let cases = FSharpType.GetUnionCases(listType)
-                            let nilCase = cases |> Array.find (fun c -> c.Name = "Empty")
-                            let consCase = cases |> Array.find (fun c -> c.Name = "Cons")
-
-                            let fsList =
-                                Array.foldBack
-                                    (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
-                                    values
-                                    (FSharpValue.MakeUnion(nilCase, [||]))
-
-                            Ok(Some fsList)
+                            Ok(Some(buildTypedList elemType values))
             elif i < args.Length then
                 parseFieldValue field.PropertyType args.[i]
             elif isOptionalType field.PropertyType then
@@ -460,42 +458,26 @@ module CommandReflection =
     type internal FlagLookup =
         { LongMap: Map<string, int>
           ShortMap: Map<string, int>
-          ValidFlags: string list
-          FlagArray: FlagInfo array }
+          ValidFlags: string list }
 
     /// Build flag lookup tables from FlagInfo (called once at tree construction)
     let internal buildFlagLookup (flagInfo: FlagInfo list) : FlagLookup =
-        let flagArray = flagInfo |> List.toArray
-
         { LongMap = flagInfo |> List.mapi (fun i fi -> $"--%s{fi.LongName}", i) |> Map.ofList
           ShortMap =
             flagInfo
             |> List.mapi (fun i fi -> i, fi)
             |> List.choose (fun (i, fi) -> fi.ShortName |> Option.map (fun s -> $"-%s{s}", i))
             |> Map.ofList
-          ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}")
-          FlagArray = flagArray }
+          ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}") }
 
-    /// Build a typed F# list from a sequence of boxed values
-    let internal buildFlagList (flagType: Type) (items: obj seq) : obj =
-        let listType = typedefof<list<_>>.MakeGenericType(flagType)
-        let listCases = FSharpType.GetUnionCases(listType)
-        let nilCase = listCases |> Array.find (fun c -> c.Name = "Empty")
-        let consCase = listCases |> Array.find (fun c -> c.Name = "Cons")
-
-        Seq.foldBack
-            (fun v acc -> FSharpValue.MakeUnion(consCase, [| v; acc |]))
-            items
-            (FSharpValue.MakeUnion(nilCase, [||]))
-
-    /// Parse DU-based flags from args array, returning an F# list of flag DU values or error
-    let internal parseDUFlags
+    /// Shared flag parsing loop. On unknown arg, calls onUnknown which returns Some error to stop or None to skip.
+    let private parseFlagsLoop
         (cmdName: string)
-        (flagType: Type)
+        (cases: UnionCaseInfo array)
         (lookup: FlagLookup)
         (args: string array)
-        : Result<obj, ParseError> =
-        let cases = FSharpType.GetUnionCases(flagType)
+        (onUnknown: string -> int -> ParseError option)
+        : Result<System.Collections.Generic.List<obj>, ParseError> =
         let results = System.Collections.Generic.List<obj>()
         let seenTags = System.Collections.Generic.HashSet<int>()
         let mutable i = 0
@@ -509,7 +491,10 @@ module CommandReflection =
                 |> Option.orElseWith (fun () -> Map.tryFind arg lookup.ShortMap)
 
             match flagIdx with
-            | None -> error <- Some(UnknownFlag(arg, cmdName, lookup.ValidFlags))
+            | None ->
+                match onUnknown arg i with
+                | Some e -> error <- Some e
+                | None -> i <- i + 1
             | Some idx ->
                 if not (seenTags.Add(idx)) then
                     error <- Some(DuplicateFlag(arg, cmdName))
@@ -535,7 +520,19 @@ module CommandReflection =
 
         match error with
         | Some e -> Error e
-        | None -> Ok(buildFlagList flagType results)
+        | None -> Ok results
+
+    /// Parse DU-based flags from args array, returning an F# list of flag DU values or error
+    let internal parseDUFlags
+        (cmdName: string)
+        (flagType: Type)
+        (lookup: FlagLookup)
+        (args: string array)
+        : Result<obj, ParseError> =
+        let cases = FSharpType.GetUnionCases(flagType)
+
+        parseFlagsLoop cmdName cases lookup args (fun arg _ -> Some(UnknownFlag(arg, cmdName, lookup.ValidFlags)))
+        |> Result.map (fun results -> buildTypedList flagType results)
 
     /// Resolve env vars for flags not set by CLI, returning additional flag DU values
     let internal resolveEnvVars
@@ -728,7 +725,7 @@ module CommandReflection =
                         match resolveEnvVars flagDUType flagInfo cliItems with
                         | Ok envItems ->
                             let allItems = Seq.append cliItems envItems
-                            let mergedList = buildFlagList flagDUType allItems
+                            let mergedList = buildTypedList flagDUType allItems
                             let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| mergedList |]))
                             Ok(cmdValue :?> 'Cmd)
                         | Error e -> Error e
@@ -966,50 +963,14 @@ module CommandReflection =
         (args: string array)
         : Result<System.Collections.Generic.List<obj> * string array, ParseError> =
         let globalCases = FSharpType.GetUnionCases(globalType)
-        let globalResults = System.Collections.Generic.List<obj>()
         let commandArgs = System.Collections.Generic.List<string>()
-        let seenTags = System.Collections.Generic.HashSet<int>()
-        let mutable i = 0
-        let mutable error: ParseError option = None
 
-        while i < args.Length && error.IsNone do
-            let arg = args.[i]
+        let onUnknown (arg: string) (_index: int) =
+            commandArgs.Add(arg)
+            None
 
-            let flagIdx =
-                Map.tryFind arg globalLookup.LongMap
-                |> Option.orElseWith (fun () -> Map.tryFind arg globalLookup.ShortMap)
-
-            match flagIdx with
-            | Some idx ->
-                if not (seenTags.Add(idx)) then
-                    error <- Some(DuplicateFlag(arg, "global"))
-                else
-                    let case = globalCases.[idx]
-                    let fields = case.GetFields()
-
-                    if fields.Length = 0 then
-                        globalResults.Add(FSharpValue.MakeUnion(case, [||]))
-                        i <- i + 1
-                    else if i + 1 >= args.Length then
-                        error <- Some(InvalidArguments("global", $"Flag '%s{arg}' requires a value"))
-                    else
-                        let valueStr = args.[i + 1]
-
-                        match parseFieldValue fields.[0].PropertyType valueStr with
-                        | Ok(Some v) ->
-                            globalResults.Add(FSharpValue.MakeUnion(case, [| v |]))
-                            i <- i + 2
-                        | Ok None ->
-                            error <-
-                                Some(InvalidArguments("global", $"Invalid value '%s{valueStr}' for flag '%s{arg}'"))
-                        | Error e -> error <- Some(fieldErrorToParseError "global" e)
-            | None ->
-                commandArgs.Add(arg)
-                i <- i + 1
-
-        match error with
-        | Some e -> Error e
-        | None -> Ok(globalResults, commandArgs.ToArray())
+        parseFlagsLoop "global" globalCases globalLookup args onUnknown
+        |> Result.map (fun globalResults -> (globalResults, commandArgs.ToArray()))
 
     /// Internal: build a GlobalSpec with optional env prefix
     let private fromUnionWithGlobalsInternal<'Cmd, 'Globals>
@@ -1036,8 +997,8 @@ module CommandReflection =
                         | Error e -> Error e
                         | Ok envItems ->
                             let allItems = Seq.append cliItems envItems
-                            Ok(buildFlagList globalType allItems :?> 'Globals list)
-                    | None -> Ok(buildFlagList globalType cliItems :?> 'Globals list)
+                            Ok(buildTypedList globalType allItems :?> 'Globals list)
+                    | None -> Ok(buildTypedList globalType cliItems :?> 'Globals list)
 
                 match globalsResult with
                 | Error e -> Error e
