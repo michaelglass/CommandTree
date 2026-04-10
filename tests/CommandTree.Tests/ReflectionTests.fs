@@ -80,8 +80,8 @@ let ``fromUnion derives names from case names`` () =
     let tree = CommandReflection.fromUnion<MinimalCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let names = children |> List.map CommandTree.name
+    | CommandTree.Group group ->
+        let names = group.Children |> List.map CommandTree.name
         test <@ List.contains "check" names @>
         test <@ List.contains "build" names @>
         test <@ List.contains "test-suite" names @>
@@ -93,12 +93,12 @@ let ``fromUnion derives descriptions from case names`` () =
     let tree = CommandReflection.fromUnion<MinimalCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let checkNode = children |> List.find (fun c -> CommandTree.name c = "check")
+    | CommandTree.Group group ->
+        let checkNode = group.Children |> List.find (fun c -> CommandTree.name c = "check")
         Assert.Equal("Check", CommandTree.desc checkNode)
 
         let testSuiteNode =
-            children |> List.find (fun c -> CommandTree.name c = "test-suite")
+            group.Children |> List.find (fun c -> CommandTree.name c = "test-suite")
 
         Assert.Equal("Test suite", CommandTree.desc testSuiteNode)
     | CommandTree.Leaf _ -> failwith "Expected group"
@@ -112,8 +112,8 @@ let ``fromUnion uses attribute description when provided`` () =
     let tree = CommandReflection.fromUnion<AttributedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let checkNode = children |> List.find (fun c -> CommandTree.name c = "check")
+    | CommandTree.Group group ->
+        let checkNode = group.Children |> List.find (fun c -> CommandTree.name c = "check")
         Assert.Equal("Run all checks", CommandTree.desc checkNode)
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -122,8 +122,8 @@ let ``fromUnion uses attribute name when provided`` () =
     let tree = CommandReflection.fromUnion<AttributedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let names = children |> List.map CommandTree.name
+    | CommandTree.Group group ->
+        let names = group.Children |> List.map CommandTree.name
         test <@ List.contains "compile" names @> // Build with Name = "compile"
         test <@ List.contains "fmt" names @> // Format with Name = "fmt"
         test <@ not (List.contains "build" names) @>
@@ -135,8 +135,8 @@ let ``fromUnion uses custom name with explicit description`` () =
     let tree = CommandReflection.fromUnion<AttributedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let fmtNode = children |> List.find (fun c -> CommandTree.name c = "fmt")
+    | CommandTree.Group group ->
+        let fmtNode = group.Children |> List.find (fun c -> CommandTree.name c = "fmt")
         Assert.Equal("Format code", CommandTree.desc fmtNode)
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -149,12 +149,12 @@ let ``fromUnion creates groups for nested unions`` () =
     let tree = CommandReflection.fromUnion<NestedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let devNode = children |> List.find (fun c -> CommandTree.name c = "dev")
+    | CommandTree.Group group ->
+        let devNode = group.Children |> List.find (fun c -> CommandTree.name c = "dev")
 
         match devNode with
-        | CommandTree.Group(_, _, devChildren, _, _) ->
-            let names = devChildren |> List.map CommandTree.name
+        | CommandTree.Group devGroup ->
+            let names = devGroup.Children |> List.map CommandTree.name
             test <@ List.contains "check" names @>
             test <@ List.contains "build" names @>
             test <@ List.contains "test" names @>
@@ -166,11 +166,11 @@ let ``fromUnion handles CmdDefault attribute`` () =
     let tree = CommandReflection.fromUnion<NestedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let devNode = children |> List.find (fun c -> CommandTree.name c = "dev")
+    | CommandTree.Group group ->
+        let devNode = group.Children |> List.find (fun c -> CommandTree.name c = "dev")
 
         match devNode with
-        | CommandTree.Group(_, _, _, defaultParse, _) -> test <@ defaultParse.IsSome @>
+        | CommandTree.Group devGroup -> test <@ devGroup.DefaultParse.IsSome @>
         | CommandTree.Leaf _ -> failwith "Expected dev to be a group"
     | CommandTree.Leaf _ -> failwith "Expected root group"
 
@@ -428,12 +428,12 @@ let ``fromUnion list field has correct type name`` () =
     let tree = CommandReflection.fromUnion<ListFormatCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let tagNode = children |> List.find (fun c -> CommandTree.name c = "tag")
+    | CommandTree.Group group ->
+        let tagNode = group.Children |> List.find (fun c -> CommandTree.name c = "tag")
 
         match tagNode with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            let filesArg = args |> List.find (fun a -> a.Name = "files")
+        | CommandTree.Leaf leaf ->
+            let filesArg = leaf.Args |> List.find (fun a -> a.Name = "files")
             test <@ filesArg.TypeName = "string list" @>
             test <@ filesArg.IsList = true @>
             test <@ filesArg.IsOptional = false @>
@@ -565,7 +565,7 @@ let ``fromUnion generates correct typeName for float field`` () =
     let tree = CommandReflection.fromUnion<FloatCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, [ child ], _, _) ->
+    | CommandTree.Group { Children = [ child ] } ->
         let args = CommandTree.args child
         test <@ args.Length = 1 @>
         test <@ args.[0].TypeName = "float" @>
@@ -576,7 +576,7 @@ let ``fromUnion generates correct typeName for decimal field`` () =
     let tree = CommandReflection.fromUnion<DecimalCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, [ child ], _, _) ->
+    | CommandTree.Group { Children = [ child ] } ->
         let args = CommandTree.args child
         test <@ args.Length = 1 @>
         test <@ args.[0].TypeName = "decimal" @>
@@ -597,7 +597,9 @@ let ``parseFieldValue returns Error for option with ambiguous union inner`` () =
     let result = CommandReflection.parseFieldValue typeof<AmbigUnion option> "sta"
 
     match result with
-    | Error msg -> test <@ msg.Contains("Ambiguous") @>
+    | Error(AmbiguousValue(input, candidates)) ->
+        test <@ input = "sta" @>
+        test <@ candidates |> List.length > 1 @>
     | _ -> failwith "Expected Error for ambiguous union in option"
 
 // =============================================================================

@@ -57,42 +57,70 @@ type ParseError =
     /// Same flag provided more than once.
     | DuplicateFlag of flag: string * command: string
 
-/// Recursive command tree for declarative parsing and help generation
+/// Structured error from field-level value parsing
+type ParseFieldError =
+    /// Input matched multiple union case names
+    | AmbiguousValue of input: string * candidates: string list
+    /// Input could not be parsed as the expected type
+    | InvalidValue of message: string
+
+/// Data for a leaf command node
 [<NoComparison; NoEquality>]
-type CommandTree<'Cmd> =
+type LeafData<'Cmd> =
+    {
+        /// Command name (kebab-case)
+        Name: string
+        /// Human-readable description
+        Description: string
+        /// Positional argument metadata
+        Args: ArgInfo list
+        /// Flag metadata for named options
+        Flags: FlagInfo list
+        /// Parse CLI args into a command value
+        Parse: string array -> Result<'Cmd, ParseError>
+        /// Format a command value back to CLI arg tokens
+        FormatArgs: 'Cmd -> string list option
+    }
+
+/// Data for a group (subcommand container) node
+and [<NoComparison; NoEquality>] GroupData<'Cmd> =
+    {
+        /// Group name (empty string for root)
+        Name: string
+        /// Human-readable description
+        Description: string
+        /// Child command nodes
+        Children: CommandTree<'Cmd> list
+        /// Default subcommand parse function, if any
+        DefaultParse: (string array -> Result<'Cmd, ParseError>) option
+        /// Name of the default child, if any
+        DefaultChild: string option
+    }
+
+/// Recursive command tree for declarative parsing and help generation
+and [<NoComparison; NoEquality>] CommandTree<'Cmd> =
     /// Leaf command with parse and format functions
-    | Leaf of
-        name: string *
-        desc: string *
-        args: ArgInfo list *
-        flags: FlagInfo list *
-        parse: (string array -> Result<'Cmd, ParseError>) *
-        formatArgs: ('Cmd -> string list option)
+    | Leaf of LeafData<'Cmd>
     /// Group: contains subcommands
-    | Group of
-        name: string *
-        desc: string *
-        children: CommandTree<'Cmd> list *
-        defaultParse: (string array -> Result<'Cmd, ParseError>) option *
-        defaultChild: string option
+    | Group of GroupData<'Cmd>
 
 module CommandTree =
     /// Get the name of a command tree node
     let name =
         function
-        | Leaf(n, _, _, _, _, _) -> n
-        | Group(n, _, _, _, _) -> n
+        | Leaf leaf -> leaf.Name
+        | Group group -> group.Name
 
     /// Get the description of a command tree node
     let desc =
         function
-        | Leaf(_, d, _, _, _, _) -> d
-        | Group(_, d, _, _, _) -> d
+        | Leaf leaf -> leaf.Description
+        | Group group -> group.Description
 
     /// Get argument info for a leaf node
     let args =
         function
-        | Leaf(_, _, a, _, _, _) -> a
+        | Leaf leaf -> leaf.Args
         | Group _ -> []
 
     /// Check if args contain --help
@@ -110,29 +138,29 @@ module CommandTree =
         let rec parseRec (node: CommandTree<'Cmd>) (args: string array) (path: string list) =
             match node, args with
             // Leaf node: check for --help unless leaf has explicit help flag
-            | Leaf(leafName, _, _, leafFlags, leafParse, _), _ ->
-                let currentPath = path @ [ leafName ]
+            | Leaf leaf, _ ->
+                let currentPath = path @ [ leaf.Name ]
 
-                if hasHelpFlag args && not (hasExplicitHelpFlag leafFlags) then
+                if hasHelpFlag args && not (hasExplicitHelpFlag leaf.Flags) then
                     Error(HelpRequested currentPath)
                 else
-                    leafParse args
+                    leaf.Parse args
 
             // Group with no args: use default if available, otherwise show help
-            | Group(groupName, _, _, defaultParse, _), [||] ->
-                let currentPath = if groupName = "" then path else path @ [ groupName ]
+            | Group group, [||] ->
+                let currentPath = if group.Name = "" then path else path @ [ group.Name ]
 
-                match defaultParse with
+                match group.DefaultParse with
                 | Some p -> p [||]
                 | None -> Error(HelpRequested currentPath)
 
             // Group with args: try routing into child first, then check --help
-            | Group(groupName, _, children, _, _), _ ->
-                let currentPath = if groupName = "" then path else path @ [ groupName ]
+            | Group group, _ ->
+                let currentPath = if group.Name = "" then path else path @ [ group.Name ]
                 let subCmd = args.[0]
                 let rest = args |> Array.skip 1
 
-                match children |> List.tryFind (fun c -> name c = subCmd) with
+                match group.Children |> List.tryFind (fun c -> name c = subCmd) with
                 | Some child -> parseRec child rest currentPath
                 | None ->
                     if hasHelpFlag args then
@@ -148,16 +176,16 @@ module CommandTree =
     /// Returns the full command string (e.g., "build env edit staging")
     let rec format (tree: CommandTree<'Cmd>) (cmd: 'Cmd) (path: string list) (cmdPrefix: string) : string option =
         match tree with
-        | Leaf(leafName, _, _, _, _, formatArgs) ->
-            match formatArgs cmd with
+        | Leaf leaf ->
+            match leaf.FormatArgs cmd with
             | Some args ->
-                let parts = path @ [ leafName ] @ args |> List.filter (fun s -> s <> "")
+                let parts = path @ [ leaf.Name ] @ args |> List.filter (fun s -> s <> "")
                 Some(cmdPrefix + " " + String.concat " " parts)
             | None -> None
 
-        | Group(groupName, _, children, _, _) ->
-            let newPath = if groupName = "" then path else path @ [ groupName ]
-            children |> List.tryPick (fun child -> format child cmd newPath cmdPrefix)
+        | Group group ->
+            let newPath = if group.Name = "" then path else path @ [ group.Name ]
+            group.Children |> List.tryPick (fun child -> format child cmd newPath cmdPrefix)
 
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =
@@ -200,37 +228,43 @@ module CommandTree =
                 cmdPrefix + " " + String.concat " " path
 
         match tree with
-        | Leaf(leafName, leafDesc, leafArgs, leafFlags, _, _) ->
-            let argsStr = formatArgs' leafArgs
+        | Leaf leaf ->
+            let argsStr = formatArgs' leaf.Args
 
-            let optionsStr = if leafFlags.IsEmpty then "" else " [options]"
+            let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
 
             let flagsSection =
-                if leafFlags.IsEmpty then
+                if leaf.Flags.IsEmpty then
                     ""
                 else
-                    let flagLines = leafFlags |> List.map renderFlagLine |> String.concat "\n"
+                    let flagLines = leaf.Flags |> List.map renderFlagLine |> String.concat "\n"
                     $"\n\nOptions:\n%s{flagLines}"
 
-            $"Usage: %s{pathStr} %s{leafName}%s{argsStr}%s{optionsStr}\n\n%s{leafDesc}%s{flagsSection}"
+            $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{flagsSection}"
 
-        | Group(groupName, groupDesc, children, _, defChild) ->
+        | Group group ->
             let prefix =
-                if groupName = "" then
+                if group.Name = "" then
                     pathStr
                 else
-                    $"%s{pathStr} %s{groupName}"
+                    $"%s{pathStr} %s{group.Name}"
 
             let childrenHelp =
-                children
+                group.Children
                 |> List.map (fun c ->
                     let argsStr = formatArgs' (args c)
                     let cmdStr = $"%s{name c}%s{argsStr}"
-                    let marker = if defChild = Some(name c) then " (default)" else ""
+
+                    let marker =
+                        if group.DefaultChild = Some(name c) then
+                            " (default)"
+                        else
+                            ""
+
                     $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
                 |> String.concat "\n"
 
-            $"Usage: %s{prefix} <command>\n\n%s{groupDesc}\n\nCommands:\n%s{childrenHelp}"
+            $"Usage: %s{prefix} <command>\n\n%s{group.Description}\n\nCommands:\n%s{childrenHelp}"
 
     /// Generate full help with all subtrees expanded
     let helpFull (tree: CommandTree<'Cmd>) (cmdPrefix: string) : string =
@@ -238,29 +272,29 @@ module CommandTree =
             let pad = String.replicate indent "  "
 
             match node with
-            | Leaf(leafName, leafDesc, leafArgs, leafFlags, _, _) ->
-                let argsStr = formatArgs' leafArgs
+            | Leaf leaf ->
+                let argsStr = formatArgs' leaf.Args
 
-                let optionsStr = if leafFlags.IsEmpty then "" else " [options]"
+                let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
 
-                let cmdStr = $"%s{leafName}%s{argsStr}%s{optionsStr}"
-                [ $"%s{pad}%s{cmdStr.PadRight(20)} %s{leafDesc}" ]
+                let cmdStr = $"%s{leaf.Name}%s{argsStr}%s{optionsStr}"
+                [ $"%s{pad}%s{cmdStr.PadRight(20)} %s{leaf.Description}" ]
 
-            | Group(groupName, groupDesc, children, _, defChild) ->
+            | Group group ->
                 let header =
-                    if groupName = "" then
+                    if group.Name = "" then
                         []
                     else
-                        [ $"%s{pad}%s{groupName.PadRight(20)} %s{groupDesc}" ]
+                        [ $"%s{pad}%s{group.Name.PadRight(20)} %s{group.Description}" ]
 
-                let childIndent = if groupName = "" then indent else indent + 1
+                let childIndent = if group.Name = "" then indent else indent + 1
 
                 let childLines =
-                    children
+                    group.Children
                     |> List.collect (fun c ->
                         let lines = formatNode c childIndent
 
-                        match defChild, lines with
+                        match group.DefaultChild, lines with
                         | Some dc, first :: rest when name c = dc -> (first + " (default)") :: rest
                         | _ -> lines)
 
@@ -276,8 +310,8 @@ module CommandTree =
         | segment :: rest ->
             match tree with
             | Leaf _ -> None
-            | Group(_, _, children, _, _) ->
-                children
+            | Group group ->
+                group.Children
                 |> List.tryFind (fun c -> name c = segment)
                 |> Option.bind (fun child -> findByPath child rest)
 
@@ -305,17 +339,23 @@ module CommandTree =
                 $"\nGlobal options:\n%s{flagLines}\n"
 
         match tree with
-        | Group(_, groupDesc, children, _, defChild) ->
+        | Group group ->
             let childrenHelp =
-                children
+                group.Children
                 |> List.map (fun c ->
                     let argsStr = formatArgs' (args c)
                     let cmdStr = $"%s{name c}%s{argsStr}"
-                    let marker = if defChild = Some(name c) then " (default)" else ""
+
+                    let marker =
+                        if group.DefaultChild = Some(name c) then
+                            " (default)"
+                        else
+                            ""
+
                     $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
                 |> String.concat "\n"
 
-            $"Usage: %s{cmdPrefix} [global options] <command>\n\n%s{groupDesc}%s{globalSection}\nCommands:\n%s{childrenHelp}"
+            $"Usage: %s{cmdPrefix} [global options] <command>\n\n%s{group.Description}%s{globalSection}\nCommands:\n%s{childrenHelp}"
         | _ -> help tree [] cmdPrefix
 
     /// Find the deepest valid group path from a list of args.
@@ -338,8 +378,8 @@ module CommandTree =
 
         let rec generate (node: CommandTree<'Cmd>) (path: string list) : string list =
             match node with
-            | Leaf(leafName, _, argInfos, flagInfos, _, _) ->
-                let leafPath = path @ [ leafName ]
+            | Leaf leaf ->
+                let leafPath = path @ [ leaf.Name ]
 
                 let condition =
                     leafPath
@@ -347,7 +387,7 @@ module CommandTree =
                     |> String.concat "; and "
 
                 let argCompletions =
-                    argInfos
+                    leaf.Args
                     |> List.collect (fun arg ->
                         match arg.Completions with
                         | Values values ->
@@ -358,7 +398,7 @@ module CommandTree =
                         | NoCompletion -> [])
 
                 let flagCompletions =
-                    flagInfos
+                    leaf.Flags
                     |> List.collect (fun fi ->
                         let shortPart =
                             match fi.ShortName with
@@ -368,8 +408,8 @@ module CommandTree =
                         [ $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape fi.Description}\"" ])
 
                 argCompletions @ flagCompletions
-            | Group(groupName, _, children, _, _) ->
-                let currentPath = if groupName = "" then path else path @ [ groupName ]
+            | Group group ->
+                let currentPath = if group.Name = "" then path else path @ [ group.Name ]
 
                 // Generate condition for this level
                 let condition =
@@ -381,12 +421,12 @@ module CommandTree =
                             |> List.map (sprintf "__fish_seen_subcommand_from %s")
                             |> String.concat "; and "
 
-                        let childNames = children |> List.map name |> String.concat " "
+                        let childNames = group.Children |> List.map name |> String.concat " "
                         $"%s{seen}; and not __fish_seen_subcommand_from %s{childNames}"
 
                 // Generate completions for children at this level
                 let childCompletions =
-                    children
+                    group.Children
                     |> List.map (fun child ->
                         let childName = name child
                         let childDesc = escape (desc child)
@@ -394,7 +434,7 @@ module CommandTree =
 
                 // Recurse into child groups and leaves
                 let nestedCompletions =
-                    children |> List.collect (fun child -> generate child currentPath)
+                    group.Children |> List.collect (fun child -> generate child currentPath)
 
                 childCompletions @ nestedCompletions
 
