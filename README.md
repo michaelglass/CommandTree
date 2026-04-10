@@ -32,7 +32,7 @@ let spec =
 
 match spec.Parse argv with
 | Ok(globals, Task(Add(title, _))) -> printfn "Adding %s" title
-| Ok(_, Help) -> printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree "my-cli")
+| Ok(_, Help) -> printfn "%s" (CommandTree.helpWithGlobals spec.Tree spec.GlobalFlags "my-cli")
 | Error(HelpRequested path) -> printfn "%s" (CommandTree.helpForPath spec.Tree path "my-cli")
 | Error(UnknownCommand(input, _)) -> UI.fail $"Unknown command: %s{input}"
 | _ -> ()
@@ -181,7 +181,7 @@ let main argv =
         0
     | Error(HelpRequested path) ->
         if path.IsEmpty then
-            printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree cmdName)
+            printfn "%s" (CommandTree.helpWithGlobals spec.Tree spec.GlobalFlags cmdName)
         else
             printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
 
@@ -219,7 +219,7 @@ CommandTree.parse tree args              // Result<'Cmd, ParseError>
 CommandTree.help tree path prefix        // Help text for one level
 CommandTree.helpFull tree prefix         // Full recursive help
 CommandTree.helpForPath tree path prefix // Help for a subcommand path
-CommandTree.helpWithGlobals flags tree prefix // Help with global options section
+CommandTree.helpWithGlobals tree flags prefix // Help with global options section
 CommandTree.format tree cmd prefix       // Format command back to CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path

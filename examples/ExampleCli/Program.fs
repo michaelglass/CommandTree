@@ -483,7 +483,7 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
         UI.section "Formatting code"
         UI.success "Formatted 12 files"
     | Fish f -> handleFishDemo tree cmdName f
-    | Help -> printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags tree cmdName)
+    | Help -> printfn "%s" (CommandTree.helpWithGlobals tree spec.GlobalFlags cmdName)
 
 [<EntryPoint>]
 let main argv =
@@ -501,7 +501,7 @@ let main argv =
         0
     | Error(HelpRequested path) ->
         if path.IsEmpty then
-            printfn "%s" (CommandTree.helpWithGlobals spec.GlobalFlags spec.Tree cmdName)
+            printfn "%s" (CommandTree.helpWithGlobals spec.Tree spec.GlobalFlags cmdName)
         else
             printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
 
