@@ -1265,7 +1265,7 @@ let ``helpWithGlobals falls back for non-group tree`` () =
     let tree = CommandReflection.fromUnion<SingleCmd> "Test"
 
     match tree with
-    | Group(_, _, [ child ], _, _) ->
+    | Group { Children = [ child ] } ->
         let helpText = CommandTree.helpWithGlobals [] child "test"
         test <@ helpText.Contains("Do it") @>
     | _ -> failwith "Expected Group with one child"

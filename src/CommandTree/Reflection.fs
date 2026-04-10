@@ -252,7 +252,7 @@ module CommandReflection =
         |> Array.toList
 
     /// Parse a single field value from string
-    let rec parseFieldValue (fieldType: Type) (value: string) : Result<obj option, string> =
+    let rec parseFieldValue (fieldType: Type) (value: string) : Result<obj option, ParseFieldError> =
         if fieldType = typeof<string> then
             Ok(Some(box value))
         elif fieldType = typeof<int> then
@@ -320,8 +320,7 @@ module CommandReflection =
             | ambiguous ->
                 let names = ambiguous |> Array.map (fun c -> toKebabCase c.Name) |> Array.toList
 
-                let namesStr = String.concat ", " names
-                Error $"Ambiguous argument '%s{value}' matches: %s{namesStr}"
+                Error(AmbiguousValue(value, names))
         else
             Ok None
 
@@ -363,37 +362,17 @@ module CommandReflection =
 
         FSharpValue.MakeUnion(noneCase, [||])
 
-    /// Convert a parseFieldValue error string to a ParseError for a given command
-    let internal fieldErrorToParseError (cmdName: string) (errMsg: string) : ParseError =
-        // parseFieldValue returns errors like "Ambiguous argument 'X' matches: a, b, c"
-        let ambiguousPrefix = "Ambiguous argument '"
-
-        if errMsg.StartsWith(ambiguousPrefix, StringComparison.Ordinal) then
-            let afterPrefix = errMsg.Substring(ambiguousPrefix.Length)
-            let quoteEnd = afterPrefix.IndexOf("'")
-
-            if quoteEnd >= 0 then
-                let input = afterPrefix.Substring(0, quoteEnd)
-                let matchesPrefix = "matches: "
-                let matchesIdx = afterPrefix.IndexOf(matchesPrefix)
-
-                if matchesIdx >= 0 then
-                    let candidatesStr = afterPrefix.Substring(matchesIdx + matchesPrefix.Length)
-
-                    let candidates =
-                        candidatesStr.Split([| ", " |], StringSplitOptions.RemoveEmptyEntries)
-                        |> Array.toList
-
-                    AmbiguousArgument(input, candidates)
-                else
-                    AmbiguousArgument(input, [])
-            else
-                InvalidArguments(cmdName, errMsg)
-        else
-            InvalidArguments(cmdName, errMsg)
+    /// Convert a ParseFieldError to a ParseError for a given command
+    let internal fieldErrorToParseError (cmdName: string) (fieldError: ParseFieldError) : ParseError =
+        match fieldError with
+        | AmbiguousValue(input, candidates) -> AmbiguousArgument(input, candidates)
+        | InvalidValue msg -> InvalidArguments(cmdName, msg)
 
     /// Parse fields from args array
-    let parseFields (fields: Reflection.PropertyInfo array) (args: string array) : Result<obj option, string> array =
+    let parseFields
+        (fields: Reflection.PropertyInfo array)
+        (args: string array)
+        : Result<obj option, ParseFieldError> array =
         fields
         |> Array.mapi (fun i field ->
             if isListType field.PropertyType then
@@ -448,7 +427,7 @@ module CommandReflection =
     /// Validate parsed field values and extract obj array, or return ParseError
     let internal validateFields
         (cmdName: string)
-        (fieldValues: Result<obj option, string> array)
+        (fieldValues: Result<obj option, ParseFieldError> array)
         : Result<obj array, ParseError> =
         let firstError =
             fieldValues
@@ -458,7 +437,7 @@ module CommandReflection =
                 | Ok _ -> None)
 
         match firstError with
-        | Some errMsg -> Error(fieldErrorToParseError cmdName errMsg)
+        | Some fieldErr -> Error(fieldErrorToParseError cmdName fieldErr)
         | None ->
             if
                 fieldValues
@@ -610,8 +589,13 @@ module CommandReflection =
                                         InvalidArguments("env", $"Invalid value '%s{envVal}' for env var '%s{varName}'")
                                     )
                             | Error e ->
-                                error <-
-                                    Some(InvalidArguments("env", $"Invalid value for env var '%s{varName}': %s{e}"))
+                                let baseErr = fieldErrorToParseError "env" e
+
+                                match baseErr with
+                                | InvalidArguments(cmd, msg) ->
+                                    error <-
+                                        Some(InvalidArguments(cmd, $"Invalid value for env var '%s{varName}': %s{msg}"))
+                                | other -> error <- Some other
                 | None -> ()
 
         match error with
@@ -754,7 +738,13 @@ module CommandReflection =
                     findMatchingCase outerCase (fun fs ->
                         renderDUFlagTokens flagDUType (fs.[0] :?> System.Collections.IEnumerable))
 
-                CommandTree.Leaf(cmdName, desc, [], flagInfo, parse, formatArgs)
+                CommandTree.Leaf
+                    { Name = cmdName
+                      Description = desc
+                      Args = []
+                      Flags = flagInfo
+                      Parse = parse
+                      FormatArgs = formatArgs }
             elif fields.Length = 1 && isUnionType fields.[0].PropertyType then
                 // Nested union -> Group
                 let nestedType = fields.[0].PropertyType
@@ -787,7 +777,12 @@ module CommandReflection =
 
                 let defaultChildName = defaultCase |> Option.map (fun dc -> getCommandName dc)
 
-                CommandTree.Group(cmdName, desc, nestedChildren, defaultParse, defaultChildName)
+                CommandTree.Group
+                    { Name = cmdName
+                      Description = desc
+                      Children = nestedChildren
+                      DefaultParse = defaultParse
+                      DefaultChild = defaultChildName }
             elif fields.Length = 1 && FSharpType.IsRecord(fields.[0].PropertyType) then
                 // Record-typed argument: expand record fields as positional args with defaults
                 let recordType = fields.[0].PropertyType
@@ -845,7 +840,13 @@ module CommandReflection =
                           Completions = autoDetectCompletion f })
                     |> Array.toList
 
-                CommandTree.Leaf(cmdName, desc, argInfo, [], parse, formatArgs)
+                CommandTree.Leaf
+                    { Name = cmdName
+                      Description = desc
+                      Args = argInfo
+                      Flags = []
+                      Parse = parse
+                      FormatArgs = formatArgs }
             else
                 // Leaf case
                 let hasListField = fields |> Array.exists (fun f -> isListType f.PropertyType)
@@ -871,7 +872,14 @@ module CommandReflection =
                         |> Array.toList)
 
                 let argInfo = getArgInfo outerCase fields
-                CommandTree.Leaf(cmdName, desc, argInfo, [], parse, formatArgs)
+
+                CommandTree.Leaf
+                    { Name = cmdName
+                      Description = desc
+                      Args = argInfo
+                      Flags = []
+                      Parse = parse
+                      FormatArgs = formatArgs }
 
         let children = cases |> Array.map (fun case -> processCase case id) |> Array.toList
 
@@ -910,7 +918,12 @@ module CommandReflection =
 
         let defaultChildName = rootDefault |> Option.map getCommandName
 
-        CommandTree.Group("", rootDesc, children, defaultParse, defaultChildName)
+        CommandTree.Group
+            { Name = ""
+              Description = rootDesc
+              Children = children
+              DefaultParse = defaultParse
+              DefaultChild = defaultChildName }
 
     /// Generate a CommandTree from a union type
     let fromUnion<'Cmd> (rootDesc: string) : CommandTree<'Cmd> = fromUnionInternal<'Cmd> None rootDesc
@@ -930,21 +943,21 @@ module CommandReflection =
 
         let rec check (node: CommandTree<'Cmd>) : unit =
             match node with
-            | Leaf(leafName, _, _, flags, _, _) ->
-                for fi in flags do
+            | Leaf leaf ->
+                for fi in leaf.Flags do
                     let long = $"--%s{fi.LongName}"
 
                     if globalFlagNames.Contains(long) then
-                        invalidOp $"Flag '%s{long}' on command '%s{leafName}' conflicts with a global flag"
+                        invalidOp $"Flag '%s{long}' on command '%s{leaf.Name}' conflicts with a global flag"
 
                     match fi.ShortName with
                     | Some s ->
                         let short = $"-%s{s}"
 
                         if globalFlagNames.Contains(short) then
-                            invalidOp $"Flag '%s{short}' on command '%s{leafName}' conflicts with a global flag"
+                            invalidOp $"Flag '%s{short}' on command '%s{leaf.Name}' conflicts with a global flag"
                     | None -> ()
-            | Group(_, _, children, _, _) -> children |> List.iter check
+            | Group group -> group.Children |> List.iter check
 
         check tree
 

@@ -44,13 +44,13 @@ let ``CmdCompletion attribute populates Values completion hint`` () =
     let tree = CommandReflection.fromUnion<CompletedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let editNode = children |> List.find (fun c -> CommandTree.name c = "edit")
+    | CommandTree.Group group ->
+        let editNode = group.Children |> List.find (fun c -> CommandTree.name c = "edit")
 
         match editNode with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            test <@ args.Length = 1 @>
-            test <@ args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
+        | CommandTree.Leaf leaf ->
+            test <@ leaf.Args.Length = 1 @>
+            test <@ leaf.Args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -59,13 +59,14 @@ let ``CmdFileCompletion attribute populates FilePath completion hint`` () =
     let tree = CommandReflection.fromUnion<CompletedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let fileNode = children |> List.find (fun c -> CommandTree.name c = "file-cov")
+    | CommandTree.Group group ->
+        let fileNode =
+            group.Children |> List.find (fun c -> CommandTree.name c = "file-cov")
 
         match fileNode with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            test <@ args.Length = 1 @>
-            test <@ args.[0].Completions = FilePath @>
+        | CommandTree.Leaf leaf ->
+            test <@ leaf.Args.Length = 1 @>
+            test <@ leaf.Args.[0].Completions = FilePath @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -74,14 +75,14 @@ let ``CmdFileCompletion with multiple FieldIndex values marks both fields`` () =
     let tree = CommandReflection.fromUnion<TwoFileCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let node = children |> List.find (fun c -> CommandTree.name c = "compare-api")
+    | CommandTree.Group group ->
+        let node = group.Children |> List.find (fun c -> CommandTree.name c = "compare-api")
 
         match node with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            test <@ args.Length = 2 @>
-            test <@ args.[0].Completions = FilePath @>
-            test <@ args.[1].Completions = FilePath @>
+        | CommandTree.Leaf leaf ->
+            test <@ leaf.Args.Length = 2 @>
+            test <@ leaf.Args.[0].Completions = FilePath @>
+            test <@ leaf.Args.[1].Completions = FilePath @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -90,13 +91,13 @@ let ``No attribute gives NoCompletion for simple types`` () =
     let tree = CommandReflection.fromUnion<CompletedCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let plainNode = children |> List.find (fun c -> CommandTree.name c = "plain")
+    | CommandTree.Group group ->
+        let plainNode = group.Children |> List.find (fun c -> CommandTree.name c = "plain")
 
         match plainNode with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            test <@ args.Length = 1 @>
-            test <@ args.[0].Completions = NoCompletion @>
+        | CommandTree.Leaf leaf ->
+            test <@ leaf.Args.Length = 1 @>
+            test <@ leaf.Args.[0].Completions = NoCompletion @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -109,13 +110,14 @@ let ``Optional union-typed field auto-detects Values completion`` () =
     let tree = CommandReflection.fromUnion<UnionArgCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let chooseNode = children |> List.find (fun c -> CommandTree.name c = "choose-opt")
+    | CommandTree.Group group ->
+        let chooseNode =
+            group.Children |> List.find (fun c -> CommandTree.name c = "choose-opt")
 
         match chooseNode with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            test <@ args.Length = 1 @>
-            test <@ args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
+        | CommandTree.Leaf leaf ->
+            test <@ leaf.Args.Length = 1 @>
+            test <@ leaf.Args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 
@@ -206,10 +208,10 @@ let ``parseFieldValue ambiguous prefix returns Error`` () =
     let result = CommandReflection.parseFieldValue typeof<AmbiguousKind> "sta"
 
     match result with
-    | Error msg ->
-        test <@ msg.Contains("Ambiguous") @>
-        test <@ msg.Contains("start") @>
-        test <@ msg.Contains("status") @>
+    | Error(AmbiguousValue(input, candidates)) ->
+        test <@ input = "sta" @>
+        test <@ candidates |> List.contains "start" @>
+        test <@ candidates |> List.contains "status" @>
     | Ok _ -> failwith "Expected Error for ambiguous prefix"
 
 // =============================================================================
@@ -281,14 +283,14 @@ let ``CmdFileCompletion works on list field`` () =
     let tree = CommandReflection.fromUnion<ListFileCommand> "Test"
 
     match tree with
-    | CommandTree.Group(_, _, children, _, _) ->
-        let node = children |> List.find (fun c -> CommandTree.name c = "compare")
+    | CommandTree.Group group ->
+        let node = group.Children |> List.find (fun c -> CommandTree.name c = "compare")
 
         match node with
-        | CommandTree.Leaf(_, _, args, _, _, _) ->
-            test <@ args.Length = 1 @>
-            test <@ args.[0].Completions = FilePath @>
-            test <@ args.[0].IsList = true @>
+        | CommandTree.Leaf leaf ->
+            test <@ leaf.Args.Length = 1 @>
+            test <@ leaf.Args.[0].Completions = FilePath @>
+            test <@ leaf.Args.[0].IsList = true @>
         | CommandTree.Group _ -> failwith "Expected leaf"
     | CommandTree.Leaf _ -> failwith "Expected group"
 

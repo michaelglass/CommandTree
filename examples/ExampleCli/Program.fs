@@ -404,7 +404,7 @@ let handleReflectionDemo
                 let formatted = CommandReflection.formatFieldValue value
                 UI.success $"parse(%s{t.Name}, \"%s{input}\") = %s{formatted}"
             | Ok None -> UI.warn $"parse(%s{t.Name}, \"%s{input}\") = None"
-            | Error err -> UI.fail $"parse(%s{t.Name}, \"%s{input}\") failed: %s{err}"
+            | Error err -> UI.fail $"parse(%s{t.Name}, \"%s{input}\") failed: %A{err}"
 
     | ReflectionDemoCommand.Spec ->
         UI.title "CommandSpec Usage"
