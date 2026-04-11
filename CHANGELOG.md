@@ -2,7 +2,7 @@
 
 All notable changes to CommandTree are documented in this file.
 
-## Unreleased
+## [0.4.0] - 2026-04-11
 
 ### Changed
 
@@ -18,7 +18,6 @@ All notable changes to CommandTree are documented in this file.
 - Reused `buildTypedList` (renamed from `buildFlagList`) in `parseFields` list construction
 - Reused `makeNone` in `parseFieldValue` optional type branch
 - Removed spurious `rec` from `help` function
-- Bump tool versions (CoverageRatchet 0.10.0-alpha.1, SyncDocs 0.10.0-alpha.1, FsSemanticTagger 0.10.0-alpha.1, FsProjLint 0.7.0-alpha.1)
 
 ## [0.3.5] - 2026-04-08
 
