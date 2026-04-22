@@ -2,6 +2,10 @@
 
 All notable changes to CommandTree are documented in this file.
 
+## [Unreleased]
+
+- chore: bump upstream tool versions
+
 ## [0.4.0] - 2026-04-11
 
 ### Changed
