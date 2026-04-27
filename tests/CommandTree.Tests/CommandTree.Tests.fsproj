@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="TestHelpers.fs" />
     <Compile Include="ReflectionTests.fs" />
     <Compile Include="CompletionTests.fs" />
     <Compile Include="HelpTests.fs" />

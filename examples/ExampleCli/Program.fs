@@ -239,23 +239,20 @@ let handleCheck (flags: CheckFlag list) =
         UI.dimInfo "Cache disabled"
 
 let handleReport (cmd: ReportCommand) =
+    let defaultReport = "report.html"
+
     match cmd with
     | ReportCommand.Generate(input, output, flags) ->
-        let out = output |> Option.defaultValue "report.html"
+        let out = output |> Option.defaultValue defaultReport
         UI.success $"Generating report from %s{input} → %s{out}"
 
-        if
-            flags
-            |> List.exists (function
-                | ReportFlag.ShowGaps -> true
-                | _ -> false)
-        then
+        if flags |> List.contains ReportFlag.ShowGaps then
             UI.dimInfo "Including gap details"
     | ReportCommand.Diff(args, _flags) ->
         let out = args.Output |> Option.defaultValue "diff.html"
         UI.success $"Diffing %s{args.Baseline} vs %s{args.Current} → %s{out}"
     | ReportCommand.View output ->
-        let out = output |> Option.defaultValue "report.html"
+        let out = output |> Option.defaultValue defaultReport
         UI.info $"Viewing %s{out}"
 
 let handleProcessDemo (cmd: ProcessDemoCommand) =
