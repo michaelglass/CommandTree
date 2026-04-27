@@ -52,11 +52,11 @@ module CommandReflection =
         | None
         | Some _ -> toKebabCase case.Name
 
-    /// Get description from CmdAttribute (required) or derive from case name
+    /// Get description from CmdAttribute or derive from case name
     let getDescription (case: UnionCaseInfo) =
         match getCmdAttr case with
-        | Some attr -> attr.Description
-        | None -> toDescription case.Name
+        | Some attr when not (isNull attr.Description) -> attr.Description
+        | _ -> toDescription case.Name
 
     /// Check if a case has the CmdDefault attribute
     let isDefault (case: UnionCaseInfo) =
@@ -158,7 +158,7 @@ module CommandReflection =
     /// Get example strings from CmdExampleAttribute on a union case
     let private getCmdExamples (case: UnionCaseInfo) =
         case.GetCustomAttributes(typeof<CmdExampleAttribute>)
-        |> Array.map (fun a -> (a :?> CmdExampleAttribute).Example)
+        |> Array.collect (fun a -> (a :?> CmdExampleAttribute).Examples)
         |> Array.toList
 
     /// Build ArgInfo list from union case fields
@@ -172,7 +172,7 @@ module CommandReflection =
               IsOptional = isOptionalType f.PropertyType
               IsList = isListType f.PropertyType
               Completions = getCompletionHint case i f
-              Description = cmdArgAttr |> Option.map (fun a -> a.Description)
+              Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
               Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default) })
         |> Array.toList
 
@@ -864,7 +864,7 @@ module CommandReflection =
                           IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
                           IsList = false
                           Completions = autoDetectCompletion f
-                          Description = cmdArgAttr |> Option.map (fun a -> a.Description)
+                          Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
                           Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default) })
                     |> Array.toList
 

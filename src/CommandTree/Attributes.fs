@@ -3,7 +3,8 @@ namespace CommandTree
 open System
 
 /// Attribute to specify command metadata on union cases.
-/// Description is required; Name defaults to kebab-case of the case name.
+/// Description and Name both optional — description defaults to sentence-case of case name,
+/// name defaults to kebab-case of case name.
 ///
 /// Example usage:
 /// ```fsharp
@@ -11,13 +12,18 @@ open System
 ///     | Check                                    // Name: "check", Desc: "Check" (derived)
 ///     | [<Cmd("Run the linter")>] Lint           // Name: "lint", Desc: "Run the linter"
 ///     | [<Cmd("Format code", Name = "fmt")>] Format  // Name: "fmt", Desc: "Format code"
+///     | [<Cmd(Name = "fmt")>] Format             // Name: "fmt", Desc: "Format" (derived)
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
-type CmdAttribute(description: string) =
+type CmdAttribute() =
     inherit Attribute()
 
-    /// Command description (required)
-    member val Description: string = description with get, set
+    new(description: string) as this =
+        CmdAttribute()
+        then this.Description <- description
+
+    /// Command description (defaults to sentence-case of case name)
+    member val Description: string = null with get, set
 
     /// Command name override (defaults to kebab-case of case name)
     member val Name: string = null with get, set
@@ -74,23 +80,31 @@ type CmdFileCompletionAttribute() =
 /// Multiple attributes can be stacked for multi-field cases.
 /// F# does not allow [<>] syntax directly on named DU case fields, so this mirrors
 /// the CmdCompletion/CmdFileCompletion pattern.
+/// For record-typed command args, [<CmdArg>] on record fields is also supported.
 ///
 /// Example:
 /// ```fsharp
-/// type CoverageCommand =
-///     | [<Cmd("Merge two Cobertura XMLs")
-///        CmdArg("Cobertura XML from a prior full run")
-///        CmdArg("Cobertura XML from the current run", FieldIndex = 1)
-///        CmdArg("Where to write the merged output", FieldIndex = 2)>]
-///       Merge of baseline: string * partial: string * output: string
+/// type Command =
+///     | [<Cmd("Merge two XMLs")>]
+///       [<CmdArg("Baseline XML")>]
+///       [<CmdArg("Current XML", FieldIndex = 1)>]
+///       [<CmdArg("Output path", FieldIndex = 2)>]
+///       Merge of baseline: string * current: string * output: string
 ///
-///     | [<Cmd("Ratchet coverage"); CmdArg("Config file", Default = "coverage-ratchet.json")>]
+///     | [<Cmd("Ratchet coverage")>]
+///       [<CmdArg(Default = "coverage-ratchet.json")>]
 ///       Ratchet of config: string option
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = true)>]
-type CmdArgAttribute(description: string) =
+type CmdArgAttribute() =
     inherit Attribute()
-    member val Description: string = description
+
+    new(description: string) as this =
+        CmdArgAttribute()
+        then this.Description <- description
+
+    /// Human-readable description of this argument
+    member val Description: string = null with get, set
     /// Zero-based index of the positional argument this annotation applies to (default: 0)
     member val FieldIndex = 0 with get, set
     /// Default value to display in help (e.g. "coverage-ratchet.json")
@@ -119,19 +133,20 @@ type CmdFlagAttribute() =
     member val Description: string = null with get, set
 
 /// Attribute to provide example invocations for a command case.
-/// Applied to union cases; multiple attributes can be stacked for multiple examples.
+/// Applied to union cases; accepts multiple examples in one attribute or stack for many.
 /// The cmdPrefix is prepended automatically when rendering help.
 ///
 /// Example:
 /// ```fsharp
-/// type CoverageCommand =
-///     | [<Cmd("Merge two Cobertura XMLs")>
-///        CmdExample("merge old.xml new.xml merged.xml")>] Merge of ...
+/// type Command =
+///     | [<Cmd("Deploy to an environment")>]
+///       [<CmdExample("staging", "prod --dry-run")>]
+///       Deploy of env: string
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = true)>]
-type CmdExampleAttribute(example: string) =
+type CmdExampleAttribute([<ParamArray>] examples: string[]) =
     inherit Attribute()
-    member val Example: string = example
+    member val Examples: string[] = examples
 
 /// Attribute to override the env var suffix for a flag union case.
 /// The prefix (set via fromUnionWithEnv/fromUnionWithGlobalsAndEnv) is prepended.
