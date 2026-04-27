@@ -210,13 +210,10 @@ module CommandTree =
 
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =
-        let defaultSuffix =
-            match arg.Default with
-            | Some d -> $"=%s{d}"
-            | None -> ""
-
         if arg.IsList then $"<%s{arg.Name}...>"
-        elif arg.IsOptional then $"[%s{arg.Name}%s{defaultSuffix}]"
+        elif arg.IsOptional then
+            let defaultSuffix = match arg.Default with Some d -> $"=%s{d}" | None -> ""
+            $"[%s{arg.Name}%s{defaultSuffix}]"
         else $"<%s{arg.Name}>"
 
     /// Render a single flag info line for help output
@@ -262,6 +259,11 @@ module CommandTree =
         let label = $"  %s{formatArg arg}"
         $"%s{label.PadRight(20)} %s{desc}"
 
+    /// Render a named help section (returns empty string when lines is empty)
+    let private renderSection (header: string) (lines: string list) =
+        if lines.IsEmpty then ""
+        else $"\n\n%s{header}:\n" + String.concat "\n" lines
+
     /// Generate help for a tree node (single level)
     let help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
         let pathStr =
@@ -277,28 +279,17 @@ module CommandTree =
             let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
 
             let argsSection =
-                let describedArgs =
-                    leaf.Args |> List.choose (fun a -> a.Description |> Option.map (fun d -> a, d))
-
-                if describedArgs.IsEmpty then
-                    ""
-                else
-                    let lines = describedArgs |> List.map (fun (a, d) -> renderArgLine a d) |> String.concat "\n"
-                    $"\n\nArguments:\n%s{lines}"
+                leaf.Args
+                |> List.choose (fun a -> a.Description |> Option.map (fun d -> renderArgLine a d))
+                |> renderSection "Arguments"
 
             let flagsSection =
-                if leaf.Flags.IsEmpty then
-                    ""
-                else
-                    let flagLines = leaf.Flags |> List.map renderFlagLine |> String.concat "\n"
-                    $"\n\nOptions:\n%s{flagLines}"
+                leaf.Flags |> List.map renderFlagLine |> renderSection "Options"
 
             let examplesSection =
-                if leaf.Examples.IsEmpty then
-                    ""
-                else
-                    let lines = leaf.Examples |> List.map (fun e -> $"  %s{pathStr} %s{leaf.Name} %s{e}") |> String.concat "\n"
-                    $"\n\nExamples:\n%s{lines}"
+                leaf.Examples
+                |> List.map (fun e -> $"  %s{pathStr} %s{leaf.Name} %s{e}")
+                |> renderSection "Examples"
 
             $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{argsSection}%s{flagsSection}%s{examplesSection}"
 
