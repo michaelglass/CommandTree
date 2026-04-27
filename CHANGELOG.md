@@ -4,7 +4,7 @@ All notable changes to CommandTree are documented in this file.
 
 ## [Unreleased]
 
-- feat: add `[<CmdArg("description")>]` attribute for documenting positional arguments — applied to the union **case** with `FieldIndex` (0-based) to select which field; mirrors `CmdCompletion`/`CmdFileCompletion` pattern (F# does not allow `[<>]` syntax on named DU case fields)
+- feat: add `[<CmdArg("description")>]` attribute for documenting positional arguments — applied to the union **case** with `FieldIndex` (0-based) to select which field; mirrors `CmdCompletion`/`CmdFileCompletion` pattern (F# does not allow `[<>]` syntax on named DU case fields). For multi-field commands, consider a record argument type instead — `[<CmdArg>]` on record fields is also supported and lets you share arg docs across commands.
 - feat: add `Default` property to `[<CmdArg>]` — shown in the `Arguments:` section as `(default: value)`
 - feat: add `[<CmdExample("...")>]` attribute for example invocations — stacked on a case; `help` renders an `Examples:` section with full command path prefix
 - feat: add `Description` property to `[<CmdFlag>]` attribute to override the auto-derived flag description (derived from case name in sentence case)

@@ -149,6 +149,12 @@ module CommandReflection =
         |> Array.map (fun a -> a :?> CmdArgAttribute)
         |> Array.tryFind (fun a -> a.FieldIndex = fieldIndex)
 
+    /// Get CmdArgAttribute from a record field PropertyInfo, if present
+    let private getCmdArgAttrFromField (field: Reflection.PropertyInfo) =
+        field.GetCustomAttributes(typeof<CmdArgAttribute>, false)
+        |> Array.tryHead
+        |> Option.map (fun a -> a :?> CmdArgAttribute)
+
     /// Get example strings from CmdExampleAttribute on a union case
     let private getCmdExamples (case: UnionCaseInfo) =
         case.GetCustomAttributes(typeof<CmdExampleAttribute>)
@@ -851,13 +857,15 @@ module CommandReflection =
                 let argInfo =
                     recordFields
                     |> Array.map (fun f ->
+                        let cmdArgAttr = getCmdArgAttrFromField f
+
                         { Name = toKebabCase f.Name
                           TypeName = getTypeName f.PropertyType
                           IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
                           IsList = false
                           Completions = autoDetectCompletion f
-                          Description = None
-                          Default = None })
+                          Description = cmdArgAttr |> Option.map (fun a -> a.Description)
+                          Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default) })
                     |> Array.toList
 
                 CommandTree.Leaf
