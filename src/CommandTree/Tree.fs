@@ -10,13 +10,22 @@ type ArgCompletionHint =
 
 /// Argument metadata for help generation
 type ArgInfo =
-    { Name: string
-      TypeName: string
-      IsOptional: bool
-      IsList: bool
-      Completions: ArgCompletionHint
-      Description: string option
-      Default: string option }
+    {
+        /// Positional argument name (used in usage synopsis, e.g. <config>)
+        Name: string
+        /// Display type name for help text (e.g. "string", "int", "string list")
+        TypeName: string
+        /// Whether the argument is optional (wrapped in option)
+        IsOptional: bool
+        /// Whether the argument accepts multiple values (list field)
+        IsList: bool
+        /// Shell completion hint for this argument
+        Completions: ArgCompletionHint
+        /// Human-readable description from [<CmdArg("desc")>], shown in Arguments section
+        Description: string option
+        /// Default value hint from [<CmdArg(Default = "value")>], shown in Arguments section
+        Default: string option
+    }
 
 /// Environment variable binding for a flag
 type EnvVarInfo =
