@@ -12,6 +12,7 @@
   <ItemGroup>
     <Compile Include="ReflectionTests.fs" />
     <Compile Include="CompletionTests.fs" />
+    <Compile Include="HelpTests.fs" />
     <Compile Include="ParsingTests.fs" />
     <Compile Include="UITests.fs" />
     <Compile Include="ProcessTests.fs" />

@@ -255,13 +255,20 @@ module CommandTree =
     /// Render a single arg description line for the Arguments section
     let private renderArgLine (arg: ArgInfo) (desc: string) =
         let label = $"  %s{formatArg arg}"
-        let defaultSuffix = match arg.Default with Some d -> $" (default: %s{d})" | None -> ""
+
+        let defaultSuffix =
+            match arg.Default with
+            | Some d -> $" (default: %s{d})"
+            | None -> ""
+
         $"%s{label.PadRight(20)} %s{desc}%s{defaultSuffix}"
 
     /// Render a named help section (returns empty string when lines is empty)
     let private renderSection (header: string) (lines: string list) =
-        if lines.IsEmpty then ""
-        else $"\n\n%s{header}:\n" + String.concat "\n" lines
+        if lines.IsEmpty then
+            ""
+        else
+            $"\n\n%s{header}:\n" + String.concat "\n" lines
 
     /// Generate help for a tree node (single level)
     let help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
@@ -282,8 +289,7 @@ module CommandTree =
                 |> List.choose (fun a -> a.Description |> Option.map (fun d -> renderArgLine a d))
                 |> renderSection "Arguments"
 
-            let flagsSection =
-                leaf.Flags |> List.map renderFlagLine |> renderSection "Options"
+            let flagsSection = leaf.Flags |> List.map renderFlagLine |> renderSection "Options"
 
             let examplesSection =
                 leaf.Examples

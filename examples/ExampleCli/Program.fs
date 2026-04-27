@@ -110,6 +110,37 @@ type FishDemoCommand =
     | [<Cmd("Preview completions on stdout"); CmdDefault>] Preview
     | [<Cmd("Install auto-update hook")>] Install
 
+// Record-typed arg — [<CmdArg>] on fields lets you share arg docs across commands
+type MergeReportArgs =
+    { [<CmdArg("Baseline Cobertura XML")>]
+      Baseline: string
+      [<CmdArg("Current Cobertura XML")>]
+      Current: string
+      [<CmdArg("Output file", Default = "diff.html")>]
+      Output: string option }
+
+type ReportFlag =
+    | [<CmdFlag(Description = "Include source lines with no coverage")>] ShowGaps
+    | [<CmdFlag(Name = "format", Short = "f", Description = "Output format: html or json")>] Format of string
+
+// example-cli report generate coverage.xml
+// example-cli report generate coverage.xml report.html --show-gaps
+// example-cli report diff baseline.xml current.xml
+// example-cli report diff baseline.xml current.xml --format json
+type ReportCommand =
+    | [<Cmd("Generate a coverage report");
+        CmdArg("Path to Cobertura XML input");
+        CmdArg("Output file", FieldIndex = 1, Default = "report.html");
+        CmdExample("coverage.xml", "coverage.xml report.html --show-gaps")>] Generate of
+        input: string *
+        output: string option *
+        ReportFlag list
+    | [<Cmd("Diff two coverage reports using record args");
+        CmdExample("baseline.xml current.xml", "baseline.xml current.xml --format json")>] Diff of
+        MergeReportArgs *
+        ReportFlag list
+    | [<Cmd("View a report file"); CmdDefault; CmdArg(Default = "report.html")>] View of output: string option
+
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
@@ -124,6 +155,7 @@ type Command =
     | [<Cmd("Format source code")>] Format
     | [<Cmd("Run checks")>] Check of CheckFlag list
     | [<Cmd("Fish shell completions")>] Fish of FishDemoCommand
+    | [<Cmd("Coverage report tools")>] Report of ReportCommand
     | [<Cmd("Show full help")>] Help
 
 // =============================================================================
@@ -205,6 +237,26 @@ let handleCheck (flags: CheckFlag list) =
 
     if flags |> List.contains NoCache then
         UI.dimInfo "Cache disabled"
+
+let handleReport (cmd: ReportCommand) =
+    match cmd with
+    | ReportCommand.Generate(input, output, flags) ->
+        let out = output |> Option.defaultValue "report.html"
+        UI.success $"Generating report from %s{input} → %s{out}"
+
+        if
+            flags
+            |> List.exists (function
+                | ReportFlag.ShowGaps -> true
+                | _ -> false)
+        then
+            UI.dimInfo "Including gap details"
+    | ReportCommand.Diff(args, _flags) ->
+        let out = args.Output |> Option.defaultValue "diff.html"
+        UI.success $"Diffing %s{args.Baseline} vs %s{args.Current} → %s{out}"
+    | ReportCommand.View output ->
+        let out = output |> Option.defaultValue "report.html"
+        UI.info $"Viewing %s{out}"
 
 let handleProcessDemo (cmd: ProcessDemoCommand) =
     match cmd with
@@ -483,6 +535,7 @@ let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
         UI.section "Formatting code"
         UI.success "Formatted 12 files"
     | Fish f -> handleFishDemo tree cmdName f
+    | Report r -> handleReport r
     | Help -> printfn "%s" (CommandTree.helpWithGlobals tree spec.GlobalFlags cmdName)
 
 [<EntryPoint>]

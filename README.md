@@ -117,13 +117,32 @@ type Command =
 
 ### Attributes
 
-- `[<Cmd("desc")>]` sets help text; optional `Name = "custom"` overrides the command name
+- `[<Cmd("desc")>]` sets help text; optional `Name = "custom"` overrides the command name. Description is optional — omit it to derive from the case name in sentence case
 - `[<CmdDefault>]` marks the default subcommand when a group is invoked without arguments
-- `[<CmdCompletion("a", "b")>]` provides fish shell completion values
+- `[<CmdArg("desc")>]` documents a positional argument — shows in an `Arguments:` section in help. Apply to the case with `FieldIndex = N` (0-based) for multi-field commands. `Default = "value"` adds a default hint. For record-typed command args, apply directly to record fields instead
+- `[<CmdExample("ex1", "ex2")>]` adds an `Examples:` section to help output. The command path is prepended automatically. Stack multiple attributes or pass multiple strings to one attribute
+- `[<CmdCompletion("a", "b")>]` provides fish shell completion values; `FieldIndex` selects which argument
 - `[<CmdFileCompletion>]` enables file path completion in fish (multiple allowed per case with `FieldIndex`)
-- `[<CmdFlag(Name = "conf", Short = "k")>]` overrides flag name or short flag on DU flag cases (optional — names are auto-derived)
+- `[<CmdFlag(Name = "conf", Short = "k", Description = "...")>]` overrides flag name, short flag, or description on DU flag cases (all optional — names and descriptions are auto-derived)
 - `[<CmdEnv("SUFFIX")>]` overrides the env var suffix for a flag (prefix still applied)
 - `[<CmdEnvRaw("VAR_NAME")>]` sets the exact env var name, ignoring the prefix
+
+```fsharp
+// example-cli report generate coverage.xml
+// example-cli report generate coverage.xml report.html --show-gaps
+type MergeReportArgs =
+    { [<CmdArg("Baseline Cobertura XML")>] Baseline: string
+      [<CmdArg("Output file", Default = "diff.html")>] Output: string option }
+
+type ReportCommand =
+    | [<Cmd("Generate a coverage report")>]
+      [<CmdArg("Path to Cobertura XML input")>]
+      [<CmdArg("Output file", FieldIndex = 1, Default = "report.html")>]
+      [<CmdExample("coverage.xml", "coverage.xml report.html --show-gaps")>]
+      Generate of input: string * output: string option * ReportFlag list
+    | [<Cmd("Diff two reports using record args")>]
+      Diff of MergeReportArgs * ReportFlag list
+```
 <!-- sync:howitworks:end -->
 
 <!-- sync:basicusage:start -->
