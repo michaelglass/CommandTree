@@ -69,21 +69,30 @@ type CmdFileCompletionAttribute() =
     inherit Attribute()
     member val FieldIndex = 0 with get, set
 
-/// Attribute to document a positional argument on a DU case field.
-/// Applied to named fields in union cases to provide help text for each argument.
+/// Attribute to document a positional argument on a DU case.
+/// Applied to the case (not the field); FieldIndex selects which positional argument (0-based).
+/// Multiple attributes can be stacked for multi-field cases.
+/// F# does not allow [<>] syntax directly on named DU case fields, so this mirrors
+/// the CmdCompletion/CmdFileCompletion pattern.
 ///
 /// Example:
 /// ```fsharp
 /// type CoverageCommand =
-///     | [<Cmd("Merge two Cobertura XMLs")>] Merge of
-///         [<CmdArg("Cobertura XML from a prior full run")>] baseline: string *
-///         [<CmdArg("Cobertura XML from the current run")>] partial: string *
-///         [<CmdArg("Where to write the merged output")>] output: string
+///     | [<Cmd("Merge two Cobertura XMLs")
+///        CmdArg("Cobertura XML from a prior full run")
+///        CmdArg("Cobertura XML from the current run", FieldIndex = 1)
+///        CmdArg("Where to write the merged output", FieldIndex = 2)>]
+///       Merge of baseline: string * partial: string * output: string
+///
+///     | [<Cmd("Ratchet coverage"); CmdArg("Config file", Default = "coverage-ratchet.json")>]
+///       Ratchet of config: string option
 /// ```
-[<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
+[<AttributeUsage(AttributeTargets.Property, AllowMultiple = true)>]
 type CmdArgAttribute(description: string) =
     inherit Attribute()
     member val Description: string = description
+    /// Zero-based index of the positional argument this annotation applies to (default: 0)
+    member val FieldIndex = 0 with get, set
     /// Default value to display in help (e.g. "coverage-ratchet.json")
     member val Default: string = null with get, set
 

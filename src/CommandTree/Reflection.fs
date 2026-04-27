@@ -143,11 +143,11 @@ module CommandReflection =
             | Some _ -> FilePath
             | None -> autoDetectCompletion field
 
-    /// Get CmdArgAttribute from a field PropertyInfo, if present
-    let private getCmdArgAttr (field: Reflection.PropertyInfo) =
-        field.GetCustomAttributes(typeof<CmdArgAttribute>, false)
-        |> Array.tryHead
-        |> Option.map (fun a -> a :?> CmdArgAttribute)
+    /// Get CmdArgAttribute for a specific field index on a union case, if present
+    let private getCmdArgAttr (case: UnionCaseInfo) (fieldIndex: int) =
+        case.GetCustomAttributes(typeof<CmdArgAttribute>)
+        |> Array.map (fun a -> a :?> CmdArgAttribute)
+        |> Array.tryFind (fun a -> a.FieldIndex = fieldIndex)
 
     /// Get example strings from CmdExampleAttribute on a union case
     let private getCmdExamples (case: UnionCaseInfo) =
@@ -159,7 +159,7 @@ module CommandReflection =
     let private getArgInfo (case: UnionCaseInfo) (fields: Reflection.PropertyInfo array) : ArgInfo list =
         fields
         |> Array.mapi (fun i f ->
-            let cmdArgAttr = getCmdArgAttr f
+            let cmdArgAttr = getCmdArgAttr case i
 
             { Name = toKebabCase f.Name
               TypeName = getTypeName f.PropertyType
