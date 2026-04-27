@@ -3,10 +3,7 @@ module CommandTree.Tests.ReflectionTests
 open Xunit
 open Swensen.Unquote
 open CommandTree
-
-// =============================================================================
-// Test command types - minimal attributes
-// =============================================================================
+open CommandTree.Tests.TestHelpers
 
 type MinimalCommand =
     | Check
@@ -14,18 +11,10 @@ type MinimalCommand =
     | TestSuite
     | FileCoverage of path: string
 
-// =============================================================================
-// Test command types - with attributes
-// =============================================================================
-
 type AttributedCommand =
     | [<Cmd("Run all checks")>] Check
     | [<Cmd("Build the project", Name = "compile")>] Build
     | [<Cmd("Format code", Name = "fmt")>] Format
-
-// =============================================================================
-// Test command types - nested
-// =============================================================================
 
 type DevSubCommand =
     | [<CmdDefault>] Check
@@ -40,10 +29,6 @@ type NestedCommand =
 type MixedFieldUnion =
     | Simple
     | WithArg of x: int
-
-// =============================================================================
-// toKebabCase tests
-// =============================================================================
 
 [<Fact>]
 let ``toKebabCase converts PascalCase to kebab-case`` () =
@@ -61,19 +46,11 @@ let ``toKebabCase handles consecutive capitals`` () =
     Assert.Equal("htmlparser", CommandReflection.toKebabCase "HTMLParser")
     Assert.Equal("urlhandler", CommandReflection.toKebabCase "URLHandler")
 
-// =============================================================================
-// toDescription tests
-// =============================================================================
-
 [<Fact>]
 let ``toDescription converts PascalCase to readable description`` () =
     Assert.Equal("File coverage", CommandReflection.toDescription "FileCoverage")
     Assert.Equal("Test suite", CommandReflection.toDescription "TestSuite")
     Assert.Equal("Check", CommandReflection.toDescription "Check")
-
-// =============================================================================
-// Minimal command tests (no attributes)
-// =============================================================================
 
 [<Fact>]
 let ``fromUnion derives names from case names`` () =
@@ -91,31 +68,13 @@ let ``fromUnion derives names from case names`` () =
 [<Fact>]
 let ``fromUnion derives descriptions from case names`` () =
     let tree = CommandReflection.fromUnion<MinimalCommand> "Test"
-
-    match tree with
-    | CommandTree.Group group ->
-        let checkNode = group.Children |> List.find (fun c -> CommandTree.name c = "check")
-        Assert.Equal("Check", CommandTree.desc checkNode)
-
-        let testSuiteNode =
-            group.Children |> List.find (fun c -> CommandTree.name c = "test-suite")
-
-        Assert.Equal("Test suite", CommandTree.desc testSuiteNode)
-    | CommandTree.Leaf _ -> failwith "Expected group"
-
-// =============================================================================
-// Attributed command tests
-// =============================================================================
+    Assert.Equal("Check", (getLeaf tree "check").Description)
+    Assert.Equal("Test suite", (getLeaf tree "test-suite").Description)
 
 [<Fact>]
 let ``fromUnion uses attribute description when provided`` () =
     let tree = CommandReflection.fromUnion<AttributedCommand> "Test"
-
-    match tree with
-    | CommandTree.Group group ->
-        let checkNode = group.Children |> List.find (fun c -> CommandTree.name c = "check")
-        Assert.Equal("Run all checks", CommandTree.desc checkNode)
-    | CommandTree.Leaf _ -> failwith "Expected group"
+    Assert.Equal("Run all checks", (getLeaf tree "check").Description)
 
 [<Fact>]
 let ``fromUnion uses attribute name when provided`` () =
@@ -133,16 +92,7 @@ let ``fromUnion uses attribute name when provided`` () =
 [<Fact>]
 let ``fromUnion uses custom name with explicit description`` () =
     let tree = CommandReflection.fromUnion<AttributedCommand> "Test"
-
-    match tree with
-    | CommandTree.Group group ->
-        let fmtNode = group.Children |> List.find (fun c -> CommandTree.name c = "fmt")
-        Assert.Equal("Format code", CommandTree.desc fmtNode)
-    | CommandTree.Leaf _ -> failwith "Expected group"
-
-// =============================================================================
-// Nested command tests
-// =============================================================================
+    Assert.Equal("Format code", (getLeaf tree "fmt").Description)
 
 [<Fact>]
 let ``fromUnion creates groups for nested unions`` () =
@@ -174,19 +124,11 @@ let ``fromUnion handles CmdDefault attribute`` () =
         | CommandTree.Leaf _ -> failwith "Expected dev to be a group"
     | CommandTree.Leaf _ -> failwith "Expected root group"
 
-// =============================================================================
-// caseName tests
-// =============================================================================
-
 [<Fact>]
 let ``caseName returns kebab-case name of command`` () =
     Assert.Equal("check", CommandReflection.caseName MinimalCommand.Check)
     Assert.Equal("test-suite", CommandReflection.caseName MinimalCommand.TestSuite)
     Assert.Equal("file-coverage", CommandReflection.caseName (MinimalCommand.FileCoverage "test.fs"))
-
-// =============================================================================
-// formatCmd tests
-// =============================================================================
 
 [<Fact>]
 let ``formatCmd formats simple command`` () =
@@ -208,10 +150,6 @@ let ``formatCmd formats nested command`` () =
 [<Fact>]
 let ``formatCmd formats nested command with default`` () =
     test <@ CommandReflection.formatCmd (NestedCommand.Dev DevSubCommand.Check) = "dev check" @>
-
-// =============================================================================
-// Type parsing/formatting coverage for int64, bool, Guid, option edge cases
-// =============================================================================
 
 type TypesCommand =
     | Run of count: int64
@@ -396,10 +334,6 @@ let ``parse and format roundtrip for Guid command`` () =
 
     Assert.Equal(Ok(TypesCommand.Lookup guid), result)
 
-// =============================================================================
-// List field validation tests
-// =============================================================================
-
 type ListFormatCommand = | [<Cmd("Tag files")>] Tag of tag: string * files: string list
 
 type InvalidListPosition = Bad of files: string list * tag: string
@@ -425,20 +359,11 @@ let ``formatFieldValue handles empty list`` () =
 
 [<Fact>]
 let ``fromUnion list field has correct type name`` () =
-    let tree = CommandReflection.fromUnion<ListFormatCommand> "Test"
-
-    match tree with
-    | CommandTree.Group group ->
-        let tagNode = group.Children |> List.find (fun c -> CommandTree.name c = "tag")
-
-        match tagNode with
-        | CommandTree.Leaf leaf ->
-            let filesArg = leaf.Args |> List.find (fun a -> a.Name = "files")
-            test <@ filesArg.TypeName = "string list" @>
-            test <@ filesArg.IsList = true @>
-            test <@ filesArg.IsOptional = false @>
-        | CommandTree.Group _ -> failwith "Expected leaf"
-    | CommandTree.Leaf _ -> failwith "Expected group"
+    let leaf = CommandReflection.fromUnion<ListFormatCommand> "Test" |> getLeaf <| "tag"
+    let filesArg = leaf.Args |> List.find (fun a -> a.Name = "files")
+    test <@ filesArg.TypeName = "string list" @>
+    test <@ filesArg.IsList = true @>
+    test <@ filesArg.IsOptional = false @>
 
 [<Fact>]
 let ``formatCmd formats command with list field`` () =
@@ -462,10 +387,6 @@ let ``fromUnion throws when list field is not last`` () =
 let ``fromUnion throws when multiple list fields`` () =
     Assert.Throws<System.InvalidOperationException>(fun () ->
         CommandReflection.fromUnion<MultipleListFields> "Test" |> ignore)
-
-// =============================================================================
-// CmdEnv and CmdEnvRaw attribute tests
-// =============================================================================
 
 type EnvFlag =
     | [<CmdEnv("LVL")>] LogLevel of string
@@ -494,10 +415,6 @@ let ``CmdEnvRaw attribute exposes full var name`` () =
     test <@ attrs.Length = 1 @>
     let attr = attrs.[0] :?> CmdEnvRawAttribute
     test <@ attr.VarName = "NO_CACHE" @>
-
-// =============================================================================
-// DU-based flag info tests
-// =============================================================================
 
 [<Fact>]
 let ``getFlagInfoFromDU generates flag info from union cases`` () =
@@ -552,10 +469,6 @@ let ``getFlagInfoFromDU short flag collision avoidance`` () =
     let verbose = flagInfo |> List.find (fun f -> f.LongName = "verbose")
     test <@ verbose.ShortName = Some "v" @>
 
-// =============================================================================
-// Coverage: getTypeName for float and decimal fields
-// =============================================================================
-
 type FloatCommand = | [<Cmd("Compute")>] Compute of value: float
 
 type DecimalCommand = | [<Cmd("Price")>] Price of amount: decimal
@@ -582,10 +495,6 @@ let ``fromUnion generates correct typeName for decimal field`` () =
         test <@ args.[0].TypeName = "decimal" @>
     | _ -> failwith "Expected group with one child"
 
-// =============================================================================
-// Coverage: parseFieldValue error propagation for option with ambiguous inner union
-// =============================================================================
-
 type AmbigUnion =
     | Start
     | Stop
@@ -602,10 +511,6 @@ let ``parseFieldValue returns Error for option with ambiguous union inner`` () =
         test <@ candidates |> List.length > 1 @>
     | _ -> failwith "Expected Error for ambiguous union in option"
 
-// =============================================================================
-// Coverage: DU flag parsing with invalid typed value
-// =============================================================================
-
 type IntFlag =
     | Count of int
     | Verbose
@@ -620,10 +525,6 @@ let ``parse returns InvalidArguments for unparseable DU flag value`` () =
     match result with
     | Error(InvalidArguments("run", msg)) -> test <@ msg.Contains("Invalid value") @>
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
-
-// =============================================================================
-// Coverage: env var error paths
-// =============================================================================
 
 type EnvBoolFlag =
     | Verbose

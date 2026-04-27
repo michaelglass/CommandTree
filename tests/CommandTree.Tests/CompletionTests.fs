@@ -5,10 +5,6 @@ open Swensen.Unquote
 open CommandTree
 open CommandTree.Tests.TestHelpers
 
-// =============================================================================
-// Test types with completion attributes
-// =============================================================================
-
 type EnvKind =
     | Dev
     | Staging
@@ -35,10 +31,6 @@ type DevSubCmd =
 type NestedCmd =
     | Dev of DevSubCmd
     | [<Cmd("Show help")>] Help
-
-// =============================================================================
-// ArgCompletionHint from CmdCompletion attribute
-// =============================================================================
 
 [<Fact>]
 let ``CmdCompletion attribute populates Values completion hint`` () =
@@ -71,10 +63,6 @@ let ``No attribute gives NoCompletion for simple types`` () =
     test <@ leaf.Args.Length = 1 @>
     test <@ leaf.Args.[0].Completions = NoCompletion @>
 
-// =============================================================================
-// Union-type auto-detection for completions (option-wrapped unions)
-// =============================================================================
-
 [<Fact>]
 let ``Optional union-typed field auto-detects Values completion`` () =
     let leaf =
@@ -82,10 +70,6 @@ let ``Optional union-typed field auto-detects Values completion`` () =
 
     test <@ leaf.Args.Length = 1 @>
     test <@ leaf.Args.[0].Completions = Values [ "dev"; "staging"; "prod" ] @>
-
-// =============================================================================
-// Union-type parseFieldValue / formatFieldValue
-// =============================================================================
 
 [<Fact>]
 let ``parseFieldValue handles union type by kebab-case name`` () =
@@ -120,10 +104,6 @@ let ``roundtrip format for optional union arg`` () =
         CommandTree.format tree (UnionArgCommand.ChooseOpt(Some EnvKind.Prod)) "cmd"
 
     test <@ result = Some "cmd choose-opt prod" @>
-
-// =============================================================================
-// Prefix matching for union-typed parseFieldValue
-// =============================================================================
 
 type AmbiguousKind =
     | Start
@@ -176,10 +156,6 @@ let ``parseFieldValue ambiguous prefix returns Error`` () =
         test <@ candidates |> List.contains "status" @>
     | other -> failwith $"Expected Error(AmbiguousValue), got %A{other}"
 
-// =============================================================================
-// Fish completions with argument values
-// =============================================================================
-
 [<Fact>]
 let ``fishCompletions includes argument value completions from CmdCompletion`` () =
     let tree = CommandReflection.fromUnion<CompletedCommand> "Test"
@@ -212,10 +188,6 @@ let ``fishCompletions includes union-type auto-detected completions for optional
     test <@ completions.Contains("-a \"staging\"") @>
     test <@ completions.Contains("-a \"prod\"") @>
 
-// =============================================================================
-// Fish completions for nested groups
-// =============================================================================
-
 [<Fact>]
 let ``fishCompletions generates completions for nested command groups`` () =
     let tree = CommandReflection.fromUnion<NestedCmd> "Test"
@@ -233,10 +205,6 @@ let ``fishCompletions generates completions for nested command groups`` () =
     test <@ completions.Contains("-a \"check\"") @>
     test <@ completions.Contains("-a \"build\"") @>
     test <@ completions.Contains("-a \"test\"") @>
-
-// =============================================================================
-// Fish completions for list fields
-// =============================================================================
 
 type ListFileCommand = | [<Cmd("Compare files"); CmdFileCompletion>] Compare of files: string list
 
@@ -256,10 +224,6 @@ let ``fishCompletions includes file completion for list field`` () =
 
     test <@ completions.Contains("__fish_seen_subcommand_from compare") @>
     test <@ completions.Contains("-F") @>
-
-// =============================================================================
-// Fish completions for DU-based flag commands
-// =============================================================================
 
 type CompDeployFlag =
     | DryRun

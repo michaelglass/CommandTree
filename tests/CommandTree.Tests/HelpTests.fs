@@ -39,76 +39,74 @@ type DocFlag =
 
 type FlagDescCommand = | [<Cmd("Generate docs")>] Generate of DocFlag list
 
+let annotatedRatchet =
+    CommandReflection.fromUnion<AnnotatedCommand> "Test" |> getLeaf <| "ratchet"
+
+let annotatedMerge =
+    CommandReflection.fromUnion<AnnotatedCommand> "Test" |> getLeaf <| "merge"
+
+let recordMerge =
+    CommandReflection.fromUnion<RecordArgCommand> "Test" |> getLeaf <| "merge"
+
 [<Fact>]
 let ``CmdArg on case populates ArgInfo Description`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "ratchet"
-    test <@ leaf.Args.[0].Description = Some "Path to config" @>
+    test <@ annotatedRatchet.Args.[0].Description = Some "Path to config" @>
 
 [<Fact>]
 let ``CmdArg on case populates ArgInfo Default`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "ratchet"
-    test <@ leaf.Args.[0].Default = Some "cfg.json" @>
+    test <@ annotatedRatchet.Args.[0].Default = Some "cfg.json" @>
 
 [<Fact>]
 let ``CmdArg FieldIndex targets correct field`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    test <@ leaf.Args.[0].Description = Some "Baseline XML" @>
-    test <@ leaf.Args.[1].Description = Some "Current XML" @>
-    test <@ leaf.Args.[2].Description = Some "Output path" @>
+    test <@ annotatedMerge.Args.[0].Description = Some "Baseline XML" @>
+    test <@ annotatedMerge.Args.[1].Description = Some "Current XML" @>
+    test <@ annotatedMerge.Args.[2].Description = Some "Output path" @>
 
 [<Fact>]
 let ``CmdArg field with no FieldIndex match gives None`` () =
-    let tree = CommandReflection.fromUnion<OptionalDescCommand> "Test"
-    let leaf = getLeaf tree "deploy"
+    let leaf =
+        CommandReflection.fromUnion<OptionalDescCommand> "Test" |> getLeaf <| "deploy"
     // Deploy has no CmdArg attributes, so Args is empty
     test <@ List.isEmpty leaf.Args @>
 
 [<Fact>]
 let ``CmdExample with multiple values in one attribute`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    test <@ leaf.Examples = [ "old.xml new.xml out.xml"; "a.xml b.xml merged.xml" ] @>
+    test <@ annotatedMerge.Examples = [ "old.xml new.xml out.xml"; "a.xml b.xml merged.xml" ] @>
 
 [<Fact>]
 let ``Cmd without description derives from case name`` () =
-    let tree = CommandReflection.fromUnion<OptionalDescCommand> "Test"
-    let leaf = getLeaf tree "fmt"
+    let leaf =
+        CommandReflection.fromUnion<OptionalDescCommand> "Test" |> getLeaf <| "fmt"
+
     test <@ leaf.Name = "fmt" @>
     test <@ leaf.Description = "Format" @>
 
 [<Fact>]
 let ``CmdArg with only Default gives None Description`` () =
-    let tree = CommandReflection.fromUnion<DefaultOnlyCommand> "Test"
-    let leaf = getLeaf tree "build"
+    let leaf =
+        CommandReflection.fromUnion<DefaultOnlyCommand> "Test" |> getLeaf <| "build"
+
     test <@ leaf.Args.[0].Description = None @>
     test <@ leaf.Args.[0].Default = Some "Release" @>
 
 [<Fact>]
 let ``CmdArg on record field populates Description`` () =
-    let tree = CommandReflection.fromUnion<RecordArgCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    test <@ leaf.Args.[0].Description = Some "Baseline XML file" @>
-    test <@ leaf.Args.[1].Description = Some "Current XML file" @>
+    test <@ recordMerge.Args.[0].Description = Some "Baseline XML file" @>
+    test <@ recordMerge.Args.[1].Description = Some "Current XML file" @>
 
 [<Fact>]
 let ``CmdArg on record field populates Default`` () =
-    let tree = CommandReflection.fromUnion<RecordArgCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    test <@ leaf.Args.[2].Default = Some "merged.xml" @>
+    test <@ recordMerge.Args.[2].Default = Some "merged.xml" @>
 
 [<Fact>]
 let ``CmdExample on record command populates Examples`` () =
-    let tree = CommandReflection.fromUnion<RecordArgCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    test <@ leaf.Examples = [ "old.xml new.xml"; "a.xml b.xml out.xml" ] @>
+    test <@ recordMerge.Examples = [ "old.xml new.xml"; "a.xml b.xml out.xml" ] @>
 
 [<Fact>]
 let ``CmdFlag Description overrides derived description`` () =
-    let tree = CommandReflection.fromUnion<FlagDescCommand> "Test"
-    let leaf = getLeaf tree "generate"
+    let leaf =
+        CommandReflection.fromUnion<FlagDescCommand> "Test" |> getLeaf <| "generate"
+
     let dryRunFlag = leaf.Flags |> List.find (fun fi -> fi.LongName = "dry-run")
     let outFlag = leaf.Flags |> List.find (fun fi -> fi.LongName = "out")
     test <@ dryRunFlag.Description = "Skip the actual operation" @>
@@ -116,23 +114,17 @@ let ``CmdFlag Description overrides derived description`` () =
 
 [<Fact>]
 let ``help includes Arguments section when args have descriptions`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    let helpText = CommandTree.help (CommandTree.Leaf leaf) [] "mycli"
+    let helpText = CommandTree.help (CommandTree.Leaf annotatedMerge) [] "mycli"
     test <@ helpText.Contains("Arguments:") @>
     test <@ helpText.Contains("Baseline XML") @>
 
 [<Fact>]
 let ``help includes default in Arguments section`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "ratchet"
-    let helpText = CommandTree.help (CommandTree.Leaf leaf) [] "mycli"
+    let helpText = CommandTree.help (CommandTree.Leaf annotatedRatchet) [] "mycli"
     test <@ helpText.Contains("(default: cfg.json)") @>
 
 [<Fact>]
 let ``help includes Examples section`` () =
-    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
-    let leaf = getLeaf tree "merge"
-    let helpText = CommandTree.help (CommandTree.Leaf leaf) [] "mycli"
+    let helpText = CommandTree.help (CommandTree.Leaf annotatedMerge) [] "mycli"
     test <@ helpText.Contains("Examples:") @>
     test <@ helpText.Contains("old.xml new.xml out.xml") @>
