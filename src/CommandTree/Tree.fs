@@ -14,7 +14,8 @@ type ArgInfo =
       TypeName: string
       IsOptional: bool
       IsList: bool
-      Completions: ArgCompletionHint }
+      Completions: ArgCompletionHint
+      Description: string option }
 
 /// Environment variable binding for a flag
 type EnvVarInfo =
@@ -248,6 +249,11 @@ module CommandTree =
             $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
         |> String.concat "\n"
 
+    /// Render a single arg description line for the Arguments section
+    let private renderArgLine (arg: ArgInfo) (desc: string) =
+        let label = $"  %s{formatArg arg}"
+        $"%s{label.PadRight(20)} %s{desc}"
+
     /// Generate help for a tree node (single level)
     let help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
         let pathStr =
@@ -262,6 +268,16 @@ module CommandTree =
 
             let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
 
+            let argsSection =
+                let describedArgs =
+                    leaf.Args |> List.choose (fun a -> a.Description |> Option.map (fun d -> a, d))
+
+                if describedArgs.IsEmpty then
+                    ""
+                else
+                    let lines = describedArgs |> List.map (fun (a, d) -> renderArgLine a d) |> String.concat "\n"
+                    $"\n\nArguments:\n%s{lines}"
+
             let flagsSection =
                 if leaf.Flags.IsEmpty then
                     ""
@@ -269,7 +285,7 @@ module CommandTree =
                     let flagLines = leaf.Flags |> List.map renderFlagLine |> String.concat "\n"
                     $"\n\nOptions:\n%s{flagLines}"
 
-            $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{flagsSection}"
+            $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{argsSection}%s{flagsSection}"
 
         | Group group ->
             let prefix =

@@ -143,6 +143,12 @@ module CommandReflection =
             | Some _ -> FilePath
             | None -> autoDetectCompletion field
 
+    /// Get CmdArgAttribute from a field PropertyInfo, if present
+    let private getCmdArgAttr (field: Reflection.PropertyInfo) =
+        field.GetCustomAttributes(typeof<CmdArgAttribute>, false)
+        |> Array.tryHead
+        |> Option.map (fun a -> a :?> CmdArgAttribute)
+
     /// Build ArgInfo list from union case fields
     let private getArgInfo (case: UnionCaseInfo) (fields: Reflection.PropertyInfo array) : ArgInfo list =
         fields
@@ -151,7 +157,8 @@ module CommandReflection =
               TypeName = getTypeName f.PropertyType
               IsOptional = isOptionalType f.PropertyType
               IsList = isListType f.PropertyType
-              Completions = getCompletionHint case i f })
+              Completions = getCompletionHint case i f
+              Description = getCmdArgAttr f |> Option.map (fun a -> a.Description) })
         |> Array.toList
 
     /// Convert PascalCase to SCREAMING_SNAKE_CASE (e.g., "LogLevel" -> "LOG_LEVEL", "DryRun" -> "DRY_RUN")
@@ -217,14 +224,19 @@ module CommandReflection =
                     else
                         getTypeName fields.[0].PropertyType
 
+                let description =
+                    match flagAttr with
+                    | Some a when not (isNull a.Description) -> a.Description
+                    | _ -> toDescription case.Name
+
                 let envVar = deriveEnvVar case envPrefix
 
-                (case.Name, longName, explicitShort, isBool, typeName, envVar))
+                (longName, explicitShort, isBool, typeName, description, envVar))
 
         // Short flag collision detection
         let shortCounts =
             flagData
-            |> Array.choose (fun (_, longName, explicitShort, _, _, _) ->
+            |> Array.choose (fun (longName, explicitShort, _, _, _, _) ->
                 match explicitShort with
                 | Some _ -> None
                 | None -> Some(string longName.[0]))
@@ -232,7 +244,7 @@ module CommandReflection =
             |> Map.ofArray
 
         flagData
-        |> Array.map (fun (caseName, longName, explicitShort, isBool, typeName, envVar) ->
+        |> Array.map (fun (longName, explicitShort, isBool, typeName, description, envVar) ->
             let shortName =
                 match explicitShort with
                 | Some s -> Some s
@@ -247,7 +259,7 @@ module CommandReflection =
               ShortName = shortName
               TypeName = typeName
               IsBool = isBool
-              Description = toDescription caseName
+              Description = description
               EnvVar = envVar })
         |> Array.toList
 
@@ -833,7 +845,8 @@ module CommandReflection =
                           TypeName = getTypeName f.PropertyType
                           IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
                           IsList = false
-                          Completions = autoDetectCompletion f })
+                          Completions = autoDetectCompletion f
+                          Description = None })
                     |> Array.toList
 
                 CommandTree.Leaf

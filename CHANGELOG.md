@@ -4,6 +4,9 @@ All notable changes to CommandTree are documented in this file.
 
 ## [Unreleased]
 
+- feat: add `[<CmdArg("description")>]` attribute for documenting positional arguments — when any arg has a description, `help`/`helpForPath` emits an `Arguments:` section beneath the command description
+- feat: add `Description` property to `[<CmdFlag>]` attribute to override the auto-derived flag description (derived from case name in sentence case)
+- **Breaking:** `ArgInfo` gains a `Description: string option` field — callers constructing `ArgInfo` directly must add `Description = None`
 - chore: bump upstream tool versions
 
 ## [0.4.0] - 2026-04-11

@@ -69,15 +69,32 @@ type CmdFileCompletionAttribute() =
     inherit Attribute()
     member val FieldIndex = 0 with get, set
 
+/// Attribute to document a positional argument on a DU case field.
+/// Applied to named fields in union cases to provide help text for each argument.
+///
+/// Example:
+/// ```fsharp
+/// type CoverageCommand =
+///     | [<Cmd("Merge two Cobertura XMLs")>] Merge of
+///         [<CmdArg("Cobertura XML from a prior full run")>] baseline: string *
+///         [<CmdArg("Cobertura XML from the current run")>] partial: string *
+///         [<CmdArg("Where to write the merged output")>] output: string
+/// ```
+[<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
+type CmdArgAttribute(description: string) =
+    inherit Attribute()
+    member val Description: string = description
+
 /// Attribute to override the derived flag name or short flag for a DU flag case.
 /// Applied to union cases in a flag DU (each case = one CLI flag).
 /// Name overrides the long flag name (derived from case name via toKebabCase by default).
 /// Short overrides the auto-derived short flag (first letter of flag name by default).
+/// Description overrides the auto-derived description (derived from case name by default).
 ///
 /// Example:
 /// ```fsharp
 /// type CheckFlag =
-///     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+///     | [<CmdFlag(Name = "conf", Short = "k", Description = "Path to config file")>] Config of string
 ///     | Verbose
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
@@ -87,6 +104,8 @@ type CmdFlagAttribute() =
     member val Name: string = null with get, set
     /// Short flag character override (without - prefix)
     member val Short: string = null with get, set
+    /// Description override (defaults to case name in sentence case)
+    member val Description: string = null with get, set
 
 /// Attribute to override the env var suffix for a flag union case.
 /// The prefix (set via fromUnionWithEnv/fromUnionWithGlobalsAndEnv) is prepended.
