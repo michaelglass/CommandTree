@@ -84,6 +84,8 @@ type CmdFileCompletionAttribute() =
 type CmdArgAttribute(description: string) =
     inherit Attribute()
     member val Description: string = description
+    /// Default value to display in help (e.g. "coverage-ratchet.json")
+    member val Default: string = null with get, set
 
 /// Attribute to override the derived flag name or short flag for a DU flag case.
 /// Applied to union cases in a flag DU (each case = one CLI flag).
@@ -106,6 +108,21 @@ type CmdFlagAttribute() =
     member val Short: string = null with get, set
     /// Description override (defaults to case name in sentence case)
     member val Description: string = null with get, set
+
+/// Attribute to provide example invocations for a command case.
+/// Applied to union cases; multiple attributes can be stacked for multiple examples.
+/// The cmdPrefix is prepended automatically when rendering help.
+///
+/// Example:
+/// ```fsharp
+/// type CoverageCommand =
+///     | [<Cmd("Merge two Cobertura XMLs")>
+///        CmdExample("merge old.xml new.xml merged.xml")>] Merge of ...
+/// ```
+[<AttributeUsage(AttributeTargets.Property, AllowMultiple = true)>]
+type CmdExampleAttribute(example: string) =
+    inherit Attribute()
+    member val Example: string = example
 
 /// Attribute to override the env var suffix for a flag union case.
 /// The prefix (set via fromUnionWithEnv/fromUnionWithGlobalsAndEnv) is prepended.

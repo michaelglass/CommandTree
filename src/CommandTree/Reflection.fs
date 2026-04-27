@@ -149,16 +149,25 @@ module CommandReflection =
         |> Array.tryHead
         |> Option.map (fun a -> a :?> CmdArgAttribute)
 
+    /// Get example strings from CmdExampleAttribute on a union case
+    let private getCmdExamples (case: UnionCaseInfo) =
+        case.GetCustomAttributes(typeof<CmdExampleAttribute>)
+        |> Array.map (fun a -> (a :?> CmdExampleAttribute).Example)
+        |> Array.toList
+
     /// Build ArgInfo list from union case fields
     let private getArgInfo (case: UnionCaseInfo) (fields: Reflection.PropertyInfo array) : ArgInfo list =
         fields
         |> Array.mapi (fun i f ->
+            let cmdArgAttr = getCmdArgAttr f
+
             { Name = toKebabCase f.Name
               TypeName = getTypeName f.PropertyType
               IsOptional = isOptionalType f.PropertyType
               IsList = isListType f.PropertyType
               Completions = getCompletionHint case i f
-              Description = getCmdArgAttr f |> Option.map (fun a -> a.Description) })
+              Description = cmdArgAttr |> Option.map (fun a -> a.Description)
+              Default = cmdArgAttr |> Option.bind (fun a -> if isNull a.Default then None else Some a.Default) })
         |> Array.toList
 
     /// Convert PascalCase to SCREAMING_SNAKE_CASE (e.g., "LogLevel" -> "LOG_LEVEL", "DryRun" -> "DRY_RUN")
@@ -752,6 +761,7 @@ module CommandReflection =
                       Description = desc
                       Args = []
                       Flags = flagInfo
+                      Examples = getCmdExamples outerCase
                       Parse = parse
                       FormatArgs = formatArgs }
             elif fields.Length = 1 && isUnionType fields.[0].PropertyType then
@@ -846,7 +856,8 @@ module CommandReflection =
                           IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
                           IsList = false
                           Completions = autoDetectCompletion f
-                          Description = None })
+                          Description = None
+                          Default = None })
                     |> Array.toList
 
                 CommandTree.Leaf
@@ -854,6 +865,7 @@ module CommandReflection =
                       Description = desc
                       Args = argInfo
                       Flags = []
+                      Examples = getCmdExamples outerCase
                       Parse = parse
                       FormatArgs = formatArgs }
             else
@@ -887,6 +899,7 @@ module CommandReflection =
                       Description = desc
                       Args = argInfo
                       Flags = []
+                      Examples = getCmdExamples outerCase
                       Parse = parse
                       FormatArgs = formatArgs }
 

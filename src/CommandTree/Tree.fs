@@ -15,7 +15,8 @@ type ArgInfo =
       IsOptional: bool
       IsList: bool
       Completions: ArgCompletionHint
-      Description: string option }
+      Description: string option
+      Default: string option }
 
 /// Environment variable binding for a flag
 type EnvVarInfo =
@@ -77,6 +78,8 @@ type LeafData<'Cmd> =
         Args: ArgInfo list
         /// Flag metadata for named options
         Flags: FlagInfo list
+        /// Example invocations for help display (each is the args portion, prefix prepended automatically)
+        Examples: string list
         /// Parse CLI args into a command value
         Parse: string array -> Result<'Cmd, ParseError>
         /// Format a command value back to CLI arg tokens
@@ -207,8 +210,13 @@ module CommandTree =
 
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =
+        let defaultSuffix =
+            match arg.Default with
+            | Some d -> $"=%s{d}"
+            | None -> ""
+
         if arg.IsList then $"<%s{arg.Name}...>"
-        elif arg.IsOptional then $"[%s{arg.Name}]"
+        elif arg.IsOptional then $"[%s{arg.Name}%s{defaultSuffix}]"
         else $"<%s{arg.Name}>"
 
     /// Render a single flag info line for help output
@@ -285,7 +293,14 @@ module CommandTree =
                     let flagLines = leaf.Flags |> List.map renderFlagLine |> String.concat "\n"
                     $"\n\nOptions:\n%s{flagLines}"
 
-            $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{argsSection}%s{flagsSection}"
+            let examplesSection =
+                if leaf.Examples.IsEmpty then
+                    ""
+                else
+                    let lines = leaf.Examples |> List.map (fun e -> $"  %s{pathStr} %s{leaf.Name} %s{e}") |> String.concat "\n"
+                    $"\n\nExamples:\n%s{lines}"
+
+            $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{argsSection}%s{flagsSection}%s{examplesSection}"
 
         | Group group ->
             let prefix =
