@@ -167,7 +167,7 @@ module CommandReflection =
               IsList = isListType f.PropertyType
               Completions = getCompletionHint case i f
               Description = cmdArgAttr |> Option.map (fun a -> a.Description)
-              Default = cmdArgAttr |> Option.bind (fun a -> if isNull a.Default then None else Some a.Default) })
+              Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default) })
         |> Array.toList
 
     /// Convert PascalCase to SCREAMING_SNAKE_CASE (e.g., "LogLevel" -> "LOG_LEVEL", "DryRun" -> "DRY_RUN")
