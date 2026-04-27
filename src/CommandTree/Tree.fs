@@ -211,9 +211,7 @@ module CommandTree =
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =
         if arg.IsList then $"<%s{arg.Name}...>"
-        elif arg.IsOptional then
-            let defaultSuffix = match arg.Default with Some d -> $"=%s{d}" | None -> ""
-            $"[%s{arg.Name}%s{defaultSuffix}]"
+        elif arg.IsOptional then $"[%s{arg.Name}]"
         else $"<%s{arg.Name}>"
 
     /// Render a single flag info line for help output
@@ -257,7 +255,8 @@ module CommandTree =
     /// Render a single arg description line for the Arguments section
     let private renderArgLine (arg: ArgInfo) (desc: string) =
         let label = $"  %s{formatArg arg}"
-        $"%s{label.PadRight(20)} %s{desc}"
+        let defaultSuffix = match arg.Default with Some d -> $" (default: %s{d})" | None -> ""
+        $"%s{label.PadRight(20)} %s{desc}%s{defaultSuffix}"
 
     /// Render a named help section (returns empty string when lines is empty)
     let private renderSection (header: string) (lines: string list) =
