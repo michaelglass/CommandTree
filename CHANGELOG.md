@@ -2,7 +2,9 @@
 
 All notable changes to CommandTree are documented in this file.
 
-## [Unreleased]
+## Unreleased
+
+## 0.5.1 - 2026-05-27
 
 ### Changed
 
