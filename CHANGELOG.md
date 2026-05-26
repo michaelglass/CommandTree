@@ -4,6 +4,11 @@ All notable changes to CommandTree are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Bump `Microsoft.SourceLink.GitHub` 10.0.201 → 10.0.300
+- Bump `Microsoft.Testing.Extensions.CodeCoverage` 18.6.2 → 18.7.0
+
 ## [0.5.0] - 2026-04-27
 
 ### Added
