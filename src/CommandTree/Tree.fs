@@ -57,8 +57,12 @@ type ParseError =
     | HelpRequested of path: string list
     /// User requested version info (--version or version at root level).
     | VersionRequested
-    /// Command name not recognized. Includes what was typed and the group path for context.
-    | UnknownCommand of input: string * groupPath: string list
+    /// Command name not recognized. Carries the unrecognized token, the raw remaining args
+    /// after it (everything past the unknown token, ready to forward as-is), and the group
+    /// path for context. A consumer that resolves some commands dynamically (e.g. forwards
+    /// them to a daemon) uses <c>input</c>+<c>rest</c> directly; otherwise render the
+    /// canonical error via <c>renderParseError</c> and exit non-zero (see <c>isError</c>).
+    | UnknownCommand of input: string * rest: string array * groupPath: string list
     /// Arguments couldn't be parsed for a known command.
     | InvalidArguments of command: string * message: string
     /// Argument value matched multiple union cases.
@@ -188,7 +192,7 @@ module CommandTree =
                     elif List.isEmpty currentPath && (subCmd = "version" || hasVersionFlag args) then
                         Error VersionRequested
                     else
-                        Error(UnknownCommand(subCmd, currentPath))
+                        Error(UnknownCommand(subCmd, rest, currentPath))
 
         parseRec tree args []
 
@@ -408,6 +412,53 @@ module CommandTree =
                 | _ -> path
 
         findDeepest [] args
+
+    /// Render a <c>ParseError</c> as the full user-facing stderr text: a clear one-line
+    /// "invalid input" message followed by the help for the nearest relevant command or
+    /// group. Pure — returns the string; the caller prints it and chooses the exit code
+    /// (see <c>isError</c>).
+    ///
+    /// Per case:
+    /// <c>UnknownFlag</c> → "Unknown flag …" + that command's help.
+    /// <c>UnknownCommand</c> → "Unknown command …" + the nearest group's help (its child listing).
+    /// <c>InvalidArguments</c> → the message + that command's help.
+    /// <c>AmbiguousArgument</c> → "Ambiguous …" + nearest group's help.
+    /// <c>DuplicateFlag</c> → a duplicate message + that command's help.
+    /// <c>HelpRequested</c> → just the help for that path (not an error; no error line).
+    /// <c>VersionRequested</c> → empty string: version output is the caller's concern,
+    /// since CommandTree does not know the version. Detect it via <c>isError</c> (false)
+    /// and print your own version banner instead of calling this.
+    let renderParseError (tree: CommandTree<'Cmd>) (error: ParseError) (cmdPrefix: string) : string =
+        let withHelp (line: string) (path: string list) =
+            $"%s{line}\n\n%s{helpForPath tree path cmdPrefix}"
+
+        match error with
+        | HelpRequested path -> helpForPath tree path cmdPrefix
+        | VersionRequested -> ""
+        | UnknownFlag(flag, command, _) -> withHelp $"Unknown flag '%s{flag}' for '%s{command}'." [ command ]
+        | UnknownCommand(input, _, groupPath) ->
+            withHelp $"Unknown command '%s{input}'." (closestGroupPath tree groupPath)
+        | InvalidArguments(command, message) -> withHelp message [ command ]
+        | AmbiguousArgument(input, candidates) ->
+            // input is an argument *value* (an ambiguous union-case prefix), never a group
+            // name, so there is no nearer group to scope help to — show root help.
+            let joined = String.concat ", " candidates
+            withHelp $"Ambiguous '%s{input}'. Did you mean: %s{joined}" []
+        | DuplicateFlag(flag, command) ->
+            withHelp $"Flag '%s{flag}' provided more than once for '%s{command}'." [ command ]
+
+    /// Classify a <c>ParseError</c> for exit-code selection: <c>true</c> for genuine input
+    /// errors (caller should print <c>renderParseError</c> and exit non-zero), <c>false</c>
+    /// for <c>HelpRequested</c>/<c>VersionRequested</c> (informational; exit zero).
+    let isError (error: ParseError) : bool =
+        match error with
+        | HelpRequested _
+        | VersionRequested -> false
+        | UnknownCommand _
+        | InvalidArguments _
+        | AmbiguousArgument _
+        | UnknownFlag _
+        | DuplicateFlag _ -> true
 
     /// Generate fish shell completions from the command tree
     let fishCompletions (tree: CommandTree<'Cmd>) (cmdName: string) : string =

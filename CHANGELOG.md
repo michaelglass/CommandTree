@@ -4,6 +4,25 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **BREAKING:** `ParseError.UnknownCommand` now carries the raw remaining args. Its shape
+  changed from `UnknownCommand of input: string * groupPath: string list` to
+  `UnknownCommand of input: string * rest: string array * groupPath: string list`, where
+  `rest` is the raw argv after the unrecognized token. Every consumer pattern-matching
+  `UnknownCommand` must add the `rest` field. `parse` is now the single canonical path: a
+  consumer that resolves some commands dynamically (e.g. forwards them to a daemon) reads
+  `input` + `rest` directly; otherwise it renders the canonical error and exits non-zero.
+
+### Added
+
+- `CommandTree.renderParseError tree error prefix` — renders a `ParseError` as the canonical
+  user-facing stderr text: a one-line "invalid input" message followed by the nearest
+  command/group's help. Pure (returns a string). `HelpRequested` renders help only;
+  `VersionRequested` returns `""` (version output is the caller's concern).
+- `CommandTree.isError error` — classifies a `ParseError` for exit-code selection (`true` for
+  genuine input errors, `false` for `HelpRequested`/`VersionRequested`).
+
 ## 0.5.1 - 2026-05-27
 
 ### Changed

@@ -34,7 +34,7 @@ match spec.Parse argv with
 | Ok(globals, Task(Add(title, _))) -> printfn "Adding %s" title
 | Ok(_, Help) -> printfn "%s" (CommandTree.helpWithGlobals spec.Tree spec.GlobalFlags "my-cli")
 | Error(HelpRequested path) -> printfn "%s" (CommandTree.helpForPath spec.Tree path "my-cli")
-| Error(UnknownCommand(input, _)) -> UI.fail $"Unknown command: %s{input}"
+| Error(UnknownCommand(input, _rest, _)) -> UI.fail $"Unknown command: %s{input}"
 | _ -> ()
 ```
 <!-- sync:intro:end -->
@@ -207,7 +207,7 @@ let main argv =
             printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
 
         0
-    | Error(UnknownCommand(input, path)) ->
+    | Error(UnknownCommand(input, _rest, path)) ->
         UI.fail $"Unknown command: %s{input}"
         printfn "%s" (CommandTree.helpForPath spec.Tree path cmdName)
         1
@@ -244,6 +244,37 @@ CommandTree.helpWithGlobals tree flags prefix // Help with global options sectio
 CommandTree.format tree cmd prefix       // Format command back to CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path
+CommandTree.renderParseError tree err prefix // Error line + nearest help (full stderr text)
+CommandTree.isError err                  // true for genuine errors, false for help/version
+```
+
+`parse` is the **single, strict** parse path. An unrecognized command yields
+`Error(UnknownCommand(input, rest, groupPath))`, where `rest` is the raw remaining args after
+the unknown token. A consumer chooses what to do with it: forward `input` + `rest` to a daemon
+for dynamically-resolved commands, or render the canonical error and fail hard. There is no
+separate lenient/strict pair of functions.
+
+`renderParseError` turns any `ParseError` into the canonical stderr text — a one-line
+"invalid input" message followed by the nearest command/group's help — so every consumer
+renders errors uniformly. Pair it with `isError` for the exit code (`HelpRequested` /
+`VersionRequested` are not errors).
+
+```fsharp
+match CommandTree.parse tree argv with
+| Ok cmd -> run cmd; 0
+// Forward unknown top-level commands (groupPath = []) to a daemon for dynamic plugins.
+| Error(UnknownCommand(cmd, rest, [])) ->
+    match tryForwardToDaemon cmd rest with
+    | Some code -> code
+    | None ->
+        eprintfn "%s" (CommandTree.renderParseError tree (UnknownCommand(cmd, rest, [])) "fshw")
+        1
+| Error err when CommandTree.isError err ->
+    eprintfn "%s" (CommandTree.renderParseError tree err "fshw") // includes nested UnknownCommand
+    1
+| Error err ->
+    printfn "%s" (CommandTree.renderParseError tree err "fshw") // help text (HelpRequested)
+    0
 ```
 
 ### Reflection

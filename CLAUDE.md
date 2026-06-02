@@ -56,7 +56,7 @@ Six source files in `src/CommandTree/`:
 
 **Tree structure:** `CommandTree<'Cmd>` is a recursive union of `Leaf` (command with parser) and `Group` (subcommands with optional default). Parsing walks the tree matching args to node names, returning `Result<'Cmd, ParseError>` with structured errors carrying path context.
 
-**Structured parse errors:** `ParseError` is a discriminated union with `HelpRequested of path`, `UnknownCommand of input * groupPath`, `InvalidArguments of command * message`, `AmbiguousArgument of input * candidates`, `UnknownFlag of flag * command * validFlags`, and `DuplicateFlag of flag * command`. Path accumulation during recursive parse gives consumers full context for error display.
+**Structured parse errors:** `ParseError` is a discriminated union with `HelpRequested of path`, `VersionRequested`, `UnknownCommand of input * rest * groupPath`, `InvalidArguments of command * message`, `AmbiguousArgument of input * candidates`, `UnknownFlag of flag * command * validFlags`, and `DuplicateFlag of flag * command`. Path accumulation during recursive parse gives consumers full context for error display. `UnknownCommand` also carries `rest` (the raw argv after the unrecognized token) so a consumer can forward an unknown top-level command (`groupPath = []`) to a daemon for dynamic resolution, or render it via `renderParseError`. `parse` is the single canonical strict path; `renderParseError` produces the canonical "error line + nearest help" stderr text and `isError` classifies errors for exit-code selection.
 
 **Process runner:** The `Process` module wraps `System.Diagnostics.Process` with convenience functions. `ProcessStartInfo` is used directly -- no shell involved, so single quotes are literal.
 
