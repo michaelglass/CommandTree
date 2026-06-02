@@ -10,11 +10,20 @@
     Opt out entirely: -p:CommandTreeStampRevision=false
     Opt out of the dirty marker only: -p:CommandTreeStampDirty=false
 
-    This target never fails the build: a missing jj/git or a non-repo just leaves the
-    revision empty (Exec uses ContinueOnError), and SourceRevisionId is only set when a
-    non-empty id was resolved. It also never clobbers an existing SourceRevisionId (CI /
-    SourceLink already set it), and is skipped during design-time builds so IDEs don't
-    spawn jj/git on every background evaluation.
+    This target never fails the build and is silent on a failed probe: a missing jj/git
+    or a non-repo just leaves the revision empty. Each probe sets two flags so a failed
+    probe produces no diagnostics:
+      * IgnoreExitCode="true" — a non-zero exit code (e.g. a git status probe in a
+        directory that isn't a git repo) is treated as success, so Exec emits no
+        MSB3073 warning.
+      * IgnoreStandardErrorWarningFormat="true" — text the tool writes to stderr (e.g.
+        jj's "There is no jj repo in ." when run outside a repo) is NOT promoted to an
+        MSBuild error/warning, so it can't fail the build or add warning noise.
+    ConsoleToMSBuild still captures stdout on the success path and leaves the property
+    empty otherwise. SourceRevisionId is only set when a non-empty id was resolved. It
+    also never clobbers an existing SourceRevisionId (CI / SourceLink already set it),
+    and is skipped during design-time builds so IDEs don't spawn jj/git on every
+    background evaluation.
   -->
   <Target Name="CommandTreeStampSourceRevision"
           BeforeTargets="AddSourceRevisionToInformationalVersion;CoreCompile"
@@ -24,14 +33,22 @@
     <Exec Command="jj log --no-graph -r @ -T commit_id"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true"
-          ContinueOnError="true"
+          IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="low"
           EchoOff="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeJjRevision" />
     </Exec>
 
+    <!-- ConsoleToMSBuild merges the probe's stdout AND stderr, so on failure the captured
+         text is the tool's error message (e.g. jj's "Error: There is no jj repo in ."),
+         not a commit id. Accept the value only when it's a bare hex id; anything else
+         (an error message, with spaces/punctuation) is discarded so the revision stays
+         empty — honoring the "empty on failure" intent and keeping junk out of the
+         stamped AssemblyInformationalVersion. -->
     <PropertyGroup>
       <_CommandTreeJjRevision>$(_CommandTreeJjRevision.Trim())</_CommandTreeJjRevision>
+      <_CommandTreeJjRevision Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(_CommandTreeJjRevision)', '^[0-9a-fA-F]+$'))"></_CommandTreeJjRevision>
       <_CommandTreeRevision>$(_CommandTreeJjRevision)</_CommandTreeRevision>
     </PropertyGroup>
 
@@ -39,14 +56,17 @@
           Condition="'$(_CommandTreeRevision)' == ''"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true"
-          ContinueOnError="true"
+          IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="low"
           EchoOff="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeGitRevision" />
     </Exec>
 
     <PropertyGroup Condition="'$(_CommandTreeRevision)' == ''">
-      <_CommandTreeRevision>$(_CommandTreeGitRevision.Trim())</_CommandTreeRevision>
+      <_CommandTreeGitRevision>$(_CommandTreeGitRevision.Trim())</_CommandTreeGitRevision>
+      <_CommandTreeGitRevision Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(_CommandTreeGitRevision)', '^[0-9a-fA-F]+$'))"></_CommandTreeGitRevision>
+      <_CommandTreeRevision>$(_CommandTreeGitRevision)</_CommandTreeRevision>
     </PropertyGroup>
 
     <!-- Probe for a dirty working copy (optional ".dirty" marker), using whichever VCS
@@ -60,7 +80,8 @@
           Condition="'$(_CommandTreeCheckDirty)' == 'true' And '$(_CommandTreeJjRevision)' != ''"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true"
-          ContinueOnError="true"
+          IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="low"
           EchoOff="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeDirty" />
@@ -70,7 +91,8 @@
           Condition="'$(_CommandTreeCheckDirty)' == 'true' And '$(_CommandTreeJjRevision)' == ''"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true"
-          ContinueOnError="true"
+          IgnoreExitCode="true"
+          IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="low"
           EchoOff="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeDirty" />

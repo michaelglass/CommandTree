@@ -4,6 +4,19 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- `build/CommandTree.targets` (shipped under both `build/` and `buildTransitive/`) no longer emits
+  `MSB3073` warnings — or fails the build — when jj/git are unavailable or the build directory isn't
+  a VCS repo. The four revision/dirty probe `<Exec>` tasks now use `IgnoreExitCode="true"` (instead
+  of `ContinueOnError="true"`) plus `IgnoreStandardErrorWarningFormat="true"`. `IgnoreExitCode`
+  treats a non-zero probe exit as success so no `MSB3073` warning is logged;
+  `IgnoreStandardErrorWarningFormat` stops tool stderr (e.g. jj's "There is no jj repo in ." outside
+  a repo) from being promoted to an MSBuild error/warning. Together they deliver the target's stated
+  "silent, best-effort, empty on failure" intent without diagnostics that could turn downstream
+  warning- or error-counting CI red. The success path is unchanged: when jj/git are present the
+  commit id is still captured and stamped into `SourceRevisionId`.
+
 ## 0.6.1 - 2026-06-02
 
 ### Added
