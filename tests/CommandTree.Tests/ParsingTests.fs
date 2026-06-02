@@ -215,7 +215,13 @@ let ``parse handles simple command`` () =
 let ``parse handles unknown command`` () =
     let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
     let result = CommandTree.parse tree [| "unknown" |]
-    test <@ result = Error(UnknownCommand("unknown", [])) @>
+    test <@ result = Error(UnknownCommand("unknown", [||], [])) @>
+
+[<Fact>]
+let ``parse unknown command carries raw remaining args`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "frobnicate"; "--all"; "x" |]
+    test <@ result = Error(UnknownCommand("frobnicate", [| "--all"; "x" |], [])) @>
 
 // =============================================================================
 // Argument parsing tests
@@ -281,13 +287,19 @@ let ``parse uses root default when no args`` () =
 let ``parse rejects unknown root command even with default`` () =
     let tree = CommandReflection.fromUnion<RootCommand> "Test"
     let result = CommandTree.parse tree [| "devv" |]
-    test <@ result = Error(UnknownCommand("devv", [])) @>
+    test <@ result = Error(UnknownCommand("devv", [||], [])) @>
 
 [<Fact>]
 let ``parse rejects unknown subcommand even with default`` () =
     let tree = CommandReflection.fromUnion<RootCommand> "Test"
     let result = CommandTree.parse tree [| "dev"; "chekc" |]
-    test <@ result = Error(UnknownCommand("chekc", [ "dev" ])) @>
+    test <@ result = Error(UnknownCommand("chekc", [||], [ "dev" ])) @>
+
+[<Fact>]
+let ``parse unknown nested subcommand carries raw remaining args`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let result = CommandTree.parse tree [| "dev"; "chekc"; "--fast" |]
+    test <@ result = Error(UnknownCommand("chekc", [| "--fast" |], [ "dev" ])) @>
 
 // =============================================================================
 // Closest help path tests
@@ -1504,3 +1516,167 @@ let ``parse returns error for list field with invalid element`` () =
     match result with
     | Error(InvalidArguments _) -> ()
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// renderParseError tests (Capability 1: canonical error + nearest help)
+// =============================================================================
+
+[<Fact>]
+let ``renderParseError UnknownFlag shows error line and command help`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let err = UnknownFlag("--foo", "deploy", [ "--env"; "--dry-run" ])
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    // Error line names the flag and command
+    test <@ rendered.Contains("Unknown flag '--foo' for 'deploy'.") @>
+    // Followed by that command's own help (usage + its flags)
+    test <@ rendered.Contains("mycli deploy") @>
+    test <@ rendered.Contains("--env") @>
+
+[<Fact>]
+let ``renderParseError UnknownCommand shows error line and nearest group help`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    // Misspelled subcommand of the "dev" group
+    let err = UnknownCommand("chekc", [||], [ "dev" ])
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    test <@ rendered.Contains("Unknown command 'chekc'.") @>
+    // Nearest group help lists dev's children, not root commands
+    test <@ rendered.Contains("mycli dev") @>
+    test <@ rendered.Contains("build") @>
+    test <@ rendered.Contains("test") @>
+
+[<Fact>]
+let ``renderParseError UnknownCommand at root shows root help`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let err = UnknownCommand("devv", [||], [])
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    test <@ rendered.Contains("Unknown command 'devv'.") @>
+    test <@ rendered.Contains("dev") @>
+    test <@ rendered.Contains("help") @>
+
+[<Fact>]
+let ``renderParseError InvalidArguments shows message and command help`` () =
+    let tree = CommandReflection.fromUnion<CommandWithArgs> "Test"
+    let err = InvalidArguments("greet", "missing name")
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    test <@ rendered.Contains("missing name") @>
+    test <@ rendered.Contains("mycli greet") @>
+    test <@ rendered.Contains("<name>") @>
+
+[<Fact>]
+let ``renderParseError AmbiguousArgument shows candidates and help`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let err = AmbiguousArgument("de", [ "dev"; "deploy" ])
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    test <@ rendered.Contains("Ambiguous 'de'. Did you mean: dev, deploy") @>
+    // Falls back to root help (input is an arg value, not a group)
+    test <@ rendered.Contains("dev") @>
+
+[<Fact>]
+let ``renderParseError DuplicateFlag shows message and command help`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let err = DuplicateFlag("--env", "deploy")
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    test <@ rendered.Contains("Flag '--env' provided more than once for 'deploy'.") @>
+    test <@ rendered.Contains("mycli deploy") @>
+
+[<Fact>]
+let ``renderParseError HelpRequested renders help without error line`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let rendered = CommandTree.renderParseError tree (HelpRequested [ "dev" ]) "mycli"
+    test <@ rendered.Contains("mycli dev") @>
+    test <@ not (rendered.Contains("Unknown")) @>
+
+[<Fact>]
+let ``renderParseError VersionRequested returns empty string`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    let rendered = CommandTree.renderParseError tree VersionRequested "mycli"
+    test <@ rendered = "" @>
+
+[<Fact>]
+let ``isError classifies genuine errors as true and help/version as false`` () =
+    test <@ CommandTree.isError (UnknownCommand("x", [||], [])) @>
+    test <@ CommandTree.isError (UnknownFlag("--x", "c", [])) @>
+    test <@ CommandTree.isError (InvalidArguments("c", "m")) @>
+    test <@ CommandTree.isError (AmbiguousArgument("x", [])) @>
+    test <@ CommandTree.isError (DuplicateFlag("--x", "c")) @>
+    test <@ not (CommandTree.isError (HelpRequested [])) @>
+    test <@ not (CommandTree.isError VersionRequested) @>
+
+// =============================================================================
+// Single-path parse: unknown top-level command carries raw args for forwarding
+// =============================================================================
+
+[<Fact>]
+let ``parse unknown top-level command exposes raw args for forwarding`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    // A consumer forwards an unknown top-level command (groupPath = []) + its raw rest.
+    let result = CommandTree.parse tree [| "frobnicate"; "--all"; "x" |]
+
+    match result with
+    | Error(UnknownCommand(cmd, rest, [])) ->
+        test <@ cmd = "frobnicate" @>
+        test <@ rest = [| "--all"; "x" |] @>
+    | other -> failwith $"Expected UnknownCommand at root, got: %O{other}"
+
+[<Fact>]
+let ``parse unknown top-level command with no trailing args has empty rest`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    let result = CommandTree.parse tree [| "frobnicate" |]
+
+    match result with
+    | Error(UnknownCommand(cmd, rest, [])) ->
+        test <@ cmd = "frobnicate" @>
+        test <@ Array.isEmpty rest @>
+    | other -> failwith $"Expected UnknownCommand at root, got: %O{other}"
+
+[<Fact>]
+let ``parse known top-level command parses normally`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    test <@ CommandTree.parse tree [| "check" |] = Ok SimpleCommand.Check @>
+
+[<Fact>]
+let ``parse unknown nested subcommand still fails hard with non-empty groupPath`` () =
+    let tree = CommandReflection.fromUnion<RootCommand> "Test"
+    // "dev" is a known group; "chekc" is an unknown subcommand and must fail hard.
+    // groupPath is non-empty, so a forwarding consumer ignores it (only roots forward).
+    let result = CommandTree.parse tree [| "dev"; "chekc" |]
+
+    match result with
+    | Error(UnknownCommand("chekc", [||], [ "dev" ])) -> ()
+    | other -> failwith $"Expected nested UnknownCommand, got: %O{other}"
+
+[<Fact>]
+let ``parse surfaces help and version, never as UnknownCommand`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    test <@ CommandTree.parse tree [| "--help" |] = Error(HelpRequested []) @>
+    test <@ CommandTree.parse tree [| "--version" |] = Error VersionRequested @>
+    test <@ CommandTree.parse tree [| "version" |] = Error VersionRequested @>
+
+[<Fact>]
+let ``parse surfaces leaf parse errors, not UnknownCommand`` () =
+    let tree = CommandReflection.fromUnion<CommandWithArgs> "Test"
+    // "add" is known but the args are invalid -> a real error, not an unknown command.
+    let result = CommandTree.parse tree [| "add"; "notanint"; "2" |]
+
+    match result with
+    | Error(InvalidArguments("add", _)) -> ()
+    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+[<Fact>]
+let ``parse empty args yields default or help, never UnknownCommand`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+    test <@ CommandTree.parse tree [||] = Error(HelpRequested []) @>
+
+[<Fact>]
+let ``unresolved top-level command renders canonical error and help`` () =
+    let tree = CommandReflection.fromUnion<SimpleCommand> "Test"
+
+    match CommandTree.parse tree [| "frobnicate" |] with
+    | Error(UnknownCommand(cmd, rest, [])) ->
+        // Consumer could not resolve it dynamically -> render canonical error + help.
+        let rendered =
+            CommandTree.renderParseError tree (UnknownCommand(cmd, rest, [])) "mycli"
+
+        test <@ rendered.Contains("Unknown command 'frobnicate'.") @>
+        test <@ rendered.Contains("check") @>
+    | other -> failwith $"Expected UnknownCommand at root, got: %O{other}"
