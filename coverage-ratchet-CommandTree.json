@@ -3,7 +3,7 @@
     "Fish.fs": {
       "line": 35.714285714285715,
       "branch": 0,
-      "reason": "installHook calls external process \u002B writes to ~/.config"
+      "reason": "installHook calls external process + writes to ~/.config"
     },
     "Process.fs": {
       "line": 99.06542056074767,
@@ -16,9 +16,9 @@
       "reason": "Remaining uncovered: inline caseName (coverage artifact), defensive null/unreachable branches, parseFieldValue Error paths only reachable for union types but called from non-union contexts, compiler-generated branches from parseFlagsLoop closure"
     },
     "Tree.fs": {
-      "line": 98.72611464968153,
+      "line": 98,
       "branch": 90,
-      "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching"
+      "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching; plus the entryAssemblyVersion entry-vs-calling-assembly fallback (GetEntryAssembly() is non-null under the test host, so the null branch is host-dependent and not deterministically coverable) — its testable logic lives in assemblyVersion(asm) which is 100% line-covered, and the wrapper is covered indirectly via renderVersion"
     },
     "UI.fs": {
       "line": 41.80327868852459,

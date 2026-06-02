@@ -557,7 +557,7 @@ let main argv =
 
         0
     | Error VersionRequested ->
-        printfn "example-cli version 0.0.1"
+        printfn "%s" (CommandTree.renderVersion cmdName)
         0
     | Error(UnknownCommand(input, rest, path)) ->
         // A real CLI could forward `input` + `rest` to a daemon for dynamic commands here.

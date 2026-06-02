@@ -4,6 +4,24 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- `CommandTree.assemblyVersion asm` — best-available version string for an assembly: prefers the
+  `AssemblyInformationalVersionAttribute.InformationalVersion` (keeping any `+<commit>` build
+  metadata), falling back to `GetName().Version`. Fully unit-testable by passing assemblies in.
+- `CommandTree.entryAssemblyVersion ()` — version of the process entry assembly (the consumer
+  CLI), resolving `Assembly.GetEntryAssembly()` with a `GetCallingAssembly()` fallback for test
+  hosts.
+- `CommandTree.renderVersion prefix` — renders `"<prefix> <entryAssemblyVersion>"`, the
+  recommended default for the `VersionRequested` arm:
+  `| Error VersionRequested -> printfn "%s" (CommandTree.renderVersion "toolname"); 0`.
+- Auto-importing `build/CommandTree.targets` (shipped under both `build/` and `buildTransitive/`)
+  that stamps the build commit id (via jj, falling back to git) into `SourceRevisionId` so the
+  SDK folds it into `AssemblyInformationalVersion` as `+<commit>` for dev builds, with a `.dirty`
+  suffix when the working copy is dirty. It never fails the build and never clobbers an existing
+  `SourceRevisionId` (CI/SourceLink). Opt out with `-p:CommandTreeStampRevision=false` (whole
+  feature) or `-p:CommandTreeStampDirty=false` (dirty marker only).
+
 ## 0.6.0 - 2026-06-02
 
 ### Changed

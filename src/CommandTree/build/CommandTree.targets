@@ -1,0 +1,90 @@
+<Project>
+
+  <!--
+    Stamps the source revision (jj/git commit id) into the assembly informational version
+    for dev builds, so a binary without CI/SourceLink metadata still reports the commit it
+    was built from. The .NET SDK auto-appends $(SourceRevisionId) to
+    AssemblyInformationalVersion as "+<rev>" when IncludeSourceRevisionInInformationalVersion
+    is true (the default), so we only need to populate SourceRevisionId before that runs.
+
+    Opt out entirely: -p:CommandTreeStampRevision=false
+    Opt out of the dirty marker only: -p:CommandTreeStampDirty=false
+
+    This target never fails the build: a missing jj/git or a non-repo just leaves the
+    revision empty (Exec uses ContinueOnError), and SourceRevisionId is only set when a
+    non-empty id was resolved. It also never clobbers an existing SourceRevisionId (CI /
+    SourceLink already set it), and is skipped during design-time builds so IDEs don't
+    spawn jj/git on every background evaluation.
+  -->
+  <Target Name="CommandTreeStampSourceRevision"
+          BeforeTargets="AddSourceRevisionToInformationalVersion;CoreCompile"
+          Condition="'$(SourceRevisionId)' == '' And '$(CommandTreeStampRevision)' != 'false' And '$(DesignTimeBuild)' != 'true'">
+
+    <!-- Resolve the commit id: prefer jj, fall back to git. Trim jj output once and reuse it. -->
+    <Exec Command="jj log --no-graph -r @ -T commit_id"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeJjRevision" />
+    </Exec>
+
+    <PropertyGroup>
+      <_CommandTreeJjRevision>$(_CommandTreeJjRevision.Trim())</_CommandTreeJjRevision>
+      <_CommandTreeRevision>$(_CommandTreeJjRevision)</_CommandTreeRevision>
+    </PropertyGroup>
+
+    <Exec Command="git rev-parse HEAD"
+          Condition="'$(_CommandTreeRevision)' == ''"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeGitRevision" />
+    </Exec>
+
+    <PropertyGroup Condition="'$(_CommandTreeRevision)' == ''">
+      <_CommandTreeRevision>$(_CommandTreeGitRevision.Trim())</_CommandTreeRevision>
+    </PropertyGroup>
+
+    <!-- Probe for a dirty working copy (optional ".dirty" marker), using whichever VCS
+         supplied the revision. Both probes write the same _CommandTreeDirty property, so
+         only the one that runs sets it. -->
+    <PropertyGroup>
+      <_CommandTreeCheckDirty Condition="'$(_CommandTreeRevision)' != '' And '$(CommandTreeStampDirty)' != 'false'">true</_CommandTreeCheckDirty>
+    </PropertyGroup>
+
+    <Exec Command="jj diff"
+          Condition="'$(_CommandTreeCheckDirty)' == 'true' And '$(_CommandTreeJjRevision)' != ''"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeDirty" />
+    </Exec>
+
+    <Exec Command="git status --porcelain"
+          Condition="'$(_CommandTreeCheckDirty)' == 'true' And '$(_CommandTreeJjRevision)' == ''"
+          WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          StandardOutputImportance="low"
+          EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_CommandTreeDirty" />
+    </Exec>
+
+    <PropertyGroup Condition="'$(_CommandTreeRevision)' != '' And '$(_CommandTreeDirty.Trim())' != ''">
+      <_CommandTreeRevision>$(_CommandTreeRevision).dirty</_CommandTreeRevision>
+    </PropertyGroup>
+
+    <!-- Only set SourceRevisionId when a non-empty id was resolved. -->
+    <PropertyGroup Condition="'$(_CommandTreeRevision)' != ''">
+      <SourceRevisionId>$(_CommandTreeRevision)</SourceRevisionId>
+    </PropertyGroup>
+
+  </Target>
+
+</Project>
