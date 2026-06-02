@@ -29,6 +29,17 @@
 
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <!-- Auto-importing build target that stamps the source revision into the informational
+         version. build/ covers older direct refs; buildTransitive/ covers transitive +
+         modern direct refs. Not compiled (it's MSBuild, not F#). -->
+    <None Include="build/CommandTree.targets"
+          Pack="true"
+          PackagePath="build/CommandTree.targets"
+          Visible="false" />
+    <None Include="build/CommandTree.targets"
+          Pack="true"
+          PackagePath="buildTransitive/CommandTree.targets"
+          Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

@@ -246,6 +246,9 @@ CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path
 CommandTree.renderParseError tree err prefix // Error line + nearest help (full stderr text)
 CommandTree.isError err                  // true for genuine errors, false for help/version
+CommandTree.renderVersion prefix         // "<prefix> <version>" banner for the version arm
+CommandTree.entryAssemblyVersion ()      // Entry assembly's version string
+CommandTree.assemblyVersion asm          // Best-available version of any assembly
 ```
 
 `parse` is the **single, strict** parse path. An unrecognized command yields
@@ -276,6 +279,30 @@ match CommandTree.parse tree argv with
     printfn "%s" (CommandTree.renderParseError tree err "fshw") // help text (HelpRequested)
     0
 ```
+
+### Version
+
+`renderParseError` returns `""` for `VersionRequested` because the version lives in the
+consumer's assembly, not CommandTree's. Use `renderVersion` for the version arm — it reads the
+**entry** assembly (your CLI), not CommandTree:
+
+```fsharp
+| Error VersionRequested -> printfn "%s" (CommandTree.renderVersion "toolname"); 0
+```
+
+`renderVersion prefix` is `"<prefix> <entryAssemblyVersion>"`. `entryAssemblyVersion ()` resolves
+`Assembly.GetEntryAssembly()` (falling back to the calling assembly under some test hosts) and
+returns `assemblyVersion` of it; `assemblyVersion asm` prefers the
+`AssemblyInformationalVersionAttribute.InformationalVersion` (keeping any `+<commit>` build
+metadata) and falls back to `GetName().Version`.
+
+The package ships an auto-importing `build/CommandTree.targets` that stamps the build commit id
+into `AssemblyInformationalVersion` for dev builds: it resolves the revision via `jj` (falling
+back to `git`), sets `SourceRevisionId`, and the SDK folds it in as `+<commit>` (with a `.dirty`
+suffix when the working copy has uncommitted changes). It never fails the build and never
+overrides a `SourceRevisionId` already set by CI/SourceLink. Opt out with
+`-p:CommandTreeStampRevision=false` (whole feature) or `-p:CommandTreeStampDirty=false` (dirty
+marker only).
 
 ### Reflection
 

@@ -15,6 +15,7 @@
     <Compile Include="CompletionTests.fs" />
     <Compile Include="HelpTests.fs" />
     <Compile Include="ParsingTests.fs" />
+    <Compile Include="VersionTests.fs" />
     <Compile Include="UITests.fs" />
     <Compile Include="ProcessTests.fs" />
     <Compile Include="FishTests.fs" />

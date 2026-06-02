@@ -1,6 +1,7 @@
 namespace CommandTree
 
 open System
+open System.Reflection
 
 /// Completion hint for generating shell completions for arguments
 type ArgCompletionHint =
@@ -427,7 +428,8 @@ module CommandTree =
     /// <c>HelpRequested</c> → just the help for that path (not an error; no error line).
     /// <c>VersionRequested</c> → empty string: version output is the caller's concern,
     /// since CommandTree does not know the version. Detect it via <c>isError</c> (false)
-    /// and print your own version banner instead of calling this.
+    /// and print a version banner with <c>renderVersion</c> (or <c>entryAssemblyVersion</c>)
+    /// instead of calling this.
     let renderParseError (tree: CommandTree<'Cmd>) (error: ParseError) (cmdPrefix: string) : string =
         let withHelp (line: string) (path: string list) =
             $"%s{line}\n\n%s{helpForPath tree path cmdPrefix}"
@@ -459,6 +461,42 @@ module CommandTree =
         | AmbiguousArgument _
         | UnknownFlag _
         | DuplicateFlag _ -> true
+
+    /// Best-available version string for an assembly. Prefers the
+    /// <c>AssemblyInformationalVersionAttribute.InformationalVersion</c> (which carries any
+    /// <c>+&lt;commit&gt;</c> build metadata stamped at build time — kept intact, not stripped),
+    /// falling back to the assembly identity version (<c>GetName().Version</c>) when the
+    /// attribute is absent or its informational version is null/empty. Pure with respect to the
+    /// passed assembly, so it is fully unit-testable by handing it any <c>Assembly</c>.
+    let assemblyVersion (asm: Assembly) : string =
+        let informational =
+            asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            |> Option.ofObj
+            |> Option.map (fun attr -> attr.InformationalVersion)
+
+        match informational with
+        | Some v when not (String.IsNullOrEmpty v) -> v
+        | _ -> string (asm.GetName().Version)
+
+    /// Version string of the process entry assembly (the consumer CLI). Resolves
+    /// <c>Assembly.GetEntryAssembly()</c>, falling back to <c>Assembly.GetCallingAssembly()</c>
+    /// when entry is null (e.g. under some test hosts), then returns its
+    /// <c>assemblyVersion</c>. Entry-assembly resolution is host-dependent; the testable logic
+    /// lives in <c>assemblyVersion</c>.
+    let entryAssemblyVersion () : string =
+        let asm =
+            match Assembly.GetEntryAssembly() with
+            | null -> Assembly.GetCallingAssembly()
+            | entry -> entry
+
+        assemblyVersion asm
+
+    /// Render a version banner for a consumer CLI: <c>"&lt;cmdPrefix&gt; &lt;version&gt;"</c>, where the
+    /// version is the entry assembly's <c>assemblyVersion</c>. This is the recommended default
+    /// for the <c>VersionRequested</c> arm, e.g.
+    /// <c>| Error VersionRequested -&gt; printfn "%s" (CommandTree.renderVersion "toolname"); 0</c>.
+    let renderVersion (cmdPrefix: string) : string =
+        sprintf "%s %s" cmdPrefix (entryAssemblyVersion ())
 
     /// Generate fish shell completions from the command tree
     let fishCompletions (tree: CommandTree<'Cmd>) (cmdName: string) : string =
