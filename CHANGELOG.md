@@ -4,6 +4,8 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+## 0.6.0 - 2026-06-02
+
 ### Changed
 
 - **BREAKING:** `ParseError.UnknownCommand` now carries the raw remaining args. Its shape
