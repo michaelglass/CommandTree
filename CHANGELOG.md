@@ -4,6 +4,8 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+## 0.6.1 - 2026-06-02
+
 ### Added
 
 - `CommandTree.assemblyVersion asm` — best-available version string for an assembly: prefers the
