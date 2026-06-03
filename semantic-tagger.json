@@ -1,0 +1,9 @@
+{
+  "packages": [
+    {
+      "name": "CommandTree",
+      "fsproj": "src/CommandTree/CommandTree.fsproj",
+      "tagPrefix": "v"
+    }
+  ]
+}
