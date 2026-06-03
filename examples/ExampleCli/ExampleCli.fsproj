@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Demonstration app only — never published to NuGet. Without this, the release
+         tooling (fssemantictagger) sees two packable projects and refuses to release. -->
+    <IsPackable>false</IsPackable>
     <TargetFramework>net10.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- NETSDK1188: harmless locale warnings from FSharp.Core -->
