@@ -4,6 +4,8 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+## 0.6.2 - 2026-06-03
+
 ### Fixed
 
 - `build/CommandTree.targets` (shipped under both `build/` and `buildTransitive/`) no longer emits
