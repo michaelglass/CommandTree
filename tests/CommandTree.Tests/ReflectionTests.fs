@@ -231,6 +231,59 @@ let ``parseFieldValue returns None for unknown type`` () =
     let result = CommandReflection.parseFieldValue typeof<System.DateTime> "2024-01-01"
     test <@ result = Ok None @>
 
+/// Run a function on a dedicated thread whose culture is set to the given culture.
+/// A thread's CurrentCulture is thread-local, so this isolates the mutation from
+/// the parallel test runner without serializing collections.
+let private runWithCulture (cultureName: string) (f: unit -> 'a) : 'a =
+    let mutable result = Unchecked.defaultof<'a>
+    let mutable err = None
+
+    let thread =
+        System.Threading.Thread(fun () ->
+            try
+                let culture = System.Globalization.CultureInfo(cultureName)
+                System.Threading.Thread.CurrentThread.CurrentCulture <- culture
+                System.Threading.Thread.CurrentThread.CurrentUICulture <- culture
+                result <- f ()
+            with e ->
+                err <- Some e)
+
+    thread.Start()
+    thread.Join()
+
+    match err with
+    | Some e -> raise e
+    | None -> result
+
+[<Fact>]
+let ``parseFieldValue parses float culture-invariantly under de-DE`` () =
+    // de-DE uses ',' as decimal separator; "1.5" must still parse to 1.5, not 15.
+    let result =
+        runWithCulture "de-DE" (fun () -> CommandReflection.parseFieldValue typeof<float> "1.5")
+
+    test <@ result = Ok(Some(box 1.5)) @>
+
+[<Fact>]
+let ``parseFieldValue parses decimal culture-invariantly under de-DE`` () =
+    let result =
+        runWithCulture "de-DE" (fun () -> CommandReflection.parseFieldValue typeof<decimal> "1.5")
+
+    test <@ result = Ok(Some(box 1.5m)) @>
+
+[<Fact>]
+let ``formatFieldValue formats float culture-invariantly under de-DE`` () =
+    let result =
+        runWithCulture "de-DE" (fun () -> CommandReflection.formatFieldValue (box 1.5))
+
+    test <@ result = "1.5" @>
+
+[<Fact>]
+let ``formatFieldValue formats decimal culture-invariantly under de-DE`` () =
+    let result =
+        runWithCulture "de-DE" (fun () -> CommandReflection.formatFieldValue (box 1.5m))
+
+    test <@ result = "1.5" @>
+
 [<Fact>]
 let ``formatFieldValue handles int64`` () =
     let result = CommandReflection.formatFieldValue (box 42L)

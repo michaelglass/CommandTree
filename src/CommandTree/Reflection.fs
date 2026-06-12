@@ -306,11 +306,15 @@ module CommandReflection =
             | true, g -> Ok(Some(box g))
             | _ -> Ok None
         elif fieldType = typeof<float> then
-            match Double.TryParse(value) with
+            match
+                Double.TryParse(value, Globalization.NumberStyles.Float, Globalization.CultureInfo.InvariantCulture)
+            with
             | true, f -> Ok(Some(box f))
             | _ -> Ok None
         elif fieldType = typeof<decimal> then
-            match Decimal.TryParse(value) with
+            match
+                Decimal.TryParse(value, Globalization.NumberStyles.Number, Globalization.CultureInfo.InvariantCulture)
+            with
             | true, d -> Ok(Some(box d))
             | _ -> Ok None
         elif isOptionalType fieldType then
@@ -364,8 +368,8 @@ module CommandReflection =
         | :? int64 as n -> string<int64> n
         | :? bool as b -> string<bool> b
         | :? Guid as g -> string<Guid> g
-        | :? float as f -> string<float> f
-        | :? decimal as d -> string<decimal> d
+        | :? float as f -> f.ToString(Globalization.CultureInfo.InvariantCulture)
+        | :? decimal as d -> d.ToString(Globalization.CultureInfo.InvariantCulture)
         | _ when isOptionalType (value.GetType()) ->
             let case, fields = FSharpValue.GetUnionFields(value, value.GetType())
 
