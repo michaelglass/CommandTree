@@ -434,3 +434,26 @@ The library also includes `Process` (process execution helpers) and `UI` (colore
 
 MIT
 <!-- sync:license:end -->
+
+## Build-time analyzer
+
+`CommandTree.Analyzers` is an optional [FSharp.Analyzers.SDK](https://github.com/ionide/FSharp.Analyzers.SDK)
+package that flags command-DU shape errors at edit/build time — as editor squiggles, in
+`fsharp-analyzers` CLI runs, and via analyzer-aware build tooling — instead of at runtime
+startup. It reports the same shape problems `CommandReflection.fromUnion*` would otherwise
+reject when the tree is built:
+
+- **CT001 — unsupported field type:** a case field (or arg-group record field) whose type the
+  parser can't handle. The message names the case, field, offending type, and the supported set.
+- **CT002 — list-field placement:** a list field that isn't last, or more than one list field in
+  a single case.
+
+Both are warnings (the package is opt-in and never fails a build on its own). The analyzer
+recurses into nested subcommand unions and arg-group records, and also validates the global-flags
+DU. Add a reference to `CommandTree.Analyzers` and point your analyzer host at it; the analyzer
+finds every `fromUnion`, `fromUnionWithEnv`, `fromUnionWithGlobals`, and
+`fromUnionWithGlobalsAndEnv` call and checks the DU it is given.
+
+Host compatibility: the analyzer is built against this repo's FSharp.Core 10.1 / FCS 43.x. The
+`fsharp-analyzers` 0.36.0 CLI is pinned to FSharp.Core 10.0 / FCS 43.10 and cannot currently load
+it (an ABI version skew); hosts that supply a matching FCS load it without issue.
