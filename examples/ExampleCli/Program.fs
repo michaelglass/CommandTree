@@ -136,9 +136,8 @@ type ReportCommand =
         output: string option *
         ReportFlag list
     | [<Cmd("Diff two coverage reports using record args");
-        CmdExample("baseline.xml current.xml", "baseline.xml current.xml --format json")>] Diff of
-        MergeReportArgs *
-        ReportFlag list
+        CmdExample("baseline.xml current.xml", "baseline.xml current.xml diff-report.html")>] Diff of
+        MergeReportArgs
     | [<Cmd("View a report file"); CmdDefault; CmdArg(Default = "report.html")>] View of output: string option
 
 type Command =
@@ -248,7 +247,7 @@ let handleReport (cmd: ReportCommand) =
 
         if flags |> List.contains ReportFlag.ShowGaps then
             UI.dimInfo "Including gap details"
-    | ReportCommand.Diff(args, _flags) ->
+    | ReportCommand.Diff args ->
         let out = args.Output |> Option.defaultValue "diff.html"
         UI.success $"Diffing %s{args.Baseline} vs %s{args.Current} → %s{out}"
     | ReportCommand.View output ->
