@@ -4,6 +4,18 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Float and decimal argument parsing and formatting are now culture-invariant.
+  Previously `parseFieldValue` used `Double.TryParse`/`Decimal.TryParse` and
+  `formatFieldValue` used the default `ToString` overloads, all of which honor the
+  ambient `CultureInfo`. On cultures where `.` is a grouping separator (e.g. `de-DE`),
+  `"1.5"` silently parsed to `15` and a `1.5` value formatted to `"1,5"`, breaking
+  both parsing and format→parse roundtrips. Parsing now uses
+  `NumberStyles.Float`/`NumberStyles.Number` with `CultureInfo.InvariantCulture`, and
+  formatting uses `ToString(CultureInfo.InvariantCulture)`. CLI numeric arguments now
+  behave identically regardless of the host's locale.
+
 ## 0.6.2 - 2026-06-03
 
 ### Fixed
