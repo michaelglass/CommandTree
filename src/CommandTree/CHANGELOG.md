@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.6.3 - 2026-06-12
+
 ### Added
 
 #### Typed spec errors
