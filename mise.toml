@@ -15,12 +15,16 @@ run = "dotnet build"
 depends = ["restore"]
 
 [tasks.test]
-description = "Run tests with coverage"
+description = "Run tests with coverage (per-project coverage so each ratchet config sees only its own files)"
 run = """
-dotnet test \
+dotnet test --project tests/CommandTree.Tests/CommandTree.Tests.fsproj \
   --coverage \
   --coverage-output-format cobertura \
   --coverage-output "$PWD/coverage/coverage.cobertura.xml"
+dotnet test --project tests/CommandTree.Analyzers.Tests/CommandTree.Analyzers.Tests.fsproj \
+  --coverage \
+  --coverage-output-format cobertura \
+  --coverage-output "$PWD/coverage-analyzers/coverage.cobertura.xml"
 """
 depends = ["build"]
 
@@ -51,22 +55,34 @@ depends = ["build", "tool-restore"]
 
 [tasks.coverage-check]
 description = "Check per-file coverage meets minimum threshold"
-run = "(cd coverage && dotnet tool run coverageratchet check ../coverage-ratchet-CommandTree.json)"
+run = """
+(cd coverage && dotnet tool run coverageratchet check ../coverage-ratchet-CommandTree.json)
+(cd coverage-analyzers && dotnet tool run coverageratchet check ../coverage-ratchet-CommandTree.Analyzers.json)
+"""
 depends = ["test"]
 
 [tasks.coverage-ratchet]
 description = "Tighten coverage thresholds to current values"
-run = "(cd coverage && dotnet tool run coverageratchet ratchet ../coverage-ratchet-CommandTree.json)"
+run = """
+(cd coverage && dotnet tool run coverageratchet ratchet ../coverage-ratchet-CommandTree.json)
+(cd coverage-analyzers && dotnet tool run coverageratchet ratchet ../coverage-ratchet-CommandTree.Analyzers.json)
+"""
 depends = ["test"]
 
 [tasks.coverage-loosen]
 description = "Loosen coverage thresholds to current values"
-run = "(cd coverage && dotnet tool run coverageratchet loosen ../coverage-ratchet-CommandTree.json)"
+run = """
+(cd coverage && dotnet tool run coverageratchet loosen ../coverage-ratchet-CommandTree.json)
+(cd coverage-analyzers && dotnet tool run coverageratchet loosen ../coverage-ratchet-CommandTree.Analyzers.json)
+"""
 depends = ["test"]
 
 [tasks.loosen-from-ci]
 description = "Merge coverage thresholds from CI artifacts"
-run = "(cd coverage && dotnet tool run coverageratchet loosen-from-ci ../coverage-ratchet-CommandTree.json)"
+run = """
+(cd coverage && dotnet tool run coverageratchet loosen-from-ci ../coverage-ratchet-CommandTree.json)
+(cd coverage-analyzers && dotnet tool run coverageratchet loosen-from-ci ../coverage-ratchet-CommandTree.Analyzers.json)
+"""
 depends = ["test"]
 
 [tasks.sync-docs]
