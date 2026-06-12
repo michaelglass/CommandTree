@@ -315,6 +315,14 @@ CommandReflection.fromUnionWithEnv<'Cmd> "desc" "PREFIX"          // CommandTree
 CommandReflection.fromUnionWithGlobals<'Cmd, 'G> "desc"           // GlobalSpec<'G, 'Cmd>
 CommandReflection.fromUnionWithGlobalsAndEnv<'Cmd, 'G> "desc" "P" // GlobalSpec<'G, 'Cmd> (with env vars)
 
+// Non-throwing variants — return Result<_, SpecError list> with ALL shape
+// errors aggregated (see "Spec errors" below). Each fromUnion* is a thin
+// wrapper that calls its try* sibling and throws on Error.
+CommandReflection.tryFromUnion<'Cmd> "desc"                          // Result<CommandTree<'Cmd>, SpecError list>
+CommandReflection.tryFromUnionWithEnv<'Cmd> "desc" "PREFIX"          // Result<CommandTree<'Cmd>, SpecError list>
+CommandReflection.tryFromUnionWithGlobals<'Cmd, 'G> "desc"           // Result<GlobalSpec<'G, 'Cmd>, SpecError list>
+CommandReflection.tryFromUnionWithGlobalsAndEnv<'Cmd, 'G> "desc" "P" // Result<GlobalSpec<'G, 'Cmd>, SpecError list>
+
 // Utilities
 CommandReflection.formatCmd cmd              // Format command to CLI string
 CommandReflection.caseName value             // Kebab-case name of union value
@@ -322,6 +330,43 @@ CommandReflection.toKebabCase "PascalCase"   // "pascal-case"
 CommandReflection.parseFieldValue type str   // Result<obj option, string>
 CommandReflection.formatFieldValue value     // Typed value to string
 ```
+
+### Spec errors
+
+A command DU's *shape* can be malformed independently of any user input: a field
+whose type the parser can't handle (e.g. `DateTimeOffset`), a list field that
+isn't last, more than one list field in a case, or a command flag name that
+collides with a global flag. These are deterministic programming errors over the
+static shape, so the `fromUnion*` constructors **fail fast by throwing**
+`InvalidOperationException`.
+
+The throwing constructors are thin wrappers over `tryFromUnion*`, which return
+`Result<_, SpecError list>` instead. The `try*` variants are the single source of
+truth and are recommended whenever you want **all** shape problems reported at
+once (rather than fixing them one crash at a time), non-throwing startup, or
+programmatic access to the errors:
+
+```fsharp
+type Bad =
+    | [<Cmd("First")>] One of when_: System.DateTimeOffset // unsupported type
+    | [<Cmd("Third")>] Three of span: System.TimeSpan      // unsupported type
+
+match CommandReflection.tryFromUnion<Bad> "My CLI" with
+| Ok tree -> // use tree
+    ()
+| Error errors ->
+    // Every problem at once, in DU declaration order:
+    //   [ UnsupportedFieldType ("one", "when_", typeof<DateTimeOffset>)
+    //     UnsupportedFieldType ("three", "span", typeof<TimeSpan>) ]
+    errors |> List.iter (SpecError.format >> eprintfn "%s")
+```
+
+`SpecError` is a DU with one case per construction-time problem
+(`UnsupportedFieldType`, `ListFieldNotLast`, `MultipleListFields`,
+`GlobalFlagCollision`, `GlobalShortFlagCollision`). `SpecError.format` renders one
+error as a line; `SpecError.formatAll` renders a list with a count header (this is
+exactly the message the throwing constructors raise). `SpecError` is distinct from
+`ParseError`, which describes runtime parse failures over user input.
 
 ### DU-Based Flags
 
