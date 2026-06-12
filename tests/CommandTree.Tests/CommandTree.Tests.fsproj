@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Include="TestHelpers.fs" />
+    <Compile Include="SpecErrorTests.fs" />
     <Compile Include="ReflectionTests.fs" />
     <Compile Include="CompletionTests.fs" />
     <Compile Include="HelpTests.fs" />
