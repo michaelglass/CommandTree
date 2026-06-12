@@ -4,6 +4,27 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Added
+
+#### Typed spec errors
+
+- New non-throwing constructors `CommandReflection.tryFromUnion`,
+  `tryFromUnionWithEnv`, `tryFromUnionWithGlobals`, and
+  `tryFromUnionWithGlobalsAndEnv` return `Result<_, SpecError list>` instead of
+  throwing. They report **all** construction-time shape problems at once (in DU
+  declaration order, then validation kind), so a DU with several bad fields and a
+  flag collision surfaces every issue in a single `Error` rather than one
+  crash-fix-recompile cycle per problem.
+- New `SpecError` discriminated union enumerates the construction-time problems:
+  `UnsupportedFieldType`, `ListFieldNotLast`, `MultipleListFields`,
+  `GlobalFlagCollision`, and `GlobalShortFlagCollision`. `SpecError.format`
+  renders one error; `SpecError.formatAll` renders a list with a count header.
+- The existing `fromUnion*` constructors are now thin wrappers over their `try*`
+  siblings: on a malformed DU they still throw `InvalidOperationException`, but
+  the message now aggregates every problem (single-error messages are unchanged).
+  Valid DUs build byte-identical command trees and parse identically — there is
+  no behavior change for well-formed specs.
+
 ### Changed
 
 - **Potentially breaking (CLI name generation):** `toKebabCase` now splits acronym
