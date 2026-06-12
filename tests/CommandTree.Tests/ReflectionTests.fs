@@ -523,6 +523,40 @@ let ``fromUnion throws when multiple list fields`` () =
     Assert.Throws<System.InvalidOperationException>(fun () ->
         CommandReflection.fromUnion<MultipleListFields> "Test" |> ignore)
 
+// Item 5: unsupported field types must fail fast at construction time with a
+// helpful message, not silently produce "Invalid arguments" at parse time.
+type UnsupportedFieldCommand = | [<Cmd("When")>] At of timestamp: System.DateTimeOffset
+
+type UnsupportedOptionFieldCommand = | [<Cmd("Maybe when")>] At of timestamp: System.DateTimeOffset option
+
+type UnsupportedRecordArgs = { When: System.DateTimeOffset }
+
+type UnsupportedRecordCommand = | [<Cmd("Record")>] At of UnsupportedRecordArgs
+
+[<Fact>]
+let ``fromUnion throws for unsupported positional field type`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnion<UnsupportedFieldCommand> "Test" |> ignore)
+
+    test <@ ex.Message.Contains("at") @> // case name
+    test <@ ex.Message.Contains("timestamp") @> // field name
+    test <@ ex.Message.Contains("DateTimeOffset") @> // offending type
+    test <@ ex.Message.Contains("string") @> // lists at least one supported type
+
+[<Fact>]
+let ``fromUnion throws for unsupported optional field type`` () =
+    Assert.Throws<System.InvalidOperationException>(fun () ->
+        CommandReflection.fromUnion<UnsupportedOptionFieldCommand> "Test" |> ignore)
+
+[<Fact>]
+let ``fromUnion throws for unsupported record field type`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnion<UnsupportedRecordCommand> "Test" |> ignore)
+
+    test <@ ex.Message.Contains("DateTimeOffset") @>
+
 type EnvFlag =
     | [<CmdEnv("LVL")>] LogLevel of string
     | [<CmdEnvRaw("NO_CACHE")>] NoCache

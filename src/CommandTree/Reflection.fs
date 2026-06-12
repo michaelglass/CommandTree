@@ -110,6 +110,36 @@ module CommandReflection =
         else
             t.Name.ToLowerInvariant()
 
+    /// Scalar field types that parseFieldValue / formatFieldValue can round-trip.
+    let private supportedScalarTypes =
+        [ typeof<string>
+          typeof<int>
+          typeof<int64>
+          typeof<bool>
+          typeof<Guid>
+          typeof<float>
+          typeof<decimal> ]
+
+    /// Human-readable list of supported field types for error messages.
+    let private supportedTypesDescription =
+        "string, int, int64, bool, float, decimal, Guid, a discriminated union, "
+        + "an option of any of these, or a list of any of these"
+
+    /// True when a field type can be parsed/formatted by the reflection machinery.
+    /// Mirrors parseFieldValue: scalars, unions (nested groups / flag DUs), option of
+    /// supported, and list of supported.
+    let rec private isSupportedFieldType (t: Type) : bool =
+        if List.contains t supportedScalarTypes then
+            true
+        elif isOptionalType t then
+            isSupportedFieldType (t.GetGenericArguments().[0])
+        elif isListType t then
+            isSupportedFieldType (listElementType t)
+        elif isUnionType t then
+            true
+        else
+            false
+
     /// Get the inner type, unwrapping option if needed
     let private unwrapOptionType (t: Type) =
         if isOptionalType t then t.GetGenericArguments().[0] else t
@@ -720,6 +750,18 @@ module CommandReflection =
         else
             InvalidArguments(cmdName, $"Unexpected argument '%s{extra}'")
 
+    /// Fail fast at tree-construction time if any positional field has a type the
+    /// parser cannot handle. Without this, an unsupported type silently parses to
+    /// nothing and surfaces only as a generic "Invalid arguments" error at use time.
+    let private validateFieldTypes (cmdName: string) (fields: (string * Type) seq) : unit =
+        fields
+        |> Seq.iter (fun (fieldName, fieldType) ->
+            if not (isSupportedFieldType fieldType) then
+                invalidOp (
+                    $"Field '%s{fieldName}' of command '%s{cmdName}' has unsupported type '%s{fieldType.Name}'. "
+                    + $"Supported types: %s{supportedTypesDescription}."
+                ))
+
     /// Internal: generate a CommandTree from a union type with optional env prefix
     let private fromUnionInternal<'Cmd> (envPrefix: string option) (rootDesc: string) : CommandTree<'Cmd> =
         let cmdType = typeof<'Cmd>
@@ -821,6 +863,8 @@ module CommandReflection =
                 let recordType = fields.[0].PropertyType
                 let recordFields = FSharpType.GetRecordFields(recordType)
 
+                validateFieldTypes cmdName (recordFields |> Seq.map (fun f -> f.Name, f.PropertyType))
+
                 // Pre-compute default values for missing fields (avoids reflection at parse time)
                 let recordDefaults =
                     recordFields
@@ -887,6 +931,7 @@ module CommandReflection =
                       FormatArgs = formatArgs }
             else
                 // Leaf case
+                validateFieldTypes cmdName (fields |> Seq.map (fun f -> f.Name, f.PropertyType))
                 let hasListField = fields |> Array.exists (fun f -> isListType f.PropertyType)
 
                 let parse (args: string array) : Result<'Cmd, ParseError> =
