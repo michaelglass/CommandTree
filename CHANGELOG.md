@@ -4,6 +4,20 @@ All notable changes to CommandTree are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **Potentially breaking (CLI name generation):** `toKebabCase` now splits acronym
+  boundaries. An uppercase run followed by a capitalized word splits at the last
+  capital, so `HTMLParser` → `html-parser` and `DBMigrate` → `db-migrate` (previously
+  `htmlparser` / `dbmigrate`). Names with no acronym run are unchanged (`DryRun` →
+  `dry-run`, `FileCoverage` → `file-coverage`), as are pure/trailing acronyms (`HTML` →
+  `html`, `ExtractApi` → `extract-api`). This changes the derived command/flag name for
+  any union case whose name contains two or more consecutive capitals (without a `Name`
+  attribute override). No CommandTree example or known local consumer (FsHotWatch,
+  FsSemanticTagger, CoverageRatchet, FsProjLint, UnionConfig) has such a case name, so
+  no observed downstream CLI name changes. Consumers relying on the old collapsed form
+  can pin the name with `[<Cmd(Name = "...")>]` / `[<CmdFlag(Name = "...")>]`.
+
 ### Fixed
 
 - Float and decimal argument parsing and formatting are now culture-invariant.

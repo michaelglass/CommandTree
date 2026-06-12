@@ -21,9 +21,14 @@ type GlobalSpec<'Globals, 'Cmd> =
 /// Reflection-based command tree generation from F# discriminated unions
 module CommandReflection =
 
-    /// Convert PascalCase to kebab-case (e.g., "FileCoverage" -> "file-coverage")
+    /// Convert PascalCase to kebab-case (e.g., "FileCoverage" -> "file-coverage").
+    /// Acronym runs split at the last capital before a capitalized word, so
+    /// "HTMLParser" -> "html-parser" and "DBMigrate" -> "db-migrate".
     let toKebabCase (s: string) =
-        Regex.Replace(s, "([a-z])([A-Z])", "$1-$2").ToLowerInvariant()
+        // First split acronym boundaries (UPPER run followed by a capitalized word),
+        // then split the usual lower->Upper boundaries.
+        let withAcronymBoundaries = Regex.Replace(s, "([A-Z]+)([A-Z][a-z])", "$1-$2")
+        Regex.Replace(withAcronymBoundaries, "([a-z])([A-Z])", "$1-$2").ToLowerInvariant()
 
     /// Convert PascalCase to space-separated words (e.g., "FileCoverage" -> "File coverage")
     let toDescription (s: string) =
