@@ -750,20 +750,30 @@ module CommandReflection =
         else
             InvalidArguments(cmdName, $"Unexpected argument '%s{extra}'")
 
-    /// Fail fast at tree-construction time if any positional field has a type the
-    /// parser cannot handle. Without this, an unsupported type silently parses to
-    /// nothing and surfaces only as a generic "Invalid arguments" error at use time.
-    let private validateFieldTypes (cmdName: string) (fields: (string * Type) seq) : unit =
+    /// Collect a SpecError for every positional field whose type the parser
+    /// cannot handle. Errors are appended to the shared accumulator rather than
+    /// thrown, so the construction walk can report ALL shape problems at once.
+    /// Without this validation an unsupported type silently parses to nothing and
+    /// surfaces only as a generic "Invalid arguments" error at use time.
+    let private validateFieldTypes
+        (errors: ResizeArray<SpecError>)
+        (cmdName: string)
+        (fields: (string * Type) seq)
+        : unit =
         fields
         |> Seq.iter (fun (fieldName, fieldType) ->
             if not (isSupportedFieldType fieldType) then
-                invalidOp (
-                    $"Field '%s{fieldName}' of command '%s{cmdName}' has unsupported type '%s{fieldType.Name}'. "
-                    + $"Supported types: %s{supportedTypesDescription}."
-                ))
+                errors.Add(SpecError.UnsupportedFieldType(cmdName, fieldName, fieldType)))
 
-    /// Internal: generate a CommandTree from a union type with optional env prefix
-    let private fromUnionInternal<'Cmd> (envPrefix: string option) (rootDesc: string) : CommandTree<'Cmd> =
+    /// Internal: build a CommandTree from a union type, accumulating every
+    /// construction-time shape error into <paramref name="errors"/> instead of
+    /// throwing on the first one. The returned tree is well-formed only when the
+    /// accumulator is empty; callers gate on that.
+    let private buildUnionTree<'Cmd>
+        (errors: ResizeArray<SpecError>)
+        (envPrefix: string option)
+        (rootDesc: string)
+        : CommandTree<'Cmd> =
         let cmdType = typeof<'Cmd>
         let cases = FSharpType.GetUnionCases(cmdType)
 
@@ -781,9 +791,11 @@ module CommandReflection =
             if listFieldIndices.Length > 0 then
                 let lastIdx = fields.Length - 1
 
-                if listFieldIndices.Length > 1 || listFieldIndices.[0] <> lastIdx then
-                    let caseName = getCommandName outerCase
-                    invalidOp $"List field in case '%s{caseName}' must be the last field and there can be only one"
+                if listFieldIndices.Length > 1 then
+                    errors.Add(SpecError.MultipleListFields cmdName)
+                elif listFieldIndices.[0] <> lastIdx then
+                    let badField = fields.[listFieldIndices.[0]].Name
+                    errors.Add(SpecError.ListFieldNotLast(cmdName, badField))
 
             if
                 fields.Length = 1
@@ -863,7 +875,7 @@ module CommandReflection =
                 let recordType = fields.[0].PropertyType
                 let recordFields = FSharpType.GetRecordFields(recordType)
 
-                validateFieldTypes cmdName (recordFields |> Seq.map (fun f -> f.Name, f.PropertyType))
+                validateFieldTypes errors cmdName (recordFields |> Seq.map (fun f -> f.Name, f.PropertyType))
 
                 // Pre-compute default values for missing fields (avoids reflection at parse time)
                 let recordDefaults =
@@ -931,7 +943,7 @@ module CommandReflection =
                       FormatArgs = formatArgs }
             else
                 // Leaf case
-                validateFieldTypes cmdName (fields |> Seq.map (fun f -> f.Name, f.PropertyType))
+                validateFieldTypes errors cmdName (fields |> Seq.map (fun f -> f.Name, f.PropertyType))
                 let hasListField = fields |> Array.exists (fun f -> isListType f.PropertyType)
 
                 let parse (args: string array) : Result<'Cmd, ParseError> =
@@ -1008,15 +1020,54 @@ module CommandReflection =
               Children = children
               Default = defaultCmd }
 
-    /// Generate a CommandTree from a union type
-    let fromUnion<'Cmd> (rootDesc: string) : CommandTree<'Cmd> = fromUnionInternal<'Cmd> None rootDesc
+    /// Internal: build the tree and surface any accumulated shape errors as a
+    /// Result. Single source of truth for the public try-variants below.
+    let private fromUnionInternal<'Cmd>
+        (envPrefix: string option)
+        (rootDesc: string)
+        : Result<CommandTree<'Cmd>, SpecError list> =
+        let errors = ResizeArray<SpecError>()
+        let tree = buildUnionTree<'Cmd> errors envPrefix rootDesc
 
-    /// Generate a CommandTree with env var support for DU-based flags
-    let fromUnionWithEnv<'Cmd> (rootDesc: string) (envPrefix: string) : CommandTree<'Cmd> =
+        if errors.Count = 0 then
+            Ok tree
+        else
+            Error(List.ofSeq errors)
+
+    /// Try to generate a CommandTree from a union type, returning every
+    /// construction-time shape problem as a value instead of throwing.
+    let tryFromUnion<'Cmd> (rootDesc: string) : Result<CommandTree<'Cmd>, SpecError list> =
+        fromUnionInternal<'Cmd> None rootDesc
+
+    /// Try to generate a CommandTree with env var support for DU-based flags,
+    /// returning every construction-time shape problem as a value.
+    let tryFromUnionWithEnv<'Cmd> (rootDesc: string) (envPrefix: string) : Result<CommandTree<'Cmd>, SpecError list> =
         fromUnionInternal<'Cmd> (Some envPrefix) rootDesc
 
-    /// Validate no flag name collisions between global and command flags
-    let private validateNoFlagCollisions (globalFlagInfo: FlagInfo list) (tree: CommandTree<'Cmd>) : unit =
+    /// Generate a CommandTree from a union type. Throws
+    /// <see cref="T:System.InvalidOperationException"/> reporting ALL shape
+    /// problems if the DU is malformed; see <c>tryFromUnion</c> for the
+    /// non-throwing variant.
+    let fromUnion<'Cmd> (rootDesc: string) : CommandTree<'Cmd> =
+        tryFromUnion<'Cmd> rootDesc
+        |> Result.defaultWith (SpecError.formatAll >> invalidOp)
+
+    /// Generate a CommandTree with env var support for DU-based flags. Throws
+    /// <see cref="T:System.InvalidOperationException"/> reporting ALL shape
+    /// problems if the DU is malformed; see <c>tryFromUnionWithEnv</c> for the
+    /// non-throwing variant.
+    let fromUnionWithEnv<'Cmd> (rootDesc: string) (envPrefix: string) : CommandTree<'Cmd> =
+        tryFromUnionWithEnv<'Cmd> rootDesc envPrefix
+        |> Result.defaultWith (SpecError.formatAll >> invalidOp)
+
+    /// Collect flag-name collisions between global and command flags into the
+    /// shared accumulator (long names then short names, per command, in tree
+    /// order) instead of throwing on the first collision.
+    let private collectFlagCollisions
+        (errors: ResizeArray<SpecError>)
+        (globalFlagInfo: FlagInfo list)
+        (tree: CommandTree<'Cmd>)
+        : unit =
         let globalFlagNames =
             globalFlagInfo
             |> List.collect (fun fi ->
@@ -1031,14 +1082,14 @@ module CommandReflection =
                     let long = $"--%s{fi.LongName}"
 
                     if globalFlagNames.Contains(long) then
-                        invalidOp $"Flag '%s{long}' on command '%s{leaf.Name}' conflicts with a global flag"
+                        errors.Add(SpecError.GlobalFlagCollision(long, leaf.Name))
 
                     match fi.ShortName with
                     | Some s ->
                         let short = $"-%s{s}"
 
                         if globalFlagNames.Contains(short) then
-                            invalidOp $"Flag '%s{short}' on command '%s{leaf.Name}' conflicts with a global flag"
+                            errors.Add(SpecError.GlobalShortFlagCollision(short, leaf.Name))
                     | None -> ()
             | Group group -> group.Children |> List.iter check
 
@@ -1060,54 +1111,85 @@ module CommandReflection =
         parseFlagsLoop "global" globalCases globalLookup args onUnknown
         |> Result.map (fun globalResults -> (globalResults, commandArgs.ToArray()))
 
-    /// Internal: build a GlobalSpec with optional env prefix
+    /// Internal: build a GlobalSpec, accumulating every construction-time shape
+    /// error (command-tree field/list errors first, in DU declaration order,
+    /// then global/command flag collisions in tree order) into one Result.
     let private fromUnionWithGlobalsInternal<'Cmd, 'Globals>
         (envPrefix: string option)
         (rootDesc: string)
-        : GlobalSpec<'Globals, 'Cmd> =
-        let tree = fromUnionInternal<'Cmd> envPrefix rootDesc
+        : Result<GlobalSpec<'Globals, 'Cmd>, SpecError list> =
+        let errors = ResizeArray<SpecError>()
+        let tree = buildUnionTree<'Cmd> errors envPrefix rootDesc
         let globalType = typeof<'Globals>
         let globalFlagInfo = getFlagInfoFromDU globalType envPrefix
         let globalLookup = buildFlagLookup globalFlagInfo
 
-        validateNoFlagCollisions globalFlagInfo tree
+        collectFlagCollisions errors globalFlagInfo tree
 
-        let parse (args: string array) : Result<'Globals list * 'Cmd, ParseError> =
-            match scanGlobalFlags globalType globalLookup args with
-            | Error e -> Error e
-            | Ok(globalResults, cmdArgs) ->
-                let cliItems = globalResults |> Seq.cast<obj>
+        if errors.Count > 0 then
+            Error(List.ofSeq errors)
+        else
 
-                let globalsResult =
-                    match envPrefix with
-                    | Some _ ->
-                        match resolveEnvVars globalType globalFlagInfo cliItems with
-                        | Error e -> Error e
-                        | Ok envItems ->
-                            let allItems = Seq.append cliItems envItems
-                            Ok(buildTypedList globalType allItems :?> 'Globals list)
-                    | None -> Ok(buildTypedList globalType cliItems :?> 'Globals list)
-
-                match globalsResult with
+            let parse (args: string array) : Result<'Globals list * 'Cmd, ParseError> =
+                match scanGlobalFlags globalType globalLookup args with
                 | Error e -> Error e
-                | Ok globals ->
-                    match CommandTree.parse tree cmdArgs with
-                    | Ok cmd -> Ok(globals, cmd)
+                | Ok(globalResults, cmdArgs) ->
+                    let cliItems = globalResults |> Seq.cast<obj>
+
+                    let globalsResult =
+                        match envPrefix with
+                        | Some _ ->
+                            match resolveEnvVars globalType globalFlagInfo cliItems with
+                            | Error e -> Error e
+                            | Ok envItems ->
+                                let allItems = Seq.append cliItems envItems
+                                Ok(buildTypedList globalType allItems :?> 'Globals list)
+                        | None -> Ok(buildTypedList globalType cliItems :?> 'Globals list)
+
+                    match globalsResult with
                     | Error e -> Error e
+                    | Ok globals ->
+                        match CommandTree.parse tree cmdArgs with
+                        | Ok cmd -> Ok(globals, cmd)
+                        | Error e -> Error e
 
-        { Tree = tree
-          Parse = parse
-          GlobalFlags = globalFlagInfo }
+            Ok
+                { Tree = tree
+                  Parse = parse
+                  GlobalFlags = globalFlagInfo }
 
-    /// Generate a GlobalSpec with global flags from union types.
-    /// Validates that no flag name collisions exist between global and command flags.
-    let fromUnionWithGlobals<'Cmd, 'Globals> (rootDesc: string) : GlobalSpec<'Globals, 'Cmd> =
+    /// Try to generate a GlobalSpec with global flags, returning every
+    /// construction-time shape problem (including global/command flag
+    /// collisions) as a value instead of throwing.
+    let tryFromUnionWithGlobals<'Cmd, 'Globals>
+        (rootDesc: string)
+        : Result<GlobalSpec<'Globals, 'Cmd>, SpecError list> =
         fromUnionWithGlobalsInternal<'Cmd, 'Globals> None rootDesc
 
-    /// Generate a GlobalSpec with global flags and env var support.
-    /// Validates that no flag name collisions exist between global and command flags.
-    let fromUnionWithGlobalsAndEnv<'Cmd, 'Globals> (rootDesc: string) (envPrefix: string) : GlobalSpec<'Globals, 'Cmd> =
+    /// Try to generate a GlobalSpec with global flags and env var support,
+    /// returning every construction-time shape problem as a value.
+    let tryFromUnionWithGlobalsAndEnv<'Cmd, 'Globals>
+        (rootDesc: string)
+        (envPrefix: string)
+        : Result<GlobalSpec<'Globals, 'Cmd>, SpecError list> =
         fromUnionWithGlobalsInternal<'Cmd, 'Globals> (Some envPrefix) rootDesc
+
+    /// Generate a GlobalSpec with global flags from union types. Throws
+    /// <see cref="T:System.InvalidOperationException"/> reporting ALL shape
+    /// problems (including global/command flag collisions) if the spec is
+    /// malformed; see <c>tryFromUnionWithGlobals</c> for the non-throwing variant.
+    let fromUnionWithGlobals<'Cmd, 'Globals> (rootDesc: string) : GlobalSpec<'Globals, 'Cmd> =
+        tryFromUnionWithGlobals<'Cmd, 'Globals> rootDesc
+        |> Result.defaultWith (SpecError.formatAll >> invalidOp)
+
+    /// Generate a GlobalSpec with global flags and env var support. Throws
+    /// <see cref="T:System.InvalidOperationException"/> reporting ALL shape
+    /// problems (including global/command flag collisions) if the spec is
+    /// malformed; see <c>tryFromUnionWithGlobalsAndEnv</c> for the non-throwing
+    /// variant.
+    let fromUnionWithGlobalsAndEnv<'Cmd, 'Globals> (rootDesc: string) (envPrefix: string) : GlobalSpec<'Globals, 'Cmd> =
+        tryFromUnionWithGlobalsAndEnv<'Cmd, 'Globals> rootDesc envPrefix
+        |> Result.defaultWith (SpecError.formatAll >> invalidOp)
 
 /// ADT-based command specification for type safety and exhaustiveness checking
 [<NoComparison; NoEquality>]
