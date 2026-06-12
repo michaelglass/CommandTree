@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <!-- NU1608: FSharp.Analyzers.SDK 0.36.0 declares a pin on FCS 43.10.101, but this
+             repo runs against FCS 43.* (owner's wildcard preference) to match the rest of
+             the solution and the analyzer host. The skew is ABI-compatible for the
+             typed-tree surface we use (TASTCollecting.WalkCall + FSharpType inspection) and
+             the host supplies FCS at load time, so the pinned-constraint warning is expected
+             here. Mirrors TestPrune.Analyzers. -->
+        <NoWarn>$(NoWarn);NU1605;NU1608;MSB3277;NETSDK1188</NoWarn>
+        <PackageId>CommandTree.Analyzers</PackageId>
+        <Authors>Michael Glass</Authors>
+        <Description>Opt-in FSharp.Analyzers.SDK analyzer that flags CommandTree command-DU shape errors (unsupported field types, list-field placement) at edit/build time, before the program runs.</Description>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/michaelglass/CommandTree</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <Version>0.1.0-alpha.1</Version>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+        <!-- FSharp.Analyzers.SDK packaging convention: ship the analyzer DLL (+ its
+             non-framework deps) under analyzers/dotnet/fs/ instead of lib/, and mark
+             the package a development dependency so its assembly never flows as a
+             runtime reference into consumers. -->
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <!-- Add the analyzer DLL to the package via pack's TFM-specific content
+             collection (does NOT re-invoke Build), matching fsharp-analyzers. -->
+        <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AddAnalyzersToOutput</TargetsForTfmSpecificContentInPackage>
+        <!-- snupkg symbol packages aren't meaningful for an analyzers/-only package. -->
+        <IncludeSymbols>false</IncludeSymbols>
+        <NoWarn>$(NoWarn);NU5128</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="CommandTreeAnalyzer.fs" />
+    </ItemGroup>
+
+    <!-- Standalone analyzer: no CommandTree dependency. The CT001/CT002 predicate is a
+         hand-mirror of CommandTree.Reflection (see the cross-reference comments in
+         CommandTreeAnalyzer.fs), operating on FCS symbols rather than System.Type. -->
+    <ItemGroup>
+        <PackageReference Include="FSharp.Analyzers.SDK" Version="0.36.0" />
+        <PackageReference Include="FSharp.Compiler.Service" Version="43.*" />
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    </ItemGroup>
+
+    <!-- Place the analyzer assembly under analyzers/dotnet/fs/ in the nupkg so analyzer
+         hosts (FsHotWatch AnalyzersPlugin / Ionide / fsharp-analyzers) discover it.
+         FSharp.Core, FSharp.Compiler.Service and FSharp.Analyzers.SDK are provided by
+         the host, so only this project's own output assembly is packed. Hooked via
+         TargetsForTfmSpecificContentInPackage (above) so pack collects the built
+         output without re-invoking Build — mirrors fsharp-analyzers. -->
+    <Target Name="_AddAnalyzersToOutput">
+        <ItemGroup>
+            <TfmSpecificPackageFile Include="$(OutputPath)/$(AssemblyName).dll"
+                                    PackagePath="analyzers/dotnet/fs" />
+        </ItemGroup>
+    </Target>
+
+</Project>
