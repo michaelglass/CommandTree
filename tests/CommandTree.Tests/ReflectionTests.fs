@@ -42,9 +42,24 @@ let ``toKebabCase handles single word`` () =
     Assert.Equal("test", CommandReflection.toKebabCase "Test")
 
 [<Fact>]
-let ``toKebabCase handles consecutive capitals`` () =
-    Assert.Equal("htmlparser", CommandReflection.toKebabCase "HTMLParser")
-    Assert.Equal("urlhandler", CommandReflection.toKebabCase "URLHandler")
+let ``toKebabCase splits acronym boundaries`` () =
+    // An uppercase run followed by a capitalized word is split at the last capital:
+    // HTMLParser -> HTML + Parser -> html-parser
+    Assert.Equal("html-parser", CommandReflection.toKebabCase "HTMLParser")
+    Assert.Equal("url-handler", CommandReflection.toKebabCase "URLHandler")
+    Assert.Equal("db-migrate", CommandReflection.toKebabCase "DBMigrate")
+
+[<Fact>]
+let ``toKebabCase leaves single-capital words unchanged`` () =
+    // DryRun has no acronym run, so behavior is unchanged.
+    Assert.Equal("dry-run", CommandReflection.toKebabCase "DryRun")
+    Assert.Equal("file-coverage", CommandReflection.toKebabCase "FileCoverage")
+
+[<Fact>]
+let ``toKebabCase keeps a pure acronym as one token`` () =
+    // A trailing/standalone acronym with no following word stays joined.
+    Assert.Equal("html", CommandReflection.toKebabCase "HTML")
+    Assert.Equal("extract-api", CommandReflection.toKebabCase "ExtractApi")
 
 [<Fact>]
 let ``toDescription converts PascalCase to readable description`` () =
