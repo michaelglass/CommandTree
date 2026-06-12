@@ -246,6 +246,73 @@ let ``parseFieldValue returns None for unknown type`` () =
     let result = CommandReflection.parseFieldValue typeof<System.DateTime> "2024-01-01"
     test <@ result = Ok None @>
 
+// Item 2 verification: every Cmd* attribute is read off DU cases (via
+// UnionCaseInfo.GetCustomAttributes) and CmdArg additionally off record fields
+// (via PropertyInfo.GetCustomAttributes). These are the only real placements
+// CommandTree reflects over. This probe attaches every attribute kind to a DU
+// case (and CmdArg to a record field) and reads each back, proving the declared
+// AttributeTargets actually covers the placements in use.
+type AllAttrsRecord =
+    { [<CmdArg("Record field arg")>]
+      Path: string }
+
+type AllAttrsFlag =
+    | [<CmdFlag(Name = "lvl", Short = "l", Description = "Log level"); CmdEnv("LVL")>] Level of string
+    | [<CmdEnvRaw("NO_CACHE")>] NoCache
+
+type AllAttrsCommand =
+    | [<Cmd("Run with everything");
+        CmdArg("Positional", Default = "x");
+        CmdCompletion("a", "b");
+        CmdFileCompletion(FieldIndex = 1);
+        CmdExample("a", "b")>] Run of pos: string * file: string
+    | [<CmdDefault; Cmd("Default leaf")>] Idle
+    | Flagged of AllAttrsFlag list
+    | Recorded of AllAttrsRecord
+
+[<Fact>]
+let ``all Cmd attributes are readable off their real placements`` () =
+    let unionCase name =
+        FSharp.Reflection.FSharpType.GetUnionCases(typeof<AllAttrsCommand>)
+        |> Array.find (fun c -> c.Name = name)
+
+    let runCase = unionCase "Run"
+    let idleCase = unionCase "Idle"
+
+    // Cmd
+    test <@ (runCase.GetCustomAttributes(typeof<CmdAttribute>)).Length = 1 @>
+    // CmdDefault
+    test <@ (idleCase.GetCustomAttributes(typeof<CmdDefaultAttribute>)).Length = 1 @>
+    // CmdArg, CmdCompletion, CmdFileCompletion, CmdExample on the Run case
+    test <@ (runCase.GetCustomAttributes(typeof<CmdArgAttribute>)).Length = 1 @>
+    test <@ (runCase.GetCustomAttributes(typeof<CmdCompletionAttribute>)).Length = 1 @>
+    test <@ (runCase.GetCustomAttributes(typeof<CmdFileCompletionAttribute>)).Length = 1 @>
+    test <@ (runCase.GetCustomAttributes(typeof<CmdExampleAttribute>)).Length = 1 @>
+
+    // CmdFlag, CmdEnv, CmdEnvRaw on flag DU cases
+    let levelCase =
+        FSharp.Reflection.FSharpType.GetUnionCases(typeof<AllAttrsFlag>)
+        |> Array.find (fun c -> c.Name = "Level")
+
+    let noCacheCase =
+        FSharp.Reflection.FSharpType.GetUnionCases(typeof<AllAttrsFlag>)
+        |> Array.find (fun c -> c.Name = "NoCache")
+
+    test <@ (levelCase.GetCustomAttributes(typeof<CmdFlagAttribute>)).Length = 1 @>
+    test <@ (levelCase.GetCustomAttributes(typeof<CmdEnvAttribute>)).Length = 1 @>
+    test <@ (noCacheCase.GetCustomAttributes(typeof<CmdEnvRawAttribute>)).Length = 1 @>
+
+    // CmdArg on a record field (read as a PropertyInfo)
+    let recordField = typeof<AllAttrsRecord>.GetProperty("Path")
+    test <@ (recordField.GetCustomAttributes(typeof<CmdArgAttribute>, false)).Length = 1 @>
+
+    // End-to-end: the tree builds and the attributes feed through
+    let tree = CommandReflection.fromUnion<AllAttrsCommand> "Test"
+
+    match tree with
+    | CommandTree.Group _ -> ()
+    | CommandTree.Leaf _ -> failwith "Expected a group"
+
 /// Run a function on a dedicated thread whose culture is set to the given culture.
 /// A thread's CurrentCulture is thread-local, so this isolates the mutation from
 /// the parallel test runner without serializing collections.
