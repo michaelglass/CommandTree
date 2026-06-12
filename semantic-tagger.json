@@ -4,6 +4,11 @@
       "name": "CommandTree",
       "fsproj": "src/CommandTree/CommandTree.fsproj",
       "tagPrefix": "v"
+    },
+    {
+      "name": "CommandTree.Analyzers",
+      "fsproj": "src/CommandTree.Analyzers/CommandTree.Analyzers.fsproj",
+      "tagPrefix": "analyzers-v"
     }
   ]
 }
