@@ -4,16 +4,28 @@ on:
   push:
     tags:
       - 'v*'
+      - 'analyzers-v*'
 
 permissions:
   contents: write
   id-token: write
 
+# Multi-package repo: each package releases under its own tag prefix
+# (CommandTree -> v*, CommandTree.Analyzers -> analyzers-v*). The startsWith
+# guards pick exactly one release/publish pair per tag push: a v* tag never
+# packs the analyzer and an analyzers-v* tag never packs CommandTree
+# (refs/tags/analyzers-v... does not start with refs/tags/v). Mirrors
+# TestPrune/FsHotWatch.
+
 jobs:
+  # --- CommandTree (v*) ---
+
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     uses: michaelglass/MichaelsWackyFsPackageTools/.github/workflows/michaels-wacky-release.yml@main
     with:
       package-name: CommandTree
+      tag-prefix: v
       fsproj-path: src/CommandTree/CommandTree.fsproj
     permissions:
       contents: write
@@ -22,7 +34,43 @@ jobs:
   # workflow, not a reusable workflow from another repo. The OIDC token's
   # job_workflow_ref must match the repo's own workflow file.
   publish:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts
+      - name: Login to NuGet (Trusted Publishing)
+        id: nuget-login
+        uses: nuget/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish to NuGet
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+  # --- CommandTree.Analyzers (analyzers-v*) ---
+
+  release-analyzers:
+    if: startsWith(github.ref, 'refs/tags/analyzers-v')
+    uses: michaelglass/MichaelsWackyFsPackageTools/.github/workflows/michaels-wacky-release.yml@main
+    with:
+      package-name: CommandTree.Analyzers
+      tag-prefix: analyzers-v
+      fsproj-path: src/CommandTree.Analyzers/CommandTree.Analyzers.fsproj
+      # Pack the analyzer with a full build, matching TestPrune.Analyzers /
+      # fsharp-analyzers (the TfmSpecificContentInPackage target collects the
+      # built analyzer DLL into analyzers/dotnet/fs).
+      no-build-pack: false
+    permissions:
+      contents: write
+
+  publish-analyzers:
+    if: startsWith(github.ref, 'refs/tags/analyzers-v')
+    needs: release-analyzers
     runs-on: ubuntu-latest
     permissions:
       id-token: write
