@@ -128,3 +128,37 @@ let ``help includes Examples section`` () =
     let helpText = CommandTree.help (CommandTree.Leaf annotatedMerge) [] "mycli"
     test <@ helpText.Contains("Examples:") @>
     test <@ helpText.Contains("old.xml new.xml out.xml") @>
+
+/// The example line for a leaf should render the command path (prefix + leaf name)
+/// exactly once. Regression for leaf-name duplication in examples.
+let private exampleLines (helpText: string) =
+    helpText.Split('\n')
+    |> Array.filter (fun l -> l.Contains("old.xml new.xml out.xml"))
+
+[<Fact>]
+let ``help example renders leaf name exactly once (path = [])`` () =
+    let helpText = CommandTree.help (CommandTree.Leaf annotatedMerge) [] "mycli"
+    let lines = exampleLines helpText
+    test <@ lines.Length = 1 @>
+    // leaf name "merge" must appear exactly once on the example line
+    let line = lines.[0]
+
+    let occurrences =
+        (line.Split([| "merge" |], System.StringSplitOptions.None)).Length - 1
+
+    test <@ occurrences = 1 @>
+    test <@ line.Trim() = "mycli merge old.xml new.xml out.xml" @>
+
+[<Fact>]
+let ``helpForPath example renders leaf name exactly once`` () =
+    let tree = CommandReflection.fromUnion<AnnotatedCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "merge" ] "mycli"
+    let lines = exampleLines helpText
+    test <@ lines.Length = 1 @>
+    let line = lines.[0]
+
+    let occurrences =
+        (line.Split([| "merge" |], System.StringSplitOptions.None)).Length - 1
+
+    test <@ occurrences = 1 @>
+    test <@ line.Trim() = "mycli merge old.xml new.xml out.xml" @>
