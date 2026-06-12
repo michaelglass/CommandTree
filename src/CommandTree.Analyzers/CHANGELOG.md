@@ -6,6 +6,8 @@ this file. The CommandTree library itself has its own
 
 ## Unreleased
 
+## 0.1.0-alpha.1 - 2026-06-12
+
 ### Added
 
 - Initial release — new opt-in `CommandTree.Analyzers` package
