@@ -41,8 +41,9 @@ let SupportedTypesDescription =
     "string, int, int64, bool, float, decimal, Guid, a discriminated union, \
      an option of any of these, or a list of any of these"
 
-/// FullName prefixes of the constructor family that takes a command DU as `'Cmd`
-/// (and optionally `'Globals`). Matches `CommandTree.CommandReflection.fromUnion*`.
+/// Qualified names of the constructor family that takes a command DU as `'Cmd` (and
+/// optionally `'Globals`) — `<declaring-entity>.<compiled-name>` form, matched against the
+/// key built in `unionsFromCall`. These are `CommandTree.CommandReflection.fromUnion*`.
 let private constructorFullNames =
     set
         [ "CommandTree.CommandReflection.fromUnion"
@@ -60,6 +61,12 @@ type private Finding =
 /// runtime `System.Type` (abbreviations vanish at runtime).
 let rec private strip (t: FSharpType) : FSharpType =
     if t.IsAbbreviation then strip t.AbbreviatedType else t
+
+/// A stable, total identity for an entity, used both to compare against the supported scalar
+/// set and to de-duplicate / guard recursion on command DUs. `AccessPath` + `CompiledName`
+/// are non-optional strings (unlike `TryFullName`, an option, or `FullName`, which throws for
+/// some symbols), so the key is total — e.g. `System.String`, `System.Double`.
+let private entityKey (e: FSharpEntity) : string = e.AccessPath + "." + e.CompiledName
 
 /// True when the stripped type is `'a option`.
 let private isOption (t: FSharpType) =
@@ -80,7 +87,11 @@ let private isList (t: FSharpType) =
 /// (which also excludes string; string is not a union so no special-case needed here).
 let private isUnion (t: FSharpType) =
     let t = strip t
-    t.HasTypeDefinition && t.TypeDefinition.IsFSharpUnion && not (isOption t) && not (isList t)
+
+    t.HasTypeDefinition
+    && t.TypeDefinition.IsFSharpUnion
+    && not (isOption t)
+    && not (isList t)
 
 /// True when the stripped type is an F# record. Single record-typed fields become arg
 /// groups (`processCase`'s record branch), so this drives the recurse-into-record decision.
@@ -100,19 +111,25 @@ let private supportedScalarFullNames =
           "System.Double" // float
           "System.Decimal" ]
 
+/// The single generic argument of an `'a option` / `'a list` (mirrors
+/// `listElementType` / `t.GetGenericArguments().[0]` in reflection). The caller has already
+/// established `t` is option/list, and a checked option/list type always carries exactly one
+/// generic argument, so direct indexing is total here.
+let private innerArg (t: FSharpType) : FSharpType = (strip t).GenericArguments.[0]
+
 /// Mirror of `CommandTree.Reflection.isSupportedFieldType`: scalars, option-of-supported,
 /// list-of-supported, or any (non-option/list) union. NOT defined for records — records
 /// are handled by the arg-group branch, which validates their *fields* individually.
 let rec private isSupportedFieldType (t: FSharpType) : bool =
     let t = strip t
 
-    if t.HasTypeDefinition && supportedScalarFullNames.Contains(t.TypeDefinition.TryFullName |> Option.defaultValue "") then
+    if
+        t.HasTypeDefinition
+        && supportedScalarFullNames.Contains(entityKey t.TypeDefinition)
+    then
         true
     elif isOption t || isList t then
-        // Single generic argument: option<'a> / list<'a>.
-        match t.GenericArguments |> Seq.tryHead with
-        | Some inner -> isSupportedFieldType inner
-        | None -> false
+        isSupportedFieldType (innerArg t)
     elif isUnion t then
         true
     else
@@ -123,22 +140,13 @@ let rec private isSupportedFieldType (t: FSharpType) : bool =
 let rec private typeDisplayName (t: FSharpType) : string =
     let t = strip t
 
-    if isOption t then
-        match t.GenericArguments |> Seq.tryHead with
-        | Some inner -> typeDisplayName inner
-        | None -> "option"
-    elif isList t then
-        match t.GenericArguments |> Seq.tryHead with
-        | Some inner -> typeDisplayName inner + " list"
-        | None -> "list"
-    elif t.HasTypeDefinition then
-        t.TypeDefinition.DisplayName
-    else
-        t.Format(FSharpDisplayContext.Empty)
+    if isOption t then typeDisplayName (innerArg t)
+    elif isList t then typeDisplayName (innerArg t) + " list"
+    elif t.HasTypeDefinition then t.TypeDefinition.DisplayName
+    else t.Format(FSharpDisplayContext.Empty)
 
 /// Best-effort field declaration range; falls back to a zero range if FCS has none.
-let private fieldRange (f: FSharpField) : range =
-    f.DeclarationLocation
+let private fieldRange (f: FSharpField) : range = f.DeclarationLocation
 
 /// Validate the field types of a "command" (a leaf case or an arg-group record) for CT001,
 /// mirroring `validateFieldTypes`. `cmdName` is the case/command display name for the message.
@@ -174,8 +182,7 @@ let private validateListPlacement (cmdName: string) (fields: FSharpField array) 
             // Report on the first offending list field (the one not in last position, or the
             // first of several). One diagnostic per case, matching the single runtime throw.
             [ { Code = ListFieldPlacementCode
-                Message =
-                    $"List field in case '%s{cmdName}' must be the last field and there can be only one."
+                Message = $"List field in case '%s{cmdName}' must be the last field and there can be only one."
                 Range = fieldRange firstListField } ]
         else
             []
@@ -192,42 +199,45 @@ let private caseDisplayName (c: FSharpUnionCase) = c.Name
 ///   - any other case => leaf: validate its fields (CT001) + list placement (CT002)
 /// `visited` guards against infinite recursion on recursive DUs.
 let rec private analyzeCommandUnion (visited: Set<string>) (unionEntity: FSharpEntity) : Finding list =
-    let key = unionEntity.TryFullName |> Option.defaultValue unionEntity.DisplayName
+    let key = entityKey unionEntity
 
     if visited.Contains key then
         []
     else
         let visited = visited.Add key
 
-        unionEntity.UnionCases
-        |> Seq.collect (fun case ->
-            let cmdName = caseDisplayName case
-            let fields = case.Fields |> Array.ofSeq
+        unionEntity.UnionCases |> Seq.collect (analyzeCase visited) |> List.ofSeq
 
-            match fields with
-            | [| single |] when isList single.FieldType && isUnion (listElementType single.FieldType) ->
-                // `SomeDU list` single field => DU flag list. Valid, nothing to validate.
-                []
-            | [| single |] when isUnion single.FieldType ->
-                // Nested union => subcommand group. Recurse into the nested union.
-                match (strip single.FieldType).TypeDefinition with
-                | nested -> analyzeCommandUnion visited nested
-            | [| single |] when isRecord single.FieldType ->
-                // Record-typed arg group => validate the record's own fields.
-                let recordEntity = (strip single.FieldType).TypeDefinition
-                validateFieldTypesFor cmdName recordEntity.FSharpFields
-            | _ ->
-                // Leaf case => validate field types (CT001) and list placement (CT002).
-                validateFieldTypesFor cmdName fields @ validateListPlacement cmdName fields)
-        |> List.ofSeq
+/// Classify one union case the way `processCase` does and produce its findings.
+and private analyzeCase (visited: Set<string>) (case: FSharpUnionCase) : Finding list =
+    let cmdName = caseDisplayName case
+    let fields = case.Fields |> Array.ofSeq
 
-/// The element type of a `'a list` (already known to be a list). Mirrors `listElementType`.
-and private listElementType (t: FSharpType) : FSharpType =
-    let t = strip t
+    // A leaf is validated for field types (CT001) and list placement (CT002). Computed up
+    // front (not as a closure) so the single, multi, and zero-field arms all share it without
+    // an extra branch.
+    let leafFindings =
+        validateFieldTypesFor cmdName fields @ validateListPlacement cmdName fields
 
-    match t.GenericArguments |> Seq.tryHead with
-    | Some inner -> inner
-    | None -> t
+    // The single-field cases are the special branches (flag-DU / subcommand group / arg
+    // group); zero- or multi-field cases are always leaves.
+    match fields with
+    | [| single |] ->
+        let ft = single.FieldType
+
+        if isList ft && isUnion (innerArg ft) then
+            // `SomeDU list` single field => DU flag list. Valid, nothing to validate.
+            []
+        elif isUnion ft then
+            // Nested union => subcommand group. Recurse into the nested union.
+            analyzeCommandUnion visited (strip ft).TypeDefinition
+        elif isRecord ft then
+            // Record-typed arg group => validate the record's own fields.
+            validateFieldTypesFor cmdName (strip ft).TypeDefinition.FSharpFields
+        else
+            // Single supported/scalar/option/list field => leaf.
+            leafFindings
+    | _ -> leafFindings
 
 /// The command/globals DU entities passed to a `fromUnion*` call, recovered from the call's
 /// member type-arguments. `'Cmd` (and `'Globals`, for the globals variants) both go through
@@ -240,23 +250,23 @@ and private listElementType (t: FSharpType) : FSharpType =
 /// is the necessary approach until the SDK ships an FCS-43.12-aligned build (same reasoning as
 /// TestPrune.Analyzers' hand-rolled untyped walk).
 let private unionsFromCall (mfv: FSharpMemberOrFunctionOrValue) (memberTypeArgs: FSharpType list) : FSharpEntity list =
-    let fullName =
-        try
-            Some mfv.FullName
-        with _ ->
-            None
+    // Build the called member's qualified name from its declaring entity + compiled name —
+    // both total (unlike `mfv.FullName`, which throws for some compiler-generated symbols
+    // the generic call-walk will encounter). A call with no declaring entity (e.g. a local
+    // function) is never a constructor, so it is skipped.
+    let isConstructorCall =
+        match mfv.DeclaringEntity with
+        | Some e -> constructorFullNames.Contains(entityKey e + "." + mfv.CompiledName)
+        | None -> false
 
-    match fullName with
-    | Some fn when constructorFullNames.Contains fn ->
+    if isConstructorCall then
+        // Keep only the generic arguments that are command/globals DUs. `isUnion` is the same
+        // predicate the field walk uses, so a non-union arg (e.g. `int`, a tuple) is skipped.
         memberTypeArgs
-        |> List.choose (fun ty ->
-            let stripped = strip ty
-
-            if stripped.HasTypeDefinition && stripped.TypeDefinition.IsFSharpUnion then
-                Some stripped.TypeDefinition
-            else
-                None)
-    | _ -> []
+        |> List.filter isUnion
+        |> List.map (fun ty -> (strip ty).TypeDefinition)
+    else
+        []
 
 /// Walk every `FSharpExpr` reachable from an implementation file, collecting the command DU
 /// entities at `fromUnion*` call sites. Recursion is generic via `ImmediateSubExpressions`,
@@ -266,9 +276,7 @@ let private collectCommandUnions (typedTree: FSharpImplementationFileContents) :
     let seen = System.Collections.Generic.HashSet<string>()
 
     let add (ent: FSharpEntity) =
-        let key = ent.TryFullName |> Option.defaultValue ent.DisplayName
-
-        if seen.Add key then
+        if seen.Add(entityKey ent) then
             entities.Add ent
 
     let rec walkExpr (expr: FSharpExpr) =
@@ -311,13 +319,16 @@ let analyzeTypedTree (typedTree: FSharpImplementationFileContents) : Message lis
     |> List.distinctBy (fun f -> f.Code, f.Range, f.Message)
     |> toMessages
 
+/// Analyze an optional typed tree. `None` (no type-check information available) yields no
+/// diagnostics — the analyzer is typed-tree-only and silently no-ops without it. Split out
+/// from the entry point so it is directly unit-testable.
+let analyzeOptionalTypedTree (typedTree: FSharpImplementationFileContents option) : Message list =
+    match typedTree with
+    | Some tree -> analyzeTypedTree tree
+    | None -> []
+
 /// Analyzer entry point. Requires the typed tree (recovers `'Cmd` from call-site generic
 /// instantiation), so it is a CLI/editor analyzer with full type-check information.
 [<CliAnalyzer(Name, "Flags CommandTree command-DU shape errors (unsupported field types, list-field placement)")>]
 let commandTreeAnalyzer: Analyzer<CliContext> =
-    fun (context: CliContext) ->
-        async {
-            match context.TypedTree with
-            | Some typedTree -> return analyzeTypedTree typedTree
-            | None -> return []
-        }
+    fun (context: CliContext) -> async { return analyzeOptionalTypedTree context.TypedTree }
