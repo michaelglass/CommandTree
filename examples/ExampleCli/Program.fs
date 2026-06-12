@@ -136,8 +136,7 @@ type ReportCommand =
         output: string option *
         ReportFlag list
     | [<Cmd("Diff two coverage reports using record args");
-        CmdExample("baseline.xml current.xml", "baseline.xml current.xml diff-report.html")>] Diff of
-        MergeReportArgs
+        CmdExample("baseline.xml current.xml", "baseline.xml current.xml diff-report.html")>] Diff of MergeReportArgs
     | [<Cmd("View a report file"); CmdDefault; CmdArg(Default = "report.html")>] View of output: string option
 
 type Command =
