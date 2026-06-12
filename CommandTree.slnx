@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/CommandTree/CommandTree.fsproj" />
+    <Project Path="src/CommandTree.Analyzers/CommandTree.Analyzers.fsproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CommandTree.Tests/CommandTree.Tests.fsproj" />
+    <Project Path="tests/CommandTree.Analyzers.Tests/CommandTree.Analyzers.Tests.fsproj" />
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/ExampleCli/ExampleCli.fsproj" />
