@@ -20,6 +20,14 @@ All notable changes to CommandTree are documented in this file.
 
 ### Fixed
 
+- Command DUs whose case (or record-arg) fields have an unsupported type now fail
+  fast at tree construction (`CommandReflection.fromUnion*`) with an
+  `InvalidOperationException` naming the case, the field, the offending type, and the
+  list of supported types. Previously an unsupported field type (e.g.
+  `DateTimeOffset`) silently fell through `parseFieldValue` to `Ok None` and only
+  surfaced as a generic "Invalid arguments" error when the command was parsed at
+  runtime. Supported field types are unchanged (string, int, int64, bool, float,
+  decimal, Guid, discriminated unions, and options/lists of those).
 - Float and decimal argument parsing and formatting are now culture-invariant.
   Previously `parseFieldValue` used `Double.TryParse`/`Decimal.TryParse` and
   `formatFieldValue` used the default `ToString` overloads, all of which honor the
