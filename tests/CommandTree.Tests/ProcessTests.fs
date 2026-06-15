@@ -11,21 +11,37 @@ open CommandTree
 
 [<Fact>]
 let ``runSilent captures stdout`` () =
-    let (code, stdout, stderr) = Process.runSilent "echo" "hello world"
+    let (code, stdout, stderr) = Process.runSilent "echo" [ "hello world" ]
     test <@ code = 0 @>
     test <@ stdout = "hello world" @>
     test <@ stderr = "" @>
 
 [<Fact>]
 let ``runSilent captures stderr`` () =
-    let (code, _stdout, stderr) = Process.runSilent "sh" "-c \"echo error >&2\""
+    let (code, _stdout, stderr) = Process.runSilent "sh" [ "-c"; "echo error >&2" ]
     test <@ code = 0 @>
     test <@ stderr = "error" @>
 
 [<Fact>]
 let ``runSilent returns non-zero exit code`` () =
-    let (code, _, _) = Process.runSilent "sh" "-c \"exit 42\""
+    let (code, _, _) = Process.runSilent "sh" [ "-c"; "exit 42" ]
     test <@ code = 42 @>
+
+[<Fact>]
+let ``runSilent passes an argument with spaces and quotes literally`` () =
+    // The whole point of the ArgumentList path: a single argument containing spaces
+    // AND both quote kinds survives intact. A shell (or .NET's string splitter) would
+    // re-split this and strip/mangle the quotes.
+    let arg = "a b \"c\" 'd'"
+    let (code, stdout, _) = Process.runSilent "echo" [ arg ]
+    test <@ code = 0 @>
+    test <@ stdout = arg @>
+
+[<Fact>]
+let ``runSilent keeps multiple tokens separate`` () =
+    let (code, stdout, _) = Process.runSilent "echo" [ "one"; "two" ]
+    test <@ code = 0 @>
+    test <@ stdout = "one two" @>
 
 // =============================================================================
 // runCommand — CommandResult record
@@ -33,14 +49,14 @@ let ``runSilent returns non-zero exit code`` () =
 
 [<Fact>]
 let ``runCommand returns CommandResult with correct fields`` () =
-    let result = Process.runCommand "echo" "test output"
+    let result = Process.runCommand "echo" [ "test output" ]
     test <@ result.ExitCode = 0 @>
     test <@ result.Stdout = "test output" @>
     test <@ result.Stderr = "" @>
 
 [<Fact>]
 let ``runCommand captures failure exit code`` () =
-    let result = Process.runCommand "sh" "-c \"echo fail >&2; exit 1\""
+    let result = Process.runCommand "sh" [ "-c"; "echo fail >&2; exit 1" ]
     test <@ result.ExitCode = 1 @>
     test <@ result.Stderr = "fail" @>
 
@@ -51,7 +67,7 @@ let ``runCommand captures failure exit code`` () =
 [<Fact>]
 let ``runSilentWithEnv passes environment variables`` () =
     let (code, stdout, _) =
-        Process.runSilentWithEnv "sh" "-c \"echo $TEST_VAR\"" [ ("TEST_VAR", "injected-value") ]
+        Process.runSilentWithEnv "sh" [ "-c"; "echo $TEST_VAR" ] [ ("TEST_VAR", "injected-value") ]
 
     test <@ code = 0 @>
     test <@ stdout = "injected-value" @>
@@ -59,7 +75,7 @@ let ``runSilentWithEnv passes environment variables`` () =
 [<Fact>]
 let ``runSilentWithEnv passes multiple env vars`` () =
     let (code, stdout, _) =
-        Process.runSilentWithEnv "sh" "-c \"echo $A-$B\"" [ ("A", "hello"); ("B", "world") ]
+        Process.runSilentWithEnv "sh" [ "-c"; "echo $A-$B" ] [ ("A", "hello"); ("B", "world") ]
 
     test <@ code = 0 @>
     test <@ stdout = "hello-world" @>
@@ -70,19 +86,19 @@ let ``runSilentWithEnv passes multiple env vars`` () =
 
 [<Fact>]
 let ``runSilentWithTimeout completes fast commands`` () =
-    let (code, stdout, _) = Process.runSilentWithTimeout "echo" "fast" (Some 5000)
+    let (code, stdout, _) = Process.runSilentWithTimeout "echo" [ "fast" ] (Some 5000)
     test <@ code = 0 @>
     test <@ stdout = "fast" @>
 
 [<Fact>]
 let ``runSilentWithTimeout kills slow commands`` () =
-    let (code, _, stderr) = Process.runSilentWithTimeout "sleep" "30" (Some 100)
+    let (code, _, stderr) = Process.runSilentWithTimeout "sleep" [ "30" ] (Some 100)
     test <@ code = -1 @>
     test <@ stderr.Contains("timed out") @>
 
 [<Fact>]
 let ``runSilentWithTimeout None means no timeout`` () =
-    let (code, stdout, _) = Process.runSilentWithTimeout "echo" "no-timeout" None
+    let (code, stdout, _) = Process.runSilentWithTimeout "echo" [ "no-timeout" ] None
     test <@ code = 0 @>
     test <@ stdout = "no-timeout" @>
 
@@ -92,12 +108,12 @@ let ``runSilentWithTimeout None means no timeout`` () =
 
 [<Fact>]
 let ``runInteractive returns zero for successful command`` () =
-    let code = Process.runInteractive "echo" "interactive"
+    let code = Process.runInteractive "echo" [ "interactive" ]
     test <@ code = 0 @>
 
 [<Fact>]
 let ``runInteractive returns non-zero for failed command`` () =
-    let code = Process.runInteractive "sh" "-c \"exit 7\""
+    let code = Process.runInteractive "sh" [ "-c"; "exit 7" ]
     test <@ code = 7 @>
 
 // =============================================================================
@@ -108,7 +124,7 @@ let ``runInteractive returns non-zero for failed command`` () =
 let ``runAsync returns exit code stdout stderr`` () =
     let (_output, result) =
         UITests.captureStdout (fun () ->
-            let task = Process.runAsync "echo" "async-output"
+            let task = Process.runAsync "echo" [ "async-output" ]
             task.Result)
 
     let (code, out, err) = result
@@ -123,7 +139,7 @@ let ``runAsync returns exit code stdout stderr`` () =
 [<Fact>]
 let ``runWithSpinner returns exit code stdout stderr tuple`` () =
     let (_output, result) =
-        UITests.captureStdout (fun () -> Process.runWithSpinner "echo test" "echo" "spinner-output")
+        UITests.captureStdout (fun () -> Process.runWithSpinner "echo test" "echo" [ "spinner-output" ])
 
     let (code, out, _err) = result
     test <@ code = 0 @>
@@ -133,7 +149,7 @@ let ``runWithSpinner returns exit code stdout stderr tuple`` () =
 let ``runWithSpinner throws on non-zero exit code`` () =
     let ex =
         Assert.Throws<Exception>(fun () ->
-            Process.runWithSpinner "failing" "sh" "-c \"echo out; echo err >&2; exit 1\""
+            Process.runWithSpinner "failing" "sh" [ "-c"; "echo out; echo err >&2; exit 1" ]
             |> ignore)
 
     test <@ ex.Message.Contains("exit code") @>
@@ -144,14 +160,14 @@ let ``runWithSpinner throws on non-zero exit code`` () =
 
 [<Fact>]
 let ``runWithEnv runs successfully`` () =
-    UITests.captureStdout (fun () -> Process.runWithEnv "sh" "-c \"exit 0\"" [ ("TEST_RWE", "val") ])
+    UITests.captureStdout (fun () -> Process.runWithEnv "sh" [ "-c"; "exit 0" ] [ ("TEST_RWE", "val") ])
     |> ignore
 
 [<Fact>]
 let ``runWithEnv throws on non-zero exit`` () =
     let ex =
         Assert.Throws<Exception>(fun () ->
-            UITests.captureStdout (fun () -> Process.runWithEnv "sh" "-c \"exit 3\"" [])
+            UITests.captureStdout (fun () -> Process.runWithEnv "sh" [ "-c"; "exit 3" ] [])
             |> ignore)
 
     test <@ ex.Message.Contains("exit code") @>
@@ -162,11 +178,11 @@ let ``runWithEnv throws on non-zero exit`` () =
 
 [<Fact>]
 let ``dotnet runs dotnet command`` () =
-    UITests.captureStdout (fun () -> Process.dotnet "--version") |> ignore
+    UITests.captureStdout (fun () -> Process.dotnet [ "--version" ]) |> ignore
 
 [<Fact>]
 let ``dotnetSpinner runs dotnet with spinner`` () =
-    UITests.captureStdout (fun () -> Process.dotnetSpinner "Getting version" "--version")
+    UITests.captureStdout (fun () -> Process.dotnetSpinner "Getting version" [ "--version" ])
     |> ignore
 
 // =============================================================================
@@ -178,9 +194,9 @@ let ``runParallel completes all tasks`` () =
     let (_output, results) =
         UITests.captureStdout (fun () ->
             let tasks =
-                [| Process.runAsync "echo" "a"
-                   Process.runAsync "echo" "b"
-                   Process.runAsync "echo" "c" |]
+                [| Process.runAsync "echo" [ "a" ]
+                   Process.runAsync "echo" [ "b" ]
+                   Process.runAsync "echo" [ "c" ] |]
 
             Process.runParallel tasks)
 
@@ -196,13 +212,13 @@ let ``runParallel completes all tasks`` () =
 [<Fact>]
 let ``runInteractiveInDir runs in specified directory`` () =
     let code =
-        Process.runInteractiveInDir "sh" "-c \"test -d .git || test -d .jj\"" "/tmp"
+        Process.runInteractiveInDir "sh" [ "-c"; "test -d .git || test -d .jj" ] "/tmp"
     // /tmp won't have .git or .jj, so this should fail
     test <@ code <> 0 @>
 
 [<Fact>]
 let ``runInteractiveInDir returns zero for successful command`` () =
-    let code = Process.runInteractiveInDir "pwd" "" "/tmp"
+    let code = Process.runInteractiveInDir "pwd" [] "/tmp"
     test <@ code = 0 @>
 
 // =============================================================================
@@ -211,7 +227,7 @@ let ``runInteractiveInDir returns zero for successful command`` () =
 
 [<Fact>]
 let ``runSilentInDir runs in specified directory`` () =
-    let (code, stdout, _) = Process.runSilentInDir "pwd" "" "/tmp"
+    let (code, stdout, _) = Process.runSilentInDir "pwd" [] "/tmp"
     test <@ code = 0 @>
     // macOS resolves /tmp to /private/tmp
     test <@ stdout.Contains("tmp") @>
@@ -219,7 +235,7 @@ let ``runSilentInDir runs in specified directory`` () =
 [<Fact>]
 let ``runSilentWithTimeoutInDir respects timeout`` () =
     let (code, _, stderr) =
-        Process.runSilentWithTimeoutInDir "sleep" "30" (Some 100) "/tmp"
+        Process.runSilentWithTimeoutInDir "sleep" [ "30" ] (Some 100) "/tmp"
 
     test <@ code = -1 @>
     test <@ stderr.Contains("timed out") @>
@@ -231,7 +247,8 @@ let ``runSilentWithTimeoutInDir respects timeout`` () =
 [<Fact>]
 let ``run throws on non-zero exit code`` () =
     let ex =
-        Assert.Throws<Exception>(fun () -> UITests.captureStdout (fun () -> Process.run "sh" "-c \"exit 5\"") |> ignore)
+        Assert.Throws<Exception>(fun () ->
+            UITests.captureStdout (fun () -> Process.run "sh" [ "-c"; "exit 5" ]) |> ignore)
 
     test <@ ex.Message.Contains("exit code") @>
 

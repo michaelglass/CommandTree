@@ -12,12 +12,24 @@ type CommandResult =
 
 /// Process execution helpers
 module Process =
-    /// Run a command and wait for it to complete
-    let run (command: string) (args: string) =
-        UI.cmd command args
-        let sw = Stopwatch.StartNew()
-        let psi = ProcessStartInfo(command, args)
+    /// Build a <c>ProcessStartInfo</c> for <c>command</c>, adding each element of
+    /// <c>args</c> to <c>ArgumentList</c> so it is passed to the child process as a
+    /// single literal token. Tokens are never re-parsed, so spaces and quotes inside
+    /// an argument survive intact. <c>UseShellExecute</c> is set to <c>false</c>;
+    /// callers configure redirection / working directory / environment afterward.
+    let private mkPsi (command: string) (args: string list) =
+        let psi = ProcessStartInfo(command)
         psi.UseShellExecute <- false
+        args |> List.iter psi.ArgumentList.Add
+        psi
+
+    /// Run a command and wait for it to complete. Each element of <c>args</c> is
+    /// passed as a discrete token via <c>ProcessStartInfo.ArgumentList</c>, so
+    /// arguments containing spaces or quotes are not re-parsed.
+    let run (command: string) (args: string list) =
+        UI.cmd command (String.concat " " args)
+        let sw = Stopwatch.StartNew()
+        let psi = mkPsi command args
         use proc = Diagnostics.Process.Start(psi)
         proc.WaitForExit()
         sw.Stop()
@@ -26,12 +38,13 @@ module Process =
         if proc.ExitCode <> 0 then
             failwith $"Command failed with exit code %d{proc.ExitCode}"
 
-    /// Run a command with spinner, capturing output
-    let runWithSpinner (message: string) (command: string) (args: string) =
+    /// Run a command with spinner, capturing output. Each element of <c>args</c> is
+    /// passed as a discrete token via <c>ProcessStartInfo.ArgumentList</c>, so
+    /// arguments containing spaces or quotes are not re-parsed.
+    let runWithSpinner (message: string) (command: string) (args: string list) =
         let (exitCode, stdout, stderr) =
             UI.withSpinner message (fun () ->
-                let psi = ProcessStartInfo(command, args)
-                psi.UseShellExecute <- false
+                let psi = mkPsi command args
                 psi.RedirectStandardOutput <- true
                 psi.RedirectStandardError <- true
                 use proc = Diagnostics.Process.Start(psi)
@@ -62,12 +75,14 @@ module Process =
 
         (exitCode, stdout, stderr)
 
-    /// Run a command asynchronously, returning exit code, stdout, stderr
-    let runAsync (command: string) (args: string) =
+    /// Run a command asynchronously, returning exit code, stdout, stderr. Each
+    /// element of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or
+    /// quotes are not re-parsed.
+    let runAsync (command: string) (args: string list) =
         task {
-            UI.cmd command args
-            let psi = ProcessStartInfo(command, args)
-            psi.UseShellExecute <- false
+            UI.cmd command (String.concat " " args)
+            let psi = mkPsi command args
             psi.RedirectStandardOutput <- true
             psi.RedirectStandardError <- true
             use proc = Diagnostics.Process.Start(psi)
@@ -77,10 +92,12 @@ module Process =
             return (proc.ExitCode, stdout, stderr)
         }
 
-    /// Run a command silently with additional environment variables
-    let runSilentWithEnv (command: string) (args: string) (env: (string * string) list) =
-        let psi = ProcessStartInfo(command, args)
-        psi.UseShellExecute <- false
+    /// Run a command silently with additional environment variables. Each element of
+    /// <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runSilentWithEnv (command: string) (args: string list) (env: (string * string) list) =
+        let psi = mkPsi command args
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
         psi.CreateNoWindow <- true
@@ -96,12 +113,14 @@ module Process =
         let stderr = stderrTask.Result
         (proc.ExitCode, stdout.Trim(), stderr.Trim())
 
-    /// Run a command with additional environment variables (interactive, no capture)
-    let runWithEnv (command: string) (args: string) (env: (string * string) list) =
-        UI.cmd command args
+    /// Run a command with additional environment variables (interactive, no capture).
+    /// Each element of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runWithEnv (command: string) (args: string list) (env: (string * string) list) =
+        UI.cmd command (String.concat " " args)
         let sw = Stopwatch.StartNew()
-        let psi = ProcessStartInfo(command, args)
-        psi.UseShellExecute <- false
+        let psi = mkPsi command args
 
         for (key, value) in env do
             psi.EnvironmentVariables.[key] <- value
@@ -114,10 +133,13 @@ module Process =
         if proc.ExitCode <> 0 then
             failwith $"Command failed with exit code %d{proc.ExitCode}"
 
-    /// Run a command silently with optional timeout (milliseconds)
-    let runSilentWithTimeout (command: string) (args: string) (timeout: int option) =
-        let psi = ProcessStartInfo(command, args)
-        psi.UseShellExecute <- false
+    /// Run a command silently with an optional timeout (milliseconds). Each element
+    /// of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed. Returns (exitCode, trimmed stdout, trimmed stderr); a
+    /// timeout yields (-1, "", message).
+    let runSilentWithTimeout (command: string) (args: string list) (timeout: int option) =
+        let psi = mkPsi command args
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
         psi.CreateNoWindow <- true
@@ -142,10 +164,12 @@ module Process =
             let stderr = stderrTask.Result
             (proc.ExitCode, stdout.Trim(), stderr.Trim())
 
-    /// Run a command silently with optional timeout in a specific directory
-    let runSilentWithTimeoutInDir (command: string) (args: string) (timeout: int option) (workDir: string) =
-        let psi = ProcessStartInfo(command, args)
-        psi.UseShellExecute <- false
+    /// Run a command silently with an optional timeout (milliseconds) in a specific
+    /// directory. Each element of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runSilentWithTimeoutInDir (command: string) (args: string list) (timeout: int option) (workDir: string) =
+        let psi = mkPsi command args
         psi.RedirectStandardOutput <- true
         psi.RedirectStandardError <- true
         psi.CreateNoWindow <- true
@@ -170,43 +194,59 @@ module Process =
             let stderr = stderrTask.Result
             (proc.ExitCode, stdout.Trim(), stderr.Trim())
 
-    /// Run a command silently in a specific directory
-    let runSilentInDir (command: string) (args: string) (workDir: string) =
+    /// Run a command silently in a specific directory. Each element of <c>args</c> is
+    /// passed as a discrete token via <c>ProcessStartInfo.ArgumentList</c>, so
+    /// arguments containing spaces or quotes are not re-parsed.
+    let runSilentInDir (command: string) (args: string list) (workDir: string) =
         runSilentWithTimeoutInDir command args None workDir
 
-    /// Run a command silently and return exit code, stdout, stderr as tuple
-    let runSilent (command: string) (args: string) = runSilentWithTimeout command args None
+    /// Run a command silently and return exit code, stdout, stderr as a tuple. Each
+    /// element of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runSilent (command: string) (args: string list) = runSilentWithTimeout command args None
 
-    /// Run a command silently and return a CommandResult record
-    let runCommand (command: string) (args: string) : CommandResult =
+    /// Run a command silently and return a <c>CommandResult</c> record. Each element
+    /// of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runCommand (command: string) (args: string list) : CommandResult =
         let (exitCode, stdout, stderr) = runSilent command args
 
         { ExitCode = exitCode
           Stdout = stdout
           Stderr = stderr }
 
-    /// Run a command interactively (no output capture) and return exit code
-    let runInteractive (command: string) (args: string) : int =
-        let psi = ProcessStartInfo(command, args)
-        psi.UseShellExecute <- false
+    /// Run a command interactively (no output capture) and return exit code. Each
+    /// element of <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runInteractive (command: string) (args: string list) : int =
+        let psi = mkPsi command args
         use proc = Diagnostics.Process.Start(psi)
         proc.WaitForExit()
         proc.ExitCode
 
-    /// Run a command interactively in a specific directory
-    let runInteractiveInDir (command: string) (args: string) (workDir: string) : int =
-        let psi = ProcessStartInfo(command, args)
-        psi.UseShellExecute <- false
+    /// Run a command interactively in a specific directory. Each element of
+    /// <c>args</c> is passed as a discrete token via
+    /// <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces or quotes
+    /// are not re-parsed.
+    let runInteractiveInDir (command: string) (args: string list) (workDir: string) : int =
+        let psi = mkPsi command args
         psi.WorkingDirectory <- workDir
         use proc = Diagnostics.Process.Start(psi)
         proc.WaitForExit()
         proc.ExitCode
 
-    /// Run dotnet command
-    let dotnet args = run "dotnet" args
+    /// Run a dotnet command. Each element of <c>args</c> is passed as a discrete
+    /// token via <c>ProcessStartInfo.ArgumentList</c>, so arguments containing spaces
+    /// or quotes are not re-parsed.
+    let dotnet (args: string list) = run "dotnet" args
 
-    /// Run dotnet command with spinner
-    let dotnetSpinner msg args =
+    /// Run a dotnet command with spinner. Each element of <c>args</c> is passed as a
+    /// discrete token via <c>ProcessStartInfo.ArgumentList</c>, so arguments
+    /// containing spaces or quotes are not re-parsed.
+    let dotnetSpinner (msg: string) (args: string list) =
         runWithSpinner msg "dotnet" args |> ignore
 
     /// Run multiple tasks in parallel
