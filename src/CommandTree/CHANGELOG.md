@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.7.0 - 2026-06-15
+
 ### Changed
 
 - **BREAKING:** all `Process` runners (`run`, `runSilent`, `runCommand`,
