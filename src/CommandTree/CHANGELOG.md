@@ -7,6 +7,19 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **BREAKING:** all `Process` runners (`run`, `runSilent`, `runCommand`,
+  `runAsync`, `runInteractive`, `dotnet`, env/timeout/dir variants, …) now take
+  arguments as `string list` instead of `string`. Each token is passed via
+  `ProcessStartInfo.ArgumentList`, so arguments containing spaces or quotes are
+  no longer re-parsed and corrupted by .NET's argument splitter. Migration:
+  wrap the old arg string in a list, splitting into the tokens you intend
+  (`"log -r foo"` → `[ "log"; "-r"; "foo" ]`; a quoted group like `-c "exit 1"`
+  → `[ "-c"; "exit 1" ]`). The separately-named `runSilentArgs` /
+  `runSilentArgsWithTimeout` are gone — `runSilent` / `runSilentWithTimeout` now
+  *are* the list-based versions.
+
 ## 0.6.3 - 2026-06-12
 
 ### Added

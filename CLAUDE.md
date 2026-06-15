@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CommandTree is an F# library for type-safe CLI command parsing using discriminated unions. It uses reflection to generate a recursive command tree from union types, with automatic help generation, fish shell completions, and process execution helpers.
 
+## Design Principles
+
+This is a library meant to last. Optimize for a beautiful, durable API over a small diff:
+
+- **Sustainable software with beautiful APIs.** Long-term clarity and correctness beat short-term convenience. The public surface is the product; design it deliberately.
+- **Breaking changes and large refactors are fine** when they buy a better API. A type-level break (e.g. changing a parameter type) is a *feature* — every consumer call site becomes a compiler error, so the migration is mechanical and complete. Don't preserve a worse design to avoid a break or keep a diff small; bump the major (or `feat!:`) and let the tagger handle versioning.
+- **Make impossible states impossible.** Prefer types that can't represent the wrong thing — DUs over stringly/inty states, `string list` over a string the callee must re-parse — so whole classes of bug can't be written. (E.g. every `Process` runner takes `string list` precisely so quoting can't be mangled.)
+- **One correct way, not duplicate APIs.** When a better API exists, make it *the* API — replace/rename the old one, don't add the safe version beside the footgun (`foo` + `fooSafe` is a smell). A single, correct, hard-to-misuse path is the goal.
+
 ## Build & Development Commands
 
 Uses `mise` as task runner (see `mise.toml`). All commands also work with `dotnet` directly.

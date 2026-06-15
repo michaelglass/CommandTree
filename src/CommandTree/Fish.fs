@@ -45,7 +45,7 @@ complete -c %s{cmdName} -f
 
         UI.info "Generating completions..."
 
-        let (code, stdout, stderr) = Process.runSilent $"./%s{cmdName}" "fish generate"
+        let code, stdout, stderr = Process.runSilent $"./%s{cmdName}" [ "fish"; "generate" ]
 
         if code <> 0 then
             UI.fail "Failed to generate completions"

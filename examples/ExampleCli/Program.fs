@@ -257,44 +257,48 @@ let handleProcessDemo (cmd: ProcessDemoCommand) =
     match cmd with
     | ProcessDemoCommand.Run ->
         UI.section "Process.run — visible output with timing"
-        Process.run "echo" "hello from Process.run"
+        Process.run "echo" [ "hello from Process.run" ]
 
     | ProcessDemoCommand.Silent ->
         UI.section "Process.runSilent — captured output"
-        let (code, stdout, stderr) = Process.runSilent "echo" "captured output"
+        // Args are passed as discrete tokens via ProcessStartInfo.ArgumentList, so a
+        // single argument containing spaces AND both quote kinds reaches echo intact;
+        // a shell (or .NET's string splitter) would re-split it and strip the quotes.
+        let arg = "a b \"c\" 'd'"
+        let (code, stdout, stderr) = Process.runSilent "echo" [ arg ]
         UI.info $"Exit code: %d{code}"
-        UI.info $"Stdout: %s{stdout}"
+        UI.info $"Stdout (one arg, verbatim): %s{stdout}"
         UI.dimInfo $"Stderr: %s{stderr}"
 
     | ProcessDemoCommand.Result ->
         UI.section "Process.runCommand — CommandResult record"
-        let result = Process.runCommand "echo" "hello from runCommand"
+        let result = Process.runCommand "echo" [ "hello from runCommand" ]
         UI.info $"ExitCode: %d{result.ExitCode}"
         UI.info $"Stdout: %s{result.Stdout}"
         UI.dimInfo $"Stderr: %s{result.Stderr}"
 
     | ProcessDemoCommand.Async ->
         UI.section "Process.runAsync — async execution"
-        let task = Process.runAsync "echo" "async hello"
+        let task = Process.runAsync "echo" [ "async hello" ]
         let (code, stdout, _stderr) = task.Result
         UI.info $"Exit code: %d{code}, Output: %s{stdout.Trim()}"
 
     | ProcessDemoCommand.Spinner ->
         UI.section "Process.runWithSpinner — spinner animation"
-        Process.runWithSpinner "Sleeping for 1 second" "sleep" "1" |> ignore
+        Process.runWithSpinner "Sleeping for 1 second" "sleep" [ "1" ] |> ignore
 
     | ProcessDemoCommand.Interactive ->
         UI.section "Process.runInteractive — no capture, returns exit code"
-        let exitCode = Process.runInteractive "echo" "interactive output"
+        let exitCode = Process.runInteractive "echo" [ "interactive output" ]
         UI.info $"Exit code: %d{exitCode}"
 
     | ProcessDemoCommand.WithEnv ->
         UI.section "Process.runWithEnv — custom environment"
-        Process.runWithEnv "sh" "-c \"echo MY_VAR=$MY_VAR\"" [ ("MY_VAR", "hello-from-env") ]
+        Process.runWithEnv "sh" [ "-c"; "echo MY_VAR=$MY_VAR" ] [ ("MY_VAR", "hello-from-env") ]
         UI.section "Process.runSilentWithEnv — silent with env"
 
         let (code, stdout, _) =
-            Process.runSilentWithEnv "sh" "-c \"echo MY_VAR=$MY_VAR\"" [ ("MY_VAR", "silent-env") ]
+            Process.runSilentWithEnv "sh" [ "-c"; "echo MY_VAR=$MY_VAR" ] [ ("MY_VAR", "silent-env") ]
 
         UI.info $"Exit code: %d{code}, Stdout: %s{stdout}"
 
@@ -302,11 +306,11 @@ let handleProcessDemo (cmd: ProcessDemoCommand) =
         UI.section "Process.runSilentWithTimeout — with timeout"
 
         let (code, stdout, _) =
-            Process.runSilentWithTimeout "echo" "fast command" (Some 5000)
+            Process.runSilentWithTimeout "echo" [ "fast command" ] (Some 5000)
 
         UI.info $"Exit code: %d{code}, Stdout: %s{stdout}"
         UI.section "Process.runSilentWithTimeout — timeout exceeded"
-        let (code2, _, stderr2) = Process.runSilentWithTimeout "sleep" "10" (Some 100)
+        let (code2, _, stderr2) = Process.runSilentWithTimeout "sleep" [ "10" ] (Some 100)
         UI.info $"Exit code: %d{code2}"
 
         if stderr2 <> "" then
@@ -314,17 +318,17 @@ let handleProcessDemo (cmd: ProcessDemoCommand) =
 
     | ProcessDemoCommand.Dotnet ->
         UI.section "Process.dotnet — run dotnet command"
-        Process.dotnet "--version"
+        Process.dotnet [ "--version" ]
         UI.section "Process.dotnetSpinner — dotnet with spinner"
-        Process.dotnetSpinner "Getting dotnet info" "--version"
+        Process.dotnetSpinner "Getting dotnet info" [ "--version" ]
 
     | ProcessDemoCommand.Parallel ->
         UI.section "Process.runParallel — parallel execution"
 
         let tasks =
-            [| Process.runAsync "echo" "task-1"
-               Process.runAsync "echo" "task-2"
-               Process.runAsync "echo" "task-3" |]
+            [| Process.runAsync "echo" [ "task-1" ]
+               Process.runAsync "echo" [ "task-2" ]
+               Process.runAsync "echo" [ "task-3" ] |]
 
         let results = Process.runParallel tasks
 
