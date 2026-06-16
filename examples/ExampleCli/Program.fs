@@ -37,6 +37,7 @@ type TaskCommand =
     | [<Cmd("Complete a task")>] Complete of id: int
     | [<Cmd("Remove a task")>] Remove of id: int
 
+// sync:db-command:start
 // example-cli db migrate
 // example-cli db                               ← runs status (CmdDefault)
 // example-cli db reset
@@ -44,13 +45,16 @@ type DbCommand =
     | [<Cmd("Run database migrations")>] Migrate
     | [<Cmd("Reset the database")>] Reset
     | [<Cmd("Show connection status"); CmdDefault>] Status
+// sync:db-command:end
 
+// sync:deploy-command:start
 // example-cli deploy push staging
 // example-cli deploy status prod
 // example-cli deploy                           ← runs status with no env (CmdDefault)
 type DeployCommand =
     | [<Cmd("Deploy to environment"); CmdCompletion("dev", "staging", "prod")>] Push of env: string
     | [<Cmd("Show deploy status"); CmdCompletion("dev", "staging", "prod"); CmdDefault>] Status of env: string option
+// sync:deploy-command:end
 
 // example-cli coverage file src/App.fs         ← CmdFileCompletion enables tab-complete
 // example-cli coverage                         ← runs summary (CmdDefault)
@@ -58,6 +62,7 @@ type CoverageCommand =
     | [<Cmd("Show coverage for file"); CmdFileCompletion>] File of path: string
     | [<Cmd("Show coverage summary"); CmdDefault>] Summary
 
+// sync:files-command:start
 // example-cli tag v1.0 src/App.fs src/Lib.fs   ← list field collects 1+ remaining args
 // example-cli diff old.dll new.dll             ← multiple CmdFileCompletion with FieldIndex
 type FilesCommand =
@@ -65,6 +70,7 @@ type FilesCommand =
     | [<Cmd("Compare two DLLs"); CmdFileCompletion(FieldIndex = 0); CmdFileCompletion(FieldIndex = 1)>] Diff of
         oldDll: string *
         newDll: string
+// sync:files-command:end
 
 // example-cli job start build-assets 1024 true
 // example-cli job status 550e8400-e29b-41d4-a716-446655440000
@@ -74,11 +80,13 @@ type JobCommand =
     | [<Cmd("Check job status")>] Status of id: Guid
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
+// sync:check-flag:start
 // example-cli check --conf custom.json --strict --no-cache
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
+// sync:check-flag:end
 
 type ProcessDemoCommand =
     | [<Cmd("Run a command visibly with timing")>] Run
