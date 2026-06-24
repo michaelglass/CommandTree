@@ -6,6 +6,8 @@ this file. The CommandTree library itself has its own
 
 ## Unreleased
 
+## 0.1.0-alpha.2 - 2026-06-24
+
 ### Changed
 
 - Bump `FSharp.Analyzers.SDK` 0.36.0 → 0.37.2 (recompiled against FCS 43.12.201; no diagnostic behavior change).
