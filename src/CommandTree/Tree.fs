@@ -148,11 +148,14 @@ module CommandTree =
         | Leaf leaf -> leaf.Args
         | Group _ -> []
 
-    /// Check if args contain --help
-    let private hasHelpFlag (args: string array) = args |> Array.contains "--help"
+    /// Check if args contain --help (before any `--` end-of-flags separator,
+    /// after which tokens are positional values, never flags)
+    let private hasHelpFlag (args: string array) =
+        args |> Array.takeWhile (fun a -> a <> "--") |> Array.contains "--help"
 
-    /// Check if args contain --version
-    let private hasVersionFlag (args: string array) = args |> Array.contains "--version"
+    /// Check if args contain --version (before any `--` end-of-flags separator)
+    let private hasVersionFlag (args: string array) =
+        args |> Array.takeWhile (fun a -> a <> "--") |> Array.contains "--version"
 
     /// Check if a flag list contains an explicit --help flag (override)
     let private hasExplicitHelpFlag (flags: FlagInfo list) =

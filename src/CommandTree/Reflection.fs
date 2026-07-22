@@ -85,6 +85,12 @@ module CommandReflection =
         && not (isOptionalType t)
         && not (isListType t)
 
+    /// Check if a type is a flag DU list (`SomeDU list`) — a trailing field of this
+    /// shape is parsed as named `--flags`, one flag per element DU case. Single
+    /// source of truth shared by tree construction and `formatCmd`.
+    let private isFlagDUList (t: Type) =
+        isListType t && isUnionType (listElementType t)
+
     /// Get a readable type name for display
     let rec private getTypeName (t: Type) =
         if t = typeof<string> then
@@ -536,6 +542,14 @@ module CommandReflection =
             |> Map.ofList
           ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}") }
 
+    /// Split argv at the first standalone POSIX `--` end-of-flags separator:
+    /// (tokens before it, Some tokens after it) — or (args, None) when absent.
+    /// Tokens after the separator are never flag-matched.
+    let private splitAtEndOfFlags (args: string array) : string array * string array option =
+        match args |> Array.tryFindIndex (fun a -> a = "--") with
+        | Some i -> Array.sub args 0 i, Some(Array.sub args (i + 1) (args.Length - i - 1))
+        | None -> args, None
+
     /// Shared flag parsing loop. On unknown arg, calls onUnknown which returns Some error to stop or None to skip.
     let private parseFlagsLoop
         (cmdName: string)
@@ -587,18 +601,6 @@ module CommandReflection =
         match error with
         | Some e -> Error e
         | None -> Ok results
-
-    /// Parse DU-based flags from args array, returning an F# list of flag DU values or error
-    let internal parseDUFlags
-        (cmdName: string)
-        (flagType: Type)
-        (lookup: FlagLookup)
-        (args: string array)
-        : Result<obj, ParseError> =
-        let cases = FSharpType.GetUnionCases(flagType)
-
-        parseFlagsLoop cmdName cases lookup args (fun arg _ -> Some(UnknownFlag(arg, cmdName, lookup.ValidFlags)))
-        |> Result.map (fun results -> buildTypedList flagType results)
 
     /// Resolve env vars for flags not set by CLI, returning additional flag DU values
     let internal resolveEnvVars
@@ -698,12 +700,7 @@ module CommandReflection =
 
                     if isUnionType ft then
                         go v ft
-                    elif
-                        isListType ft
-                        && isUnionType (listElementType ft)
-                        && (FSharpType.GetUnionCases(listElementType ft)
-                            |> Array.exists (fun c -> c.GetFields().Length > 0))
-                    then
+                    elif isFlagDUList ft then
                         let elemType = listElementType ft
 
                         renderDUFlagTokens elemType (v :?> System.Collections.IEnumerable)
@@ -797,38 +794,93 @@ module CommandReflection =
                     let badField = fields.[listFieldIndices.[0]].Name
                     errors.Add(SpecError.ListFieldNotLast(cmdName, badField))
 
-            if
-                fields.Length = 1
-                && isListType fields.[0].PropertyType
-                && isUnionType (listElementType fields.[0].PropertyType)
-            then
-                // DU flag list: single field of type `SomeDU list` — parsed as named flags
-                let flagDUType = listElementType fields.[0].PropertyType
+            if fields.Length > 0 && isFlagDUList fields.[fields.Length - 1].PropertyType then
+                // Flag-DU leaf: zero or more leading positionals + a trailing `SomeDU list`
+                // field parsed as named --flags. Flags may appear anywhere relative to the
+                // positionals; tokens after a standalone `--` always bind as positionals.
+                let positionalFields = Array.sub fields 0 (fields.Length - 1)
+
+                validateFieldTypes errors cmdName (positionalFields |> Seq.map (fun f -> f.Name, f.PropertyType))
+
+                let flagDUType = listElementType fields.[fields.Length - 1].PropertyType
                 let flagInfo = getFlagInfoFromDU flagDUType envPrefix
                 let flagLookup = buildFlagLookup flagInfo
+                let flagCases = FSharpType.GetUnionCases(flagDUType)
 
                 let parse (args: string array) : Result<'Cmd, ParseError> =
-                    match parseDUFlags cmdName flagDUType flagLookup args with
-                    | Ok flagList ->
-                        let cliItems = (flagList :?> System.Collections.IEnumerable) |> Seq.cast<obj>
+                    let scanArgs, afterSeparator = splitAtEndOfFlags args
+                    let positionalTokens = ResizeArray<string>()
 
-                        match resolveEnvVars flagDUType flagInfo cliItems with
-                        | Ok envItems ->
-                            let allItems = Seq.append cliItems envItems
-                            let mergedList = buildTypedList flagDUType allItems
-                            let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| mergedList |]))
-                            Ok(cmdValue :?> 'Cmd)
-                        | Error e -> Error e
+                    let onUnknown (arg: string) (_index: int) =
+                        // With no positional slots every unknown token is a bad flag; with
+                        // slots, only `-`-prefixed tokens are (a bare `-` stays a
+                        // positional, by stdin convention).
+                        if
+                            positionalFields.Length = 0
+                            || (arg.StartsWith("-", StringComparison.Ordinal) && arg <> "-")
+                        then
+                            Some(UnknownFlag(arg, cmdName, flagLookup.ValidFlags))
+                        else
+                            positionalTokens.Add(arg)
+                            None
+
+                    match parseFlagsLoop cmdName flagCases flagLookup scanArgs onUnknown with
                     | Error e -> Error e
+                    | Ok cliFlags ->
+                        positionalTokens.AddRange(defaultArg afterSeparator [||])
+                        let positionals = positionalTokens.ToArray()
+
+                        if positionals.Length > positionalFields.Length then
+                            // Dash-prefixed extras can only arrive here via `--` (before it
+                            // they already errored as unknown flags), so an extra token is
+                            // always an unexpected *argument*, never an unknown flag.
+                            let extra = positionals.[positionalFields.Length]
+                            Error(InvalidArguments(cmdName, $"Unexpected argument '%s{extra}'"))
+                        else
+                            let fieldValues =
+                                positionalFields
+                                |> Array.mapi (fun i pf ->
+                                    if i < positionals.Length then
+                                        parseFieldValue pf.PropertyType positionals.[i]
+                                    elif isOptionalType pf.PropertyType then
+                                        Ok(Some(makeNone pf.PropertyType))
+                                    else
+                                        Error(InvalidValue $"Missing required argument '<%s{toKebabCase pf.Name}>'"))
+
+                            match validateFields cmdName fieldValues with
+                            | Error e -> Error e
+                            | Ok values ->
+                                let cliItems = cliFlags |> Seq.cast<obj>
+
+                                match resolveEnvVars flagDUType flagInfo cliItems with
+                                | Error e -> Error e
+                                | Ok envItems ->
+                                    let mergedList = buildTypedList flagDUType (Seq.append cliItems envItems)
+
+                                    let cmdValue =
+                                        wrapValue (
+                                            FSharpValue.MakeUnion(outerCase, Array.append values [| mergedList |])
+                                        )
+
+                                    Ok(cmdValue :?> 'Cmd)
 
                 let formatArgs =
                     findMatchingCase outerCase (fun fs ->
-                        renderDUFlagTokens flagDUType (fs.[0] :?> System.Collections.IEnumerable))
+                        let positionalParts =
+                            Array.sub fs 0 (fs.Length - 1)
+                            |> Array.map formatFieldValue
+                            |> Array.filter (fun s -> s <> "")
+                            |> Array.toList
+
+                        let flagParts =
+                            renderDUFlagTokens flagDUType (fs.[fs.Length - 1] :?> System.Collections.IEnumerable)
+
+                        positionalParts @ flagParts)
 
                 CommandTree.Leaf
                     { Name = cmdName
                       Description = desc
-                      Args = []
+                      Args = getArgInfo outerCase positionalFields
                       Flags = flagInfo
                       Examples = getCmdExamples outerCase
                       Parse = parse
@@ -1095,21 +1147,31 @@ module CommandReflection =
 
         check tree
 
-    /// Scan args for global flags, separating them from command args
+    /// Scan args for global flags, separating them from command args. Scanning
+    /// stops at a standalone `--`: the separator and everything after it are
+    /// forwarded to the command untouched (the leaf applies its own `--` rule).
     let private scanGlobalFlags
         (globalType: Type)
         (globalLookup: FlagLookup)
         (args: string array)
         : Result<System.Collections.Generic.List<obj> * string array, ParseError> =
         let globalCases = FSharpType.GetUnionCases(globalType)
+        let scanArgs, afterSeparator = splitAtEndOfFlags args
         let commandArgs = System.Collections.Generic.List<string>()
 
         let onUnknown (arg: string) (_index: int) =
             commandArgs.Add(arg)
             None
 
-        parseFlagsLoop "global" globalCases globalLookup args onUnknown
-        |> Result.map (fun globalResults -> (globalResults, commandArgs.ToArray()))
+        parseFlagsLoop "global" globalCases globalLookup scanArgs onUnknown
+        |> Result.map (fun globalResults ->
+            match afterSeparator with
+            | Some after ->
+                commandArgs.Add("--")
+                commandArgs.AddRange(after)
+            | None -> ()
+
+            (globalResults, commandArgs.ToArray()))
 
     /// Internal: build a GlobalSpec, accumulating every construction-time shape
     /// error (command-tree field/list errors first, in DU declaration order,
