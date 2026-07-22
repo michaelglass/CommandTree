@@ -591,17 +591,17 @@ let ``getFlagInfoFromDU generates flag info from union cases`` () =
     test <@ flagInfo.Length = 3 @>
 
     let dryRun = flagInfo |> List.find (fun f -> f.LongName = "dry-run")
-    test <@ dryRun.IsBool = true @>
+    test <@ dryRun.Arity = FlagArity.Nullary @>
     test <@ dryRun.TypeName = "bool" @>
     test <@ dryRun.EnvVar = None @>
 
     let env = flagInfo |> List.find (fun f -> f.LongName = "env")
-    test <@ env.IsBool = false @>
+    test <@ env.Arity = FlagArity.Required @>
     test <@ env.TypeName = "string" @>
     test <@ env.ShortName = Some "e" @>
 
     let verbose = flagInfo |> List.find (fun f -> f.LongName = "verbose")
-    test <@ verbose.IsBool = true @>
+    test <@ verbose.Arity = FlagArity.Nullary @>
 
 [<Fact>]
 let ``getFlagInfoFromDU with env prefix auto-derives env var names`` () =

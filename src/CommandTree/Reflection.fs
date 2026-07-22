@@ -248,8 +248,23 @@ module CommandReflection =
 
                 Some { VarName = $"%s{prefix}_%s{suffix}" }
 
+    /// Derive a flag's value arity from its DU-case fields — the single source of
+    /// truth shared by <c>getFlagInfoFromDU</c> (help/metadata) and
+    /// <c>parseFlagsLoop</c> (parsing): no fields → <c>Nullary</c>; a single
+    /// <c>'T option</c> field → <c>Optional</c> (inline-only value); otherwise
+    /// <c>Required</c>.
+    let private flagArity (fields: Reflection.PropertyInfo array) : FlagArity =
+        if fields.Length = 0 then
+            FlagArity.Nullary
+        elif isOptionalType fields.[0].PropertyType then
+            FlagArity.Optional
+        else
+            FlagArity.Required
+
     /// Build FlagInfo list from a DU type where each case = one flag.
-    /// No-field cases become boolean flags, single-field cases become value flags.
+    /// No-field cases become nullary (boolean) flags; a single <c>'T option</c>
+    /// field becomes an optional-value flag; any other single field becomes a
+    /// required-value flag.
     let internal getFlagInfoFromDU (flagType: Type) (envPrefix: string option) : FlagInfo list =
         let cases = FSharpType.GetUnionCases(flagType)
 
@@ -257,7 +272,7 @@ module CommandReflection =
             cases
             |> Array.map (fun case ->
                 let fields = case.GetFields()
-                let isBool = fields.Length = 0
+                let arity = flagArity fields
 
                 let flagAttr =
                     case.GetCustomAttributes(typeof<CmdFlagAttribute>)
@@ -275,10 +290,12 @@ module CommandReflection =
                     | _ -> None
 
                 let typeName =
-                    if isBool then
-                        "bool"
-                    else
-                        getTypeName fields.[0].PropertyType
+                    match arity with
+                    | FlagArity.Nullary -> "bool"
+                    // getTypeName unwraps option, so an optional-value flag reports its
+                    // inner type name (e.g. `int option` → "int") for `--wait[=<int>]`.
+                    | FlagArity.Optional
+                    | FlagArity.Required -> getTypeName fields.[0].PropertyType
 
                 let description =
                     match flagAttr with
@@ -287,7 +304,7 @@ module CommandReflection =
 
                 let envVar = deriveEnvVar case envPrefix
 
-                (longName, explicitShort, isBool, typeName, description, envVar))
+                (longName, explicitShort, arity, typeName, description, envVar))
 
         // Short flag collision detection
         let shortCounts =
@@ -300,7 +317,7 @@ module CommandReflection =
             |> Map.ofArray
 
         flagData
-        |> Array.map (fun (longName, explicitShort, isBool, typeName, description, envVar) ->
+        |> Array.map (fun (longName, explicitShort, arity, typeName, description, envVar) ->
             let shortName =
                 match explicitShort with
                 | Some s -> Some s
@@ -314,7 +331,7 @@ module CommandReflection =
             { LongName = longName
               ShortName = shortName
               TypeName = typeName
-              IsBool = isBool
+              Arity = arity
               Description = description
               EnvVar = envVar })
         |> Array.toList
@@ -566,9 +583,20 @@ module CommandReflection =
         while i < args.Length && error.IsNone do
             let arg = args.[i]
 
+            // For a flag-like token (leading `-`), split on the FIRST `=` into the flag
+            // token and its inline value; a positional value that happens to contain `=`
+            // (e.g. `key=val`) is left untouched. Unknown tokens are forwarded verbatim.
+            let flagToken, inlineValue =
+                if arg.StartsWith("-", StringComparison.Ordinal) then
+                    match arg.IndexOf('=') with
+                    | -1 -> arg, None
+                    | eq -> arg.Substring(0, eq), Some(arg.Substring(eq + 1))
+                else
+                    arg, None
+
             let flagIdx =
-                Map.tryFind arg lookup.LongMap
-                |> Option.orElseWith (fun () -> Map.tryFind arg lookup.ShortMap)
+                Map.tryFind flagToken lookup.LongMap
+                |> Option.orElseWith (fun () -> Map.tryFind flagToken lookup.ShortMap)
 
             match flagIdx with
             | None ->
@@ -577,26 +605,76 @@ module CommandReflection =
                 | None -> i <- i + 1
             | Some idx ->
                 if not (seenTags.Add(idx)) then
-                    error <- Some(DuplicateFlag(arg, cmdName))
+                    error <- Some(DuplicateFlag(flagToken, cmdName))
                 else
                     let case = cases.[idx]
                     let fields = case.GetFields()
 
-                    if fields.Length = 0 then
-                        results.Add(FSharpValue.MakeUnion(case, [||]))
-                        i <- i + 1
-                    else if i + 1 >= args.Length then
-                        error <- Some(InvalidArguments(cmdName, $"Flag '%s{arg}' requires a value"))
-                    else
-                        let valueStr = args.[i + 1]
+                    let addValueFlag (value: obj) =
+                        results.Add(FSharpValue.MakeUnion(case, [| value |]))
 
-                        match parseFieldValue fields.[0].PropertyType valueStr with
-                        | Ok(Some v) ->
-                            results.Add(FSharpValue.MakeUnion(case, [| v |]))
-                            i <- i + 2
-                        | Ok None ->
-                            error <- Some(InvalidArguments(cmdName, $"Invalid value '%s{valueStr}' for flag '%s{arg}'"))
-                        | Error e -> error <- Some(fieldErrorToParseError cmdName e)
+                    match flagArity fields with
+                    | FlagArity.Nullary ->
+                        match inlineValue with
+                        | Some _ -> error <- Some(InvalidArguments(cmdName, $"Flag '%s{flagToken}' takes no value"))
+                        | None ->
+                            results.Add(FSharpValue.MakeUnion(case, [||]))
+                            i <- i + 1
+                    | FlagArity.Required ->
+                        // Value via inline `=` (advance 1) or the next token (advance 2).
+                        match inlineValue with
+                        | Some v ->
+                            match parseFieldValue fields.[0].PropertyType v with
+                            | Ok(Some value) ->
+                                addValueFlag value
+                                i <- i + 1
+                            | Ok None ->
+                                error <-
+                                    Some(InvalidArguments(cmdName, $"Invalid value '%s{v}' for flag '%s{flagToken}'"))
+                            | Error e -> error <- Some(fieldErrorToParseError cmdName e)
+                        | None ->
+                            if i + 1 >= args.Length then
+                                error <- Some(InvalidArguments(cmdName, $"Flag '%s{flagToken}' requires a value"))
+                            else
+                                let valueStr = args.[i + 1]
+
+                                match parseFieldValue fields.[0].PropertyType valueStr with
+                                | Ok(Some value) ->
+                                    addValueFlag value
+                                    i <- i + 2
+                                | Ok None ->
+                                    error <-
+                                        Some(
+                                            InvalidArguments(
+                                                cmdName,
+                                                $"Invalid value '%s{valueStr}' for flag '%s{flagToken}'"
+                                            )
+                                        )
+                                | Error e -> error <- Some(fieldErrorToParseError cmdName e)
+                    | FlagArity.Optional ->
+                        // Value comes ONLY via inline `=`; bare → None. Never consumes the
+                        // next token. The inline value parses as the INNER (unwrapped) type
+                        // and is re-wrapped in `Some`, so `--wait=` (empty) is an error rather
+                        // than a silent None.
+                        let optionType = fields.[0].PropertyType
+                        let innerType = unwrapOptionType optionType
+
+                        match inlineValue with
+                        | Some v ->
+                            match parseFieldValue innerType v with
+                            | Ok(Some value) ->
+                                let someCase =
+                                    FSharpType.GetUnionCases(optionType) |> Array.find (fun c -> c.Name = "Some")
+
+                                addValueFlag (FSharpValue.MakeUnion(someCase, [| value |]))
+                                i <- i + 1
+                            | Ok None ->
+                                error <-
+                                    Some(InvalidArguments(cmdName, $"Invalid value '%s{v}' for flag '%s{flagToken}'"))
+                            | Error e -> error <- Some(fieldErrorToParseError cmdName e)
+                        | None ->
+                            addValueFlag (makeNone optionType)
+                            i <- i + 1
 
         match error with
         | Some e -> Error e
@@ -667,7 +745,10 @@ module CommandReflection =
         | Some e -> Error e
         | None -> Ok(envResults |> Seq.toList)
 
-    /// Render a DU flag list as CLI tokens (e.g., ["--env"; "prod"; "--dry-run"])
+    /// Render a DU flag list as CLI tokens (e.g., ["--env"; "prod"; "--dry-run"]).
+    /// Required-value flags use the space form (`--flag value`); optional-value
+    /// flags use the inline-only form (`--wait=5` for Some, bare `--wait` for None)
+    /// so the tokens round-trip back through the inline-only parse rule.
     let private renderDUFlagTokens (flagDUType: Type) (flagList: System.Collections.IEnumerable) : string list =
         flagList
         |> Seq.cast<obj>
@@ -675,9 +756,14 @@ module CommandReflection =
             let fc, ffs = FSharpValue.GetUnionFields(flagVal, flagDUType)
             let flagName = $"--%s{toKebabCase fc.Name}"
 
-            if ffs.Length = 0 then
-                seq { flagName }
-            else
+            match flagArity (fc.GetFields()) with
+            | FlagArity.Nullary -> seq { flagName }
+            | FlagArity.Optional ->
+                // F# `None` is a null reference; a non-null field value is `Some x`.
+                match ffs.[0] with
+                | null -> seq { flagName }
+                | someVal -> seq { $"%s{flagName}=%s{formatFieldValue someVal}" }
+            | FlagArity.Required ->
                 seq {
                     flagName
                     formatFieldValue ffs.[0]

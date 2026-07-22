@@ -6,6 +6,14 @@ this file. The CommandTree library itself has its own
 
 ## Unreleased
 
+### Changed
+
+- Doc comment expanded for CommandTree 0.8.0's optional-value flags (AUTOMATION-195):
+  within a flag DU, a nullary case is a boolean toggle, a single `'T option`-field case is
+  an optional-value flag (`--wait` → None, `--wait=5` → Some, inline-only), and any other
+  single-field case is a required-value flag — all valid shapes needing no CT diagnostic.
+  Documentation-only, no rule change.
+
 ## 0.1.0-alpha.3 - 2026-07-22
 
 ### Changed

@@ -100,11 +100,13 @@ A flag DU becomes named `--flags`:
 
 <!-- sync:check-flag:start src=examples/ExampleCli/Program.fs -->
 ```fsharp
-// example-cli check --conf custom.json --strict --no-cache
+// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
+    | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
 ```
 <!-- sync:check-flag:end -->
 
@@ -118,6 +120,7 @@ type CheckFlag =
 | `Push of env: Priority` | `example-cli deploy push high` or `example-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
 | `Tag of label: string * files: string list` | `example-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
 | `Check of CheckFlag list` | `example-cli check --conf x.json --strict` | DU flag list becomes named flags |
+| `Wait of int option` (flag case) | `example-cli check --wait` or `--wait=5` | Optional-value flag: bare binds `None`, inline `=` binds `Some`; never swallows the next token |
 | `Remove of name: string * flags: RemoveFlag list` | `example-cli remove old-ws --force` | Positionals + trailing DU flag list; flags may appear anywhere |
 | `[<CmdDefault>] List` | `example-cli task` | Runs when a group is invoked without a subcommand |
 | `[<Cmd(Name = "fmt")>] Format` | `example-cli fmt` | `Name` overrides the derived command name |

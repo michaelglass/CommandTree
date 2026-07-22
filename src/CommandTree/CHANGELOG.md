@@ -7,6 +7,23 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat!: **optional-value flags** (AUTOMATION-195). A flag-DU case with a single
+  `'T option` field is now an *optional-value* flag: it parses bare (`--wait` → `None`)
+  or with an inline value (`--wait=5` → `Some 5`). This is the honest way to model
+  `--wait[=<value>]`, and it coexists with sibling flags in a flag-DU list (unlike the
+  old `string option`-positional escape hatch, which a flag-DU list's parser rejected).
+  - Also adds general **inline `--flag=value`** syntax for value flags (`--conf=x.json`),
+    splitting a `-`-prefixed token on its first `=` (so a positional `key=val` is left
+    intact, and a value may itself contain `=` or lead with `-`).
+  - **The no-swallow rule:** an optional-value flag takes its value ONLY via inline `=`
+    and NEVER consumes the following token — `--wait --force` → `Wait None` + `Force`;
+    `--wait 5` → `Wait None` + `5` as a positional. (Required-value flags keep the space
+    form.) This removes the ambiguity that otherwise makes a bare optional flag swallow
+    the next flag/positional.
+  - **Breaking (API):** `FlagInfo.IsBool: bool` is replaced by
+    `FlagInfo.Arity: FlagArity` (`Nullary | Required | Optional`). Every consumer that
+    matches `FlagInfo` gets a compiler error at the match site — a mechanical migration.
+
 ## 0.7.1 - 2026-07-22
 
 ### Added

@@ -111,11 +111,13 @@ A flag DU becomes named `--flags`:
 
 <!-- sync:check-flag:start src=examples/ExampleCli/Program.fs -->
 ```fsharp
-// example-cli check --conf custom.json --strict --no-cache
+// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
+    | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
 ```
 <!-- sync:check-flag:end -->
 
@@ -129,6 +131,7 @@ type CheckFlag =
 | `Push of env: Priority` | `example-cli deploy push high` or `example-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
 | `Tag of label: string * files: string list` | `example-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
 | `Check of CheckFlag list` | `example-cli check --conf x.json --strict` | DU flag list becomes named flags |
+| `Wait of int option` (flag case) | `example-cli check --wait` or `--wait=5` | Optional-value flag: bare binds `None`, inline `=` binds `Some`; never swallows the next token |
 | `Remove of name: string * flags: RemoveFlag list` | `example-cli remove old-ws --force` | Positionals + trailing DU flag list; flags may appear anywhere |
 | `[<CmdDefault>] List` | `example-cli task` | Runs when a group is invoked without a subcommand |
 | `[<Cmd(Name = "fmt")>] Format` | `example-cli fmt` | `Name` overrides the derived command name |
@@ -186,9 +189,17 @@ Decorate union cases to customize parsing, help, and completions:
 ## Flags and env vars
 
 Define flags as their own DU and attach them as a `list` field (e.g.
-`Check of CheckFlag list`). No-field cases become boolean flags; single-field
-cases become value flags. Short flags are auto-derived from the first letter
+`Check of CheckFlag list`). A no-field case is a boolean flag; a single
+`'T option` field is an *optional-value* flag; any other single field is a
+*required-value* flag. Short flags are auto-derived from the first letter
 (collisions are dropped); override with `[<CmdFlag>]`.
+
+Required-value flags take their value space-separated (`--conf custom.json`) or
+inline (`--conf=custom.json`). Optional-value flags are **inline-only**: bare
+`--wait` binds `None`, `--wait=5` binds `Some 5`, and they **never** consume the
+following token — so `--wait --detach` is `Wait None` plus `Detach`, and
+`--wait 5` leaves `5` as a positional. A bare-but-`=` form with no value
+(`--wait=`) or a value that does not parse (`--wait=abc`) is a parse error.
 
 A case can mix positional fields with a trailing flag DU list (e.g.
 `Remove of name: string * flags: RemoveFlag list`). Flags may appear anywhere
@@ -198,11 +209,13 @@ stays a value.
 
 <!-- sync:flags-check:start src=examples/ExampleCli/Program.fs#check-flag -->
 ```fsharp
-// example-cli check --conf custom.json --strict --no-cache
+// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
+    | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
 ```
 <!-- sync:flags-check:end -->
 

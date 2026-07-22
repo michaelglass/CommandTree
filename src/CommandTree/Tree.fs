@@ -35,6 +35,20 @@ type EnvVarInfo =
         VarName: string
     }
 
+/// A flag's value arity — whether it takes a value, and if so how.
+/// - <c>Nullary</c>: a boolean toggle with no value (e.g. <c>--verbose</c>).
+/// - <c>Required</c>: takes a value, supplied either space-separated
+///   (<c>--conf file</c>) or inline (<c>--conf=file</c>).
+/// - <c>Optional</c>: value is optional and <em>inline-only</em> — bare
+///   <c>--wait</c> binds <c>None</c>, <c>--wait=5</c> binds <c>Some 5</c>. An
+///   optional-value flag never consumes the following token, so
+///   <c>--wait --detach</c> is <c>Wait None</c> plus <c>Detach</c>. Modeled by a
+///   single <c>'T option</c> flag-DU field.
+type FlagArity =
+    | Nullary
+    | Required
+    | Optional
+
 /// Flag metadata for help generation and parsing
 type FlagInfo =
     {
@@ -44,8 +58,8 @@ type FlagInfo =
         ShortName: string option
         /// Display type name for help text
         TypeName: string
-        /// Whether this flag is a boolean toggle (no value argument)
-        IsBool: bool
+        /// Value arity: nullary toggle, required value, or optional inline-only value
+        Arity: FlagArity
         /// Human-readable description for help text
         Description: string
         /// Environment variable binding, if configured
@@ -240,7 +254,11 @@ module CommandTree =
             | Some s -> $", -%s{s}"
             | None -> ""
 
-        let typePart = if fi.IsBool then "" else $" <%s{fi.LongName}>"
+        let typePart =
+            match fi.Arity with
+            | Nullary -> ""
+            | Required -> $" <%s{fi.TypeName}>"
+            | Optional -> $"[=<%s{fi.TypeName}>]"
 
         let envPart =
             match fi.EnvVar with

@@ -113,6 +113,18 @@ type MultiPositionalFlagDUCommand =
 
 type TypedPositionalFlagDUCommand = | [<Cmd("Scale a target")>] Scale of count: int * flags: RemoveFlag list
 
+// Types for OPTIONAL-VALUE flag tests (AUTOMATION-195)
+// `Wait of int option` models a flag that parses bare (`--wait` -> Wait None) OR
+// with an inline value (`--wait=5` -> Wait (Some 5)), coexisting in one DU with a
+// nullary flag (`Detach`) and a required-value flag (`Conf of string`).
+
+type ClaimFlag =
+    | Detach
+    | Wait of int option
+    | Conf of string
+
+type OptionalValueFlagCommand = | [<Cmd("Claim a ticket")>] Claim of ticket: string * flags: ClaimFlag list
+
 // Types for global flag tests
 
 type GlobalFlag =
@@ -936,6 +948,200 @@ let ``unsupported positional type beside flag-DU list is a spec error`` () =
     match result with
     | Error [ SpecError.UnsupportedFieldType("bad", "stamp", _) ] -> ()
     | other -> failwith $"Expected UnsupportedFieldType spec error, got: %A{other}"
+
+// =============================================================================
+// OPTIONAL-VALUE flag parsing tests (AUTOMATION-195)
+// A flag that parses bare (`--wait` -> Wait None) OR with an inline value
+// (`--wait=5` -> Wait (Some 5)), coexisting with a nullary flag in the same DU.
+// =============================================================================
+
+[<Fact>]
+let ``optional-value flag binds inline value alongside nullary flag`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait=5"; "--detach" |]
+
+    match result with
+    | Ok(OptionalValueFlagCommand.Claim(ticket, flags)) ->
+        test <@ ticket = "T-1" @>
+
+        test
+            <@
+                flags
+                |> List.exists (function
+                    | ClaimFlag.Wait(Some 5) -> true
+                    | _ -> false)
+            @>
+
+        test <@ flags |> List.contains ClaimFlag.Detach @>
+    | other -> failwith $"Expected Ok(Claim) with Wait (Some 5) + Detach, got: %A{other}"
+
+[<Fact>]
+let ``optional-value flag binds bare to None alongside nullary flag`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait"; "--detach" |]
+
+    match result with
+    | Ok(OptionalValueFlagCommand.Claim(ticket, flags)) ->
+        test <@ ticket = "T-1" @>
+
+        test
+            <@
+                flags
+                |> List.exists (function
+                    | ClaimFlag.Wait None -> true
+                    | _ -> false)
+            @>
+
+        test <@ flags |> List.contains ClaimFlag.Detach @>
+    | other -> failwith $"Expected Ok(Claim) with Wait None + Detach, got: %A{other}"
+
+// --- Full enumerated behavior table for optional-value flags ---
+
+[<Fact>]
+let ``optional-value flag: --wait binds None`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None ])), result)
+
+[<Fact>]
+let ``optional-value flag: --wait=5 binds Some 5`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait=5" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5) ])), result)
+
+[<Fact>]
+let ``optional-value flag: --wait --detach is None + Detach (no swallow)`` () =
+    // The load-bearing no-swallow rule: bare --wait binds None WITHOUT consuming --detach.
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait"; "--detach" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None; ClaimFlag.Detach ])), result)
+
+[<Fact>]
+let ``optional-value flag: --wait=5 --detach is Some 5 + Detach`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait=5"; "--detach" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5); ClaimFlag.Detach ])), result)
+
+[<Fact>]
+let ``optional-value flag: --detach --wait is Detach + None`` () =
+    // Reversed order: --wait sits at the end of args and still binds None.
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--detach"; "--wait" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Detach; ClaimFlag.Wait None ])), result)
+
+[<Fact>]
+let ``optional-value flag: --wait= (empty) is InvalidArguments`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait=" |]
+
+    match result with
+    | Error(InvalidArguments("claim", msg)) -> test <@ msg.Contains("--wait") @>
+    | other -> failwith $"Expected InvalidArguments for empty inline value, got: %A{other}"
+
+[<Fact>]
+let ``optional-value flag: --wait=abc (bad int) is InvalidArguments`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait=abc" |]
+
+    match result with
+    | Error(InvalidArguments("claim", msg)) -> test <@ msg.Contains("abc") @>
+    | other -> failwith $"Expected InvalidArguments for non-parseable inline value, got: %A{other}"
+
+[<Fact>]
+let ``optional-value flag: leading positional then --wait=5 --detach`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T"; "--wait=5"; "--detach" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T", [ ClaimFlag.Wait(Some 5); ClaimFlag.Detach ])), result)
+
+[<Fact>]
+let ``optional-value flag: space form --wait 5 keeps 5 as a positional`` () =
+    // No-swallow rule again: `--wait 5` is `Wait None` + `5` as the (only) positional.
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "--wait"; "5" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("5", [ ClaimFlag.Wait None ])), result)
+
+[<Fact>]
+let ``positional token containing '=' is left unsplit`` () =
+    // A positional value with `=` (no leading dash) is never treated as an inline flag.
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "key=val" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("key=val", [])), result)
+
+[<Fact>]
+let ``separator makes an inline flag token a positional`` () =
+    // `--` ends flags; the following `--wait=5` binds as the positional value verbatim.
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "--"; "--wait=5" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("--wait=5", [])), result)
+
+[<Fact>]
+let ``required flag now accepts inline '=' value`` () =
+    // Required-value flags gain the inline form too (space form still works, below).
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--conf=cfg.json" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Conf "cfg.json" ])), result)
+
+[<Fact>]
+let ``required flag still accepts space-separated value`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--conf"; "cfg.json" |]
+    Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Conf "cfg.json" ])), result)
+
+[<Fact>]
+let ``nullary flag rejects an inline value`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "claim"; "T-1"; "--detach=1" |]
+
+    match result with
+    | Error(InvalidArguments("claim", msg)) -> test <@ msg.Contains("takes no value") @>
+    | other -> failwith $"Expected InvalidArguments (takes no value), got: %A{other}"
+
+[<Fact>]
+let ``optional-value flag formats inline for Some and bare for None`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+
+    let some =
+        OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5); ClaimFlag.Detach ])
+
+    let none = OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None ])
+    test <@ CommandTree.format tree some "cli" = Some "cli claim T-1 --wait=5 --detach" @>
+    test <@ CommandTree.format tree none "cli" = Some "cli claim T-1 --wait" @>
+
+[<Fact>]
+let ``formatCmd renders optional-value flag inline and bare`` () =
+    test
+        <@
+            CommandReflection.formatCmd (OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5) ])) = "claim T-1 --wait=5"
+        @>
+
+    test
+        <@
+            CommandReflection.formatCmd (OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None ])) = "claim T-1 --wait"
+        @>
+
+[<Fact>]
+let ``optional-value + required flags round-trip through format then parse`` () =
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+
+    let cmd =
+        OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5); ClaimFlag.Conf "c.json" ])
+
+    match CommandTree.format tree cmd "cli" with
+    | Some full ->
+        let args = full.Split(' ') |> Array.skip 1 // drop the "cli" prefix
+        Assert.Equal(Ok cmd, CommandTree.parse tree args)
+    | None -> failwith "Expected format to produce a string"
+
+[<Fact>]
+let ``optional-value flag renders help with inline placeholder`` () =
+    // Optional flags render the inner type in the inline-only bracket form `[=<int>]`;
+    // required flags render `<int>`/`<string>`. (Wait/Conf auto-derive short flags, so
+    // the placeholder trails the short part — assert on the type-placeholder fragment.)
+    let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "claim" ] "cli"
+    test <@ helpText.Contains("--wait") @>
+    test <@ helpText.Contains("[=<int>]") @>
+    test <@ helpText.Contains("<string>") @>
 
 // =============================================================================
 // POSIX `--` end-of-flags separator tests (AUTOMATION-187)
