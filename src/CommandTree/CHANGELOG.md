@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.8.0 - 2026-07-22
+
 - feat!: **optional-value flags** (AUTOMATION-195). A flag-DU case with a single
   `'T option` field is now an *optional-value* flag: it parses bare (`--wait` → `None`)
   or with an inline value (`--wait=5` → `Some 5`). This is the honest way to model

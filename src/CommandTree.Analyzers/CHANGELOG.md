@@ -6,6 +6,8 @@ this file. The CommandTree library itself has its own
 
 ## Unreleased
 
+## 0.1.0-alpha.4 - 2026-07-22
+
 ### Changed
 
 - Doc comment expanded for CommandTree 0.8.0's optional-value flags (AUTOMATION-195):
