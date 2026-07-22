@@ -7,6 +7,37 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **Positionals + flag DU lists in one case.** A command case may now combine
+  positional fields with a trailing flag DU list
+  (`Remove of name: string * flags: RemoveFlag list`). Previously this shape
+  fell through to positional parsing: the flag list was matched as bare
+  union-case words, `--flag` syntax never parsed, and the flagless invocation
+  (`remove <name>`) failed with "Invalid arguments". Flags may appear anywhere
+  relative to the positionals; help renders `<name> [options]` with an Options
+  section, and fish completions cover both.
+- **POSIX `--` end-of-flags separator.** On flag-DU leaves (and in global-flag
+  scanning) everything after a standalone `--` binds as positional values, so a
+  value that looks like a flag (`remove -- --force`) stays a value. `--help` /
+  `--version` after `--` are treated as values, not flags.
+- Missing required positionals on flag-DU leaves are now named in the error
+  (`Missing required argument '<name>'`) instead of the generic
+  "Invalid arguments".
+
+### Changed
+
+- The accidental bare-word flag syntax on mixed cases (`remove x force` parsing
+  `force` into the flag list) is gone: non-flag tokens beyond the positional
+  arity are now "Unexpected argument" errors. (`--flag` syntax, which never
+  worked for mixed cases, is the correct form.)
+- `formatCmd` now renders every flag DU list as `--flag` tokens. Previously a
+  flag DU with only boolean (no-value) cases was formatted as bare words,
+  disagreeing with tree-based `format` and with how the parser reads flags.
+- Global/command flag-collision checks now also see the flags of mixed
+  positional + flag-DU commands, so a collision there is reported as a
+  construction-time `SpecError` instead of silently shadowing.
+
 ## 0.7.0 - 2026-06-15
 
 ### Changed

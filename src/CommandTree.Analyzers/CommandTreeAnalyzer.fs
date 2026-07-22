@@ -14,7 +14,8 @@
 ///   - CT002 mirrors the list-field placement check in `CommandTree.Reflection.processCase`
 ///     ("List field … must be the last field and there can be only one").
 /// The recursion shape (single nested-union field => subcommand group; single record field
-/// => arg group; single `SomeDU list` field => flag DU) mirrors `processCase`'s branching.
+/// => arg group; trailing `SomeDU list` field => flag DU, optionally after positionals)
+/// mirrors `processCase`'s branching.
 module CommandTree.Analyzers.CommandTreeAnalyzer
 
 open FSharp.Analyzers.SDK
@@ -195,6 +196,9 @@ let private caseDisplayName (c: FSharpUnionCase) = c.Name
 /// Recursively analyze a command DU entity exactly as `processCase` walks it:
 ///   - a case with a single nested-union field => subcommand group: recurse into the union
 ///   - a case with a single `SomeDU list` field => flag DU: VALID, no field validation
+///     (a trailing flag DU list *after* positionals goes through the leaf arm below —
+///     both its positionals and the flag list itself pass CT001, and CT002's
+///     list-placement rule applies unchanged)
 ///   - a case with a single record field => arg group: validate the record's fields (CT001)
 ///   - any other case => leaf: validate its fields (CT001) + list placement (CT002)
 /// `visited` guards against infinite recursion on recursive DUs.

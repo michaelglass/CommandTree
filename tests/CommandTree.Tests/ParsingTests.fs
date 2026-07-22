@@ -85,6 +85,34 @@ type DUFlagCommand =
     | [<Cmd("Deploy")>] Deploy of DeployDUFlag list
     | [<Cmd("Help")>] Help
 
+// Types for positional + flag-DU list tests (AUTOMATION-187)
+
+type RemoveFlag =
+    | Force
+    | KeepBranch
+
+type PositionalWithFlagDUCommand = | [<Cmd("Remove a workspace")>] Remove of name: string * flags: RemoveFlag list
+
+type OptionalPositionalFlagDUCommand =
+    | [<Cmd("Optional-name command")>] Opt of name: string option * flags: RemoveFlag list
+
+type PublishFlag =
+    | Latest
+    | Tag of string
+
+type ValuePositionalFlagDUCommand = | [<Cmd("Publish a target")>] Publish of target: string * flags: PublishFlag list
+
+type MixedEnvFlag = | Notify
+
+type MixedEnvCommand = | [<Cmd("Ship a target")>] Ship of target: string * flags: MixedEnvFlag list
+
+type BadPositionalFlagDUCommand = | [<Cmd("Bad")>] Bad of stamp: System.DateTime * flags: RemoveFlag list
+
+type MultiPositionalFlagDUCommand =
+    | [<Cmd("Move a workspace")>] Move of src: string * dest: string * flags: RemoveFlag list
+
+type TypedPositionalFlagDUCommand = | [<Cmd("Scale a target")>] Scale of count: int * flags: RemoveFlag list
+
 // Types for global flag tests
 
 type GlobalFlag =
@@ -770,6 +798,299 @@ let ``parse returns InvalidArguments when DU flag value missing`` () =
     match result with
     | Error(InvalidArguments _) -> ()
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+
+// =============================================================================
+// Positional + flag-DU list parsing tests (AUTOMATION-187)
+// =============================================================================
+
+[<Fact>]
+let ``parse binds positional and empty flag list for flagless invocation`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "some-value" |]
+
+    match result with
+    | Ok(PositionalWithFlagDUCommand.Remove(name, flags)) ->
+        test <@ name = "some-value" @>
+        test <@ List.isEmpty flags @>
+    | other -> failwith $"Expected Ok(Remove) with positional bound and empty flags, got: %A{other}"
+
+[<Fact>]
+let ``parse accepts flag after positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "some-value"; "--force" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("some-value", [ Force ])), result)
+
+[<Fact>]
+let ``parse accepts flag before positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "--force"; "some-value" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("some-value", [ Force ])), result)
+
+[<Fact>]
+let ``parse accepts short flag with positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "some-value"; "-f" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("some-value", [ Force ])), result)
+
+[<Fact>]
+let ``parse binds multiple flags around positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+
+    let result =
+        CommandTree.parse tree [| "remove"; "--force"; "some-value"; "--keep-branch" |]
+
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("some-value", [ Force; KeepBranch ])), result)
+
+[<Fact>]
+let ``parse names the missing required positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "--force" |]
+    Assert.Equal(Error(InvalidArguments("remove", "Missing required argument '<name>'")), result)
+
+[<Fact>]
+let ``parse rejects extra positional on flag-DU leaf`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "a"; "b" |]
+    Assert.Equal(Error(InvalidArguments("remove", "Unexpected argument 'b'")), result)
+
+[<Fact>]
+let ``parse returns UnknownFlag for unknown dash token beside positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "some-value"; "--typo" |]
+    Assert.Equal(Error(UnknownFlag("--typo", "remove", [ "--force"; "--keep-branch" ])), result)
+
+[<Fact>]
+let ``parse returns DuplicateFlag on flag-DU leaf with positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "v"; "--force"; "--force" |]
+    Assert.Equal(Error(DuplicateFlag("--force", "remove")), result)
+
+[<Fact>]
+let ``parse treats bare dash as positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "-"; "--force" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("-", [ Force ])), result)
+
+[<Fact>]
+let ``parse binds optional positional to None when omitted`` () =
+    let tree = CommandReflection.fromUnion<OptionalPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "opt" |]
+    Assert.Equal(Ok(OptionalPositionalFlagDUCommand.Opt(None, [])), result)
+
+[<Fact>]
+let ``parse binds flags with optional positional omitted`` () =
+    let tree = CommandReflection.fromUnion<OptionalPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "opt"; "--force" |]
+    Assert.Equal(Ok(OptionalPositionalFlagDUCommand.Opt(None, [ Force ])), result)
+
+[<Fact>]
+let ``parse binds optional positional beside flags`` () =
+    let tree = CommandReflection.fromUnion<OptionalPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "opt"; "--force"; "v" |]
+    Assert.Equal(Ok(OptionalPositionalFlagDUCommand.Opt(Some "v", [ Force ])), result)
+
+[<Fact>]
+let ``value flag consumes next token instead of positional slot`` () =
+    let tree = CommandReflection.fromUnion<ValuePositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "publish"; "--tag"; "v2"; "api" |]
+    Assert.Equal(Ok(ValuePositionalFlagDUCommand.Publish("api", [ PublishFlag.Tag "v2" ])), result)
+
+[<Fact>]
+let ``value and bool flags mix with positional`` () =
+    let tree = CommandReflection.fromUnion<ValuePositionalFlagDUCommand> "Test"
+
+    let result =
+        CommandTree.parse tree [| "publish"; "api"; "--tag"; "v2"; "--latest" |]
+
+    Assert.Equal(Ok(ValuePositionalFlagDUCommand.Publish("api", [ PublishFlag.Tag "v2"; PublishFlag.Latest ])), result)
+
+[<Fact>]
+let ``env var flag merges on positional flag-DU leaf`` () =
+    System.Environment.SetEnvironmentVariable("MIXEDSHIP_NOTIFY", "true")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<MixedEnvCommand> "Test" "MIXEDSHIP"
+        let result = CommandTree.parse tree [| "ship"; "prod" |]
+        Assert.Equal(Ok(MixedEnvCommand.Ship("prod", [ Notify ])), result)
+    finally
+        System.Environment.SetEnvironmentVariable("MIXEDSHIP_NOTIFY", null)
+
+[<Fact>]
+let ``invalid env var value on positional flag-DU leaf returns error`` () =
+    System.Environment.SetEnvironmentVariable("MIXEDSHIP_NOTIFY", "notabool")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<MixedEnvCommand> "Test" "MIXEDSHIP"
+        let result = CommandTree.parse tree [| "ship"; "prod" |]
+
+        match result with
+        | Error(InvalidArguments("env", msg)) -> test <@ msg.Contains("MIXEDSHIP_NOTIFY") @>
+        | other -> failwith $"Expected env error, got: %A{other}"
+    finally
+        System.Environment.SetEnvironmentVariable("MIXEDSHIP_NOTIFY", null)
+
+[<Fact>]
+let ``unsupported positional type beside flag-DU list is a spec error`` () =
+    let result = CommandReflection.tryFromUnion<BadPositionalFlagDUCommand> "Test"
+
+    match result with
+    | Error [ SpecError.UnsupportedFieldType("bad", "stamp", _) ] -> ()
+    | other -> failwith $"Expected UnsupportedFieldType spec error, got: %A{other}"
+
+// =============================================================================
+// POSIX `--` end-of-flags separator tests (AUTOMATION-187)
+// =============================================================================
+
+[<Fact>]
+let ``separator binds dash token as positional`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "--"; "--force" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("--force", [])), result)
+
+[<Fact>]
+let ``flags before separator still parse`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "--force"; "--"; "some-value" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("some-value", [ Force ])), result)
+
+[<Fact>]
+let ``extra token after separator is an unexpected argument`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "a"; "--"; "b" |]
+    Assert.Equal(Error(InvalidArguments("remove", "Unexpected argument 'b'")), result)
+
+[<Fact>]
+let ``separator on zero-positional flag-DU leaf rejects extras`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "--"; "x" |]
+    Assert.Equal(Error(InvalidArguments("deploy", "Unexpected argument 'x'")), result)
+
+[<Fact>]
+let ``help flag after separator is a positional value`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "--"; "--help" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("--help", [])), result)
+
+[<Fact>]
+let ``trailing separator with empty tail keeps the positional`` () =
+    // `--` as the very last token: the after-separator slice is empty, and the
+    // flag already scanned before it is retained.
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "remove"; "some-value"; "--force"; "--" |]
+    Assert.Equal(Ok(PositionalWithFlagDUCommand.Remove("some-value", [ Force ])), result)
+
+[<Fact>]
+let ``lone separator on zero-positional leaf yields empty flags`` () =
+    // `--` is the only token on a flagless-invoked zero-positional leaf: both the
+    // before- and after-separator slices are empty.
+    let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
+    let result = CommandTree.parse tree [| "deploy"; "--" |]
+    Assert.Equal(Ok(DUFlagCommand.Deploy []), result)
+
+[<Fact>]
+let ``global flag scan stops at separator`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalWithCmdFlagCmd, GlobalFlag> "Test"
+
+    let result = spec.Parse [| "scan"; "--watch"; "--"; "--verbose" |]
+    Assert.Equal(Error(InvalidArguments("scan", "Unexpected argument '--verbose'")), result)
+
+[<Fact>]
+let ``global flag scan with trailing separator forwards empty tail`` () =
+    // `--` last in argv: the global scan's after-separator slice is empty, so the
+    // command still parses with its flag intact.
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalWithCmdFlagCmd, GlobalFlag> "Test"
+
+    let result = spec.Parse [| "scan"; "--watch"; "--" |]
+
+    match result with
+    | Ok(_, GlobalWithCmdFlagCmd.Scan flags) -> test <@ flags = [ ScanDUFlag.Watch ] @>
+    | other -> failwith $"Expected Ok(Scan [Watch]), got: %A{other}"
+
+// =============================================================================
+// Positional + flag-DU help / completion / format tests (AUTOMATION-187)
+// =============================================================================
+
+[<Fact>]
+let ``help shows positional and options for flag-DU leaf`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "remove" ] "test"
+    test <@ helpText.Contains("Usage: test remove <name> [options]") @>
+    test <@ helpText.Contains("--force") @>
+    test <@ helpText.Contains("--keep-branch") @>
+
+[<Fact>]
+let ``fishCompletions include flags for positional flag-DU leaf`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let completions = CommandTree.fishCompletions tree "test"
+    test <@ completions.Contains("-l force") @>
+    test <@ completions.Contains("-l keep-branch") @>
+
+[<Fact>]
+let ``formatCmd renders positional then flags including all-nullary flag DU`` () =
+    let cmd = PositionalWithFlagDUCommand.Remove("x", [ Force ])
+    test <@ CommandReflection.formatCmd cmd = "remove x --force" @>
+
+[<Fact>]
+let ``formatCmd omits None positional before flags`` () =
+    let cmd = OptionalPositionalFlagDUCommand.Opt(None, [ Force ])
+    test <@ CommandReflection.formatCmd cmd = "opt --force" @>
+
+[<Fact>]
+let ``format roundtrips positional flag-DU command through the tree`` () =
+    let tree = CommandReflection.fromUnion<PositionalWithFlagDUCommand> "Test"
+    let cmd = PositionalWithFlagDUCommand.Remove("x", [ Force; KeepBranch ])
+    let result = CommandTree.format tree cmd "test"
+    test <@ result = Some "test remove x --force --keep-branch" @>
+
+// =============================================================================
+// Multiple positionals + flag-DU list (AUTOMATION-187)
+// =============================================================================
+
+[<Fact>]
+let ``parse binds two positionals with flag between them`` () =
+    let tree = CommandReflection.fromUnion<MultiPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "move"; "a"; "--force"; "b" |]
+    Assert.Equal(Ok(MultiPositionalFlagDUCommand.Move("a", "b", [ Force ])), result)
+
+[<Fact>]
+let ``parse names the second missing positional`` () =
+    let tree = CommandReflection.fromUnion<MultiPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "move"; "a"; "--force" |]
+    Assert.Equal(Error(InvalidArguments("move", "Missing required argument '<dest>'")), result)
+
+[<Fact>]
+let ``parse rejects a third positional on a two-positional leaf`` () =
+    let tree = CommandReflection.fromUnion<MultiPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "move"; "a"; "b"; "c" |]
+    Assert.Equal(Error(InvalidArguments("move", "Unexpected argument 'c'")), result)
+
+[<Fact>]
+let ``format roundtrips two-positional flag-DU command`` () =
+    let tree = CommandReflection.fromUnion<MultiPositionalFlagDUCommand> "Test"
+    let cmd = MultiPositionalFlagDUCommand.Move("a", "b", [ Force ])
+    let result = CommandTree.format tree cmd "test"
+    test <@ result = Some "test move a b --force" @>
+
+// =============================================================================
+// Typed positional + flag-DU list (AUTOMATION-187)
+// =============================================================================
+
+[<Fact>]
+let ``parse binds a typed int positional beside flags`` () =
+    let tree = CommandReflection.fromUnion<TypedPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "scale"; "3"; "--force" |]
+    Assert.Equal(Ok(TypedPositionalFlagDUCommand.Scale(3, [ Force ])), result)
+
+[<Fact>]
+let ``parse rejects an invalid typed positional value on a flag-DU leaf`` () =
+    // An int positional that fails to parse yields the same generic error the
+    // non-flag leaf path produces (validateFields' catch-all), reached here with
+    // the flags already scanned off — not a missing-argument error.
+    let tree = CommandReflection.fromUnion<TypedPositionalFlagDUCommand> "Test"
+    let result = CommandTree.parse tree [| "scale"; "notanint"; "--force" |]
+    Assert.Equal(Error(InvalidArguments("scale", "Invalid arguments")), result)
 
 // =============================================================================
 // DU-based flag help display tests

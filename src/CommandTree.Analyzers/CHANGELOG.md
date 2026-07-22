@@ -6,6 +6,13 @@ this file. The CommandTree library itself has its own
 
 ## Unreleased
 
+### Changed
+
+- Doc comments synced to CommandTree's mixed `<positional…> × FlagDU list` parsing
+  (CommandTree 0.7.1 / AUTOMATION-187): the analyzer already routes a trailing flag-DU
+  list after positionals through its leaf arm, so CT001/CT002 apply unchanged — this is a
+  documentation-only clarification, no rule-behavior change.
+
 ## 0.1.0-alpha.2 - 2026-06-24
 
 ### Changed

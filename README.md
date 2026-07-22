@@ -129,6 +129,7 @@ type CheckFlag =
 | `Push of env: Priority` | `example-cli deploy push high` or `example-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
 | `Tag of label: string * files: string list` | `example-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
 | `Check of CheckFlag list` | `example-cli check --conf x.json --strict` | DU flag list becomes named flags |
+| `Remove of name: string * flags: RemoveFlag list` | `example-cli remove old-ws --force` | Positionals + trailing DU flag list; flags may appear anywhere |
 | `[<CmdDefault>] List` | `example-cli task` | Runs when a group is invoked without a subcommand |
 | `[<Cmd(Name = "fmt")>] Format` | `example-cli fmt` | `Name` overrides the derived command name |
 <!-- sync:howitworks:end -->
@@ -188,6 +189,12 @@ Define flags as their own DU and attach them as a `list` field (e.g.
 `Check of CheckFlag list`). No-field cases become boolean flags; single-field
 cases become value flags. Short flags are auto-derived from the first letter
 (collisions are dropped); override with `[<CmdFlag>]`.
+
+A case can mix positional fields with a trailing flag DU list (e.g.
+`Remove of name: string * flags: RemoveFlag list`). Flags may appear anywhere
+relative to the positionals, and everything after a standalone `--` binds as
+positional values — so a value that looks like a flag (`remove -- --force`)
+stays a value.
 
 <!-- sync:flags-check:start src=examples/ExampleCli/Program.fs#check-flag -->
 ```fsharp
