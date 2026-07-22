@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.7.1 - 2026-07-22
+
 ### Added
 
 - **Positionals + flag DU lists in one case.** A command case may now combine

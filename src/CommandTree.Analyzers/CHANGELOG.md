@@ -6,6 +6,8 @@ this file. The CommandTree library itself has its own
 
 ## Unreleased
 
+## 0.1.0-alpha.3 - 2026-07-22
+
 ### Changed
 
 - Doc comments synced to CommandTree's mixed `<positional…> × FlagDU list` parsing
