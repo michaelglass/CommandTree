@@ -81,11 +81,13 @@ type JobCommand =
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
 // sync:check-flag:start
-// example-cli check --conf custom.json --strict --no-cache
+// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
+    | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
 // sync:check-flag:end
 
 type ProcessDemoCommand =
@@ -243,6 +245,17 @@ let handleCheck (flags: CheckFlag list) =
 
     if flags |> List.contains NoCache then
         UI.dimInfo "Cache disabled"
+
+    // Optional-value flag: present-but-bare (`--wait`) vs inline (`--wait=30`) vs absent.
+    match
+        flags
+        |> List.tryPick (function
+            | Wait w -> Some w
+            | _ -> None)
+    with
+    | Some(Some seconds) -> UI.dimInfo $"Waiting %d{seconds}s before running"
+    | Some None -> UI.dimInfo "Waiting the default interval before running"
+    | None -> ()
 
 let handleReport (cmd: ReportCommand) =
     let defaultReport = "report.html"

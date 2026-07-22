@@ -198,7 +198,10 @@ let private caseDisplayName (c: FSharpUnionCase) = c.Name
 ///   - a case with a single `SomeDU list` field => flag DU: VALID, no field validation
 ///     (a trailing flag DU list *after* positionals goes through the leaf arm below —
 ///     both its positionals and the flag list itself pass CT001, and CT002's
-///     list-placement rule applies unchanged)
+///     list-placement rule applies unchanged). Within a flag DU, a nullary case is a
+///     boolean toggle, a single-`'T option`-field case is an optional-value flag
+///     (`--wait` → None, `--wait=5` → Some, inline-only), and any other single-field
+///     case is a required-value flag — all valid shapes needing no CT diagnostic.
 ///   - a case with a single record field => arg group: validate the record's fields (CT001)
 ///   - any other case => leaf: validate its fields (CT001) + list placement (CT002)
 /// `visited` guards against infinite recursion on recursive DUs.
