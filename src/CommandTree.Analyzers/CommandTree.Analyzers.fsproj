@@ -44,7 +44,7 @@
     <ItemGroup>
         <PackageReference Include="FSharp.Analyzers.SDK" Version="0.37.2" />
         <PackageReference Include="FSharp.Compiler.Service" Version="43.*" />
-        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.300" PrivateAssets="All" />
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="All" />
     </ItemGroup>
 
     <!-- Place the analyzer assembly under analyzers/dotnet/fs/ in the nupkg so analyzer
