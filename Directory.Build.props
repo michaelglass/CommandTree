@@ -4,4 +4,11 @@
     <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
     <EnableSourceLink>false</EnableSourceLink>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- RefStamp: MSBuild-only guard that requires ReleaseBuild for a clean pack version.
+         Inert during normal build/test; only gates `dotnet pack`. PrivateAssets="all" keeps
+         it from flowing to consumers. Satisfies fsprojlint's ref-stamped-local-packs check. -->
+    <PackageReference Include="RefStamp" Version="0.1.0-alpha.1" PrivateAssets="all" />
+  </ItemGroup>
 </Project>
