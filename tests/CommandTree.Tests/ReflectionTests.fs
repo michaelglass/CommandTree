@@ -246,12 +246,10 @@ let ``parseFieldValue returns None for unknown type`` () =
     let result = CommandReflection.parseFieldValue typeof<System.DateTime> "2024-01-01"
     test <@ result = Ok None @>
 
-// Item 2 verification: every Cmd* attribute is read off DU cases (via
-// UnionCaseInfo.GetCustomAttributes) and CmdArg additionally off record fields
-// (via PropertyInfo.GetCustomAttributes). These are the only real placements
-// CommandTree reflects over. This probe attaches every attribute kind to a DU
-// case (and CmdArg to a record field) and reads each back, proving the declared
-// AttributeTargets actually covers the placements in use.
+// DU cases (read via UnionCaseInfo.GetCustomAttributes) and record fields (CmdArg
+// only, via PropertyInfo.GetCustomAttributes) are the only placements CommandTree
+// reflects over. Attaching every attribute kind to both and reading each back proves
+// the declared AttributeTargets covers the placements actually in use.
 type AllAttrsRecord =
     { [<CmdArg("Record field arg")>]
       Path: string }

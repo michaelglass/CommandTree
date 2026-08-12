@@ -532,28 +532,23 @@ let tree = CommandReflection.fromUnion<Cmd> "desc"
         test <@ codesOf messages = [ "CT001" ] @>
 
 // =============================================================================
-// Negative control (MANDATORY): ExampleCli's real Command DU + GlobalFlag
-// produce ZERO diagnostics. Structure copied from examples/ExampleCli/Program.fs;
-// CommandTree attributes are dropped (they don't affect CT001/CT002 — only the
-// field types and case structure do), and the constructor is the same
-// fromUnionWithGlobalsAndEnv<Command, GlobalFlag> the example uses.
+// Negative control (MANDATORY): a realistic full command tree — ExampleCli's
+// Command DU + GlobalFlag — produces ZERO diagnostics. Structure copied from
+// examples/ExampleCli/Program.fs; CommandTree attributes are dropped (they don't
+// affect CT001/CT002 — only the field types and case structure do), and the
+// constructor is the same fromUnionWithGlobalsAndEnv<Command, GlobalFlag> the
+// example uses.
 //
-// IMPORTANT: the base ExampleCli `Command` DU as written on `vzkkvwtp` is NOT in
-// fact valid — `ReportCommand.Diff of MergeReportArgs * ReportFlag list` is a
-// multi-field case whose first field is a RECORD, which the runtime rejects (only a
-// SINGLE record field becomes an arg group; see Reflection.processCase). The example
-// crashes at construction time (`dotnet run -- report diff …` throws InvalidOperation
-// "Field 'Item1' of command 'diff' has unsupported type 'MergeReportArgs'"); the
-// `example-build` gate never catches it because it only builds, never runs the static
-// initializer. The analyzer correctly surfaces this as CT001 (asserted in the
-// "catches the real ExampleCli construction bug" test below). So the negative control
-// here exercises the VALID subset of the example DU (Report replaced with its valid
-// cases) — that subset, a realistic full command tree, must stay silent.
+// `ReportCommand.Diff of MergeReportArgs * ReportFlag list` is excluded: a
+// multi-field case whose first field is a RECORD is rejected by the runtime (only
+// a SINGLE record field becomes an arg group; see Reflection.processCase), and the
+// `example-build` gate cannot catch it because it never runs the static
+// initializer. That shape is asserted separately, below.
 // =============================================================================
 
-/// The shared, VALID portion of the ExampleCli command surface, sans the broken
-/// `ReportCommand.Diff` case. Used by both the negative control and (with the broken
-/// case re-added) the positive bug-detection test.
+/// The valid portion of the ExampleCli command surface, sans the invalid
+/// `ReportCommand.Diff` case. Used by both the negative control and (with that
+/// case re-added) the positive detection test.
 let private exampleValidDecls =
     """
 type Priority =
@@ -653,9 +648,9 @@ module ``Negative control — ExampleCli`` =
 
     [<Fact>]
     let ``catches the real ExampleCli construction bug (Report.Diff record + flag-list)`` () =
-        // The exact shape from examples/ExampleCli/Program.fs that throws at runtime: a
-        // multi-field case whose first field is a record. The analyzer must flag it (CT001),
-        // proving the negative control's exclusion above is a real bug, not analyzer noise.
+        // A multi-field case whose first field is a record throws at construction time. The
+        // analyzer must flag it (CT001), proving the negative control's exclusion above is a
+        // real shape error, not analyzer noise.
         let messages =
             analyze
                 """

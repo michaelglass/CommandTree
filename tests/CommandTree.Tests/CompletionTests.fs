@@ -161,7 +161,6 @@ let ``fishCompletions includes argument value completions from CmdCompletion`` (
     let tree = CommandReflection.fromUnion<CompletedCommand> "Test"
     let completions = CommandTree.fishCompletions tree "test"
 
-    // Should contain the subcommand completions
     test <@ completions.Contains("complete -c test") @>
     test <@ completions.Contains("edit") @>
     // Should contain argument value completions for "edit"
@@ -174,7 +173,6 @@ let ``fishCompletions includes file completion flag from CmdFileCompletion`` () 
     let tree = CommandReflection.fromUnion<CompletedCommand> "Test"
     let completions = CommandTree.fishCompletions tree "test"
 
-    // Should contain -F for file completion on file-cov
     test <@ completions.Contains("__fish_seen_subcommand_from file-cov") @>
     test <@ completions.Contains("-F") @>
 

@@ -146,7 +146,7 @@ let rec private typeDisplayName (t: FSharpType) : string =
     elif t.HasTypeDefinition then t.TypeDefinition.DisplayName
     else t.Format(FSharpDisplayContext.Empty)
 
-/// Best-effort field declaration range; falls back to a zero range if FCS has none.
+/// The field's declaration range, used to place the diagnostic.
 let private fieldRange (f: FSharpField) : range = f.DeclarationLocation
 
 /// Validate the field types of a "command" (a leaf case or an arg-group record) for CT001,
@@ -220,9 +220,7 @@ and private analyzeCase (visited: Set<string>) (case: FSharpUnionCase) : Finding
     let cmdName = caseDisplayName case
     let fields = case.Fields |> Array.ofSeq
 
-    // A leaf is validated for field types (CT001) and list placement (CT002). Computed up
-    // front (not as a closure) so the single, multi, and zero-field arms all share it without
-    // an extra branch.
+    // A leaf is validated for field types (CT001) and list placement (CT002).
     let leafFindings =
         validateFieldTypesFor cmdName fields @ validateListPlacement cmdName fields
 
@@ -233,16 +231,13 @@ and private analyzeCase (visited: Set<string>) (case: FSharpUnionCase) : Finding
         let ft = single.FieldType
 
         if isList ft && isUnion (innerArg ft) then
-            // `SomeDU list` single field => DU flag list. Valid, nothing to validate.
+            // A DU flag list is a valid shape in its own right — nothing to validate.
             []
         elif isUnion ft then
-            // Nested union => subcommand group. Recurse into the nested union.
             analyzeCommandUnion visited (strip ft).TypeDefinition
         elif isRecord ft then
-            // Record-typed arg group => validate the record's own fields.
             validateFieldTypesFor cmdName (strip ft).TypeDefinition.FSharpFields
         else
-            // Single supported/scalar/option/list field => leaf.
             leafFindings
     | _ -> leafFindings
 
@@ -253,9 +248,7 @@ and private analyzeCase (visited: Set<string>) (case: FSharpUnionCase) : Finding
 /// Detection surface: a hand-rolled walk of the typed tree's `FSharpExpr.Call` nodes, NOT the
 /// SDK's `TASTCollecting.walkTast`. The SDK 0.36.0 walk is compiled against FCS 43.10.101 and
 /// calls `FSharpType.BasicQualifiedName`, removed in this repo's FCS 43.12 — it throws
-/// `MissingMethodException` at load time. This walk is compiled against this repo's FCS, so it
-/// is the necessary approach until the SDK ships an FCS-43.12-aligned build (same reasoning as
-/// TestPrune.Analyzers' hand-rolled untyped walk).
+/// `MissingMethodException` at load time. Revisit once the SDK ships an FCS-43.12-aligned build.
 let private unionsFromCall (mfv: FSharpMemberOrFunctionOrValue) (memberTypeArgs: FSharpType list) : FSharpEntity list =
     // Build the called member's qualified name from its declaring entity + compiled name —
     // both total (unlike `mfv.FullName`, which throws for some compiler-generated symbols
@@ -267,8 +260,8 @@ let private unionsFromCall (mfv: FSharpMemberOrFunctionOrValue) (memberTypeArgs:
         | None -> false
 
     if isConstructorCall then
-        // Keep only the generic arguments that are command/globals DUs. `isUnion` is the same
-        // predicate the field walk uses, so a non-union arg (e.g. `int`, a tuple) is skipped.
+        // Keep only the generic arguments that are command/globals DUs; a non-union arg
+        // (e.g. `int`, a tuple) is skipped.
         memberTypeArgs
         |> List.filter isUnion
         |> List.map (fun ty -> (strip ty).TypeDefinition)

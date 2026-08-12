@@ -9,11 +9,9 @@ open CommandTree
 //
 // A representative DU exercising every VALID construction shape: scalar /
 // optional / Guid fields, a nested union group with a default, record args, a
-// DU flag list (with long + short names), and a list-last field. The golden
-// help text and parse-matrix expectations below were captured from the
-// pre-refactor `fromUnion*` path (commit vzkkvwtp) and must remain byte-equal
-// through the new `tryFromUnion*` / wrapper path: identical trees, identical
-// behavior.
+// DU flag list (with long + short names), and a list-last field. The golden help
+// text and parse-matrix expectations below are byte-equal pins: `fromUnion*` and
+// `tryFromUnion*` must build identical trees with identical behavior.
 // =============================================================================
 
 type EqPriority =
@@ -87,8 +85,7 @@ let ``Ok-path parse matrix matches pre-refactor behavior`` () =
     let spec =
         CommandReflection.fromUnionWithGlobalsAndEnv<EqCommand, EqGlobalFlag> "Reference CLI" "REF"
 
-    // Representative matrix across every command shape; values pinned from the
-    // pre-refactor path.
+    // Representative matrix across every command shape.
     test
         <@ spec.Parse [| "task"; "add"; "hello"; "high" |] = Ok([], EqCommand.Task(EqTaskCmd.Add("hello", Some High))) @>
 

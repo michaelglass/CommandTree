@@ -6,8 +6,6 @@ open System.IO
 /// Generic fish shell completion file generation and installation
 module FishCompletions =
     /// Generate complete .fish file content from a command tree.
-    /// Returns a string containing the full fish completion script including
-    /// header comments, file completion disabling, and all command/argument completions.
     let generateContent (tree: CommandTree<'Cmd>) (cmdName: string) : string =
         let completions = CommandTree.fishCompletions tree cmdName
 
