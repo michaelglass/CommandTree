@@ -28,11 +28,8 @@ let ``generateContent produces expected fish completion script`` () =
     let tree = CommandReflection.fromUnion<SimpleCmd> "Simple CLI"
     let content = FishCompletions.generateContent tree "my-app"
 
-    // Header
     test <@ content.Contains("# Fish completions for my-app") @>
     test <@ content.Contains("# Generated automatically from CommandTree") @>
-
-    // Disable file completions
     test <@ content.Contains("complete -c my-app -f") @>
 
     // Top-level commands
@@ -56,7 +53,6 @@ let ``generateContent full snapshot`` () =
     let tree = CommandReflection.fromUnion<SimpleCmd> "Simple CLI"
     let content = FishCompletions.generateContent tree "my-app"
 
-    // Split into lines for readable assertion
     let lines = content.Split('\n')
 
     // Verify structure: header, blank, disable, blank, completions
@@ -68,7 +64,7 @@ let ``generateContent full snapshot`` () =
     test <@ lines.[5] = "" @>
     test <@ lines.[6] = "# Commands, subcommands, and argument completions" @>
 
-    // Rest is the fishCompletions output — verify it's non-empty
+    // Rest is the fishCompletions output
     let completionLines =
         lines |> Array.skip 7 |> Array.filter (fun l -> l.Trim() <> "")
 
@@ -92,7 +88,6 @@ let ``generateContent handles flat commands with file completion`` () =
     test <@ content.Contains("-a \"alpha\"") @>
     test <@ content.Contains("-a \"beta\"") @>
     test <@ content.Contains("-a \"gamma\"") @>
-    // File completion flag for gamma
     test <@ content.Contains("-F") @>
 
 // =============================================================================
@@ -103,8 +98,8 @@ let ``generateContent handles flat commands with file completion`` () =
 let ``writeToFile creates fish completion file`` () =
     let tree = CommandReflection.fromUnion<SimpleCmd> "Simple CLI"
 
-    // writeToFile writes to ~/.config/fish/completions/
-    // We call it with a unique name and clean up after
+    // writeToFile targets the real ~/.config/fish/completions/, so use a unique
+    // name and delete it afterwards.
     let uniqueName = $"fish-test-{Guid.NewGuid():N}"
 
     try
@@ -121,10 +116,8 @@ let ``writeToFile creates fish completion file`` () =
         test <@ content.Contains($"# Fish completions for %s{uniqueName}") @>
         test <@ content.Contains($"complete -c %s{uniqueName} -f") @>
 
-        // Clean up
         File.Delete(completionsFile)
     with ex ->
-        // Clean up on failure too
         let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
         let completionsFile =

@@ -45,7 +45,7 @@ module UI =
         printfn $"%s{Color.green}✓ %s{msg}%s{Color.reset}"
 
     /// Alias for success
-    let pass msg = success msg // Alias for success
+    let pass msg = success msg
 
     /// Print a yellow skip message
     let skip msg =
@@ -150,7 +150,6 @@ module UI =
                 running <- false
                 spinnerThread.Join()
                 sw.Stop()
-                // Clear line and show final result
                 Console.Write($"\r%s{Color.green}✓%s{Color.reset} %s{message} %s{timing sw.Elapsed}   \n")
                 result
             with ex ->
@@ -196,7 +195,6 @@ module UI =
                 let result = action ()
                 running <- false
                 spinnerThread.Join()
-                // Clear spinner line — caller handles output
                 let blank = String.replicate (message.Length + 20) " "
                 Console.Write($"\r%s{blank}\r")
                 result

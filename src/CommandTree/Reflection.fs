@@ -25,8 +25,6 @@ module CommandReflection =
     /// Acronym runs split at the last capital before a capitalized word, so
     /// "HTMLParser" -> "html-parser" and "DBMigrate" -> "db-migrate".
     let toKebabCase (s: string) =
-        // First split acronym boundaries (UPPER run followed by a capitalized word),
-        // then split the usual lower->Upper boundaries.
         let withAcronymBoundaries = Regex.Replace(s, "([A-Z]+)([A-Z][a-z])", "$1-$2")
         Regex.Replace(withAcronymBoundaries, "([a-z])([A-Z])", "$1-$2").ToLowerInvariant()
 
@@ -709,7 +707,6 @@ module CommandReflection =
                         let fields = case.GetFields()
 
                         if fields.Length = 0 then
-                            // Bool flag
                             match envVal.ToLowerInvariant() with
                             | "true"
                             | "1" -> envResults.Add(FSharpValue.MakeUnion(case, [||]))
@@ -1117,7 +1114,6 @@ module CommandReflection =
 
         let children = cases |> Array.map (fun case -> processCase case id) |> Array.toList
 
-        // Check for default at root level
         let rootDefault = cases |> Array.tryFind isDefault
 
         let defaultCmd =

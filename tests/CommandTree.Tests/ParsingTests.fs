@@ -85,7 +85,7 @@ type DUFlagCommand =
     | [<Cmd("Deploy")>] Deploy of DeployDUFlag list
     | [<Cmd("Help")>] Help
 
-// Types for positional + flag-DU list tests (AUTOMATION-187)
+// Types for positional + flag-DU list tests
 
 type RemoveFlag =
     | Force
@@ -113,7 +113,7 @@ type MultiPositionalFlagDUCommand =
 
 type TypedPositionalFlagDUCommand = | [<Cmd("Scale a target")>] Scale of count: int * flags: RemoveFlag list
 
-// Types for OPTIONAL-VALUE flag tests (AUTOMATION-195)
+// Types for OPTIONAL-VALUE flag tests.
 // `Wait of int option` models a flag that parses bare (`--wait` -> Wait None) OR
 // with an inline value (`--wait=5` -> Wait (Some 5)), coexisting in one DU with a
 // nullary flag (`Detach`) and a required-value flag (`Conf of string`).
@@ -615,10 +615,8 @@ let ``closestGroupPath returns full path when all segments are groups`` () =
 
 [<Fact>]
 let ``parse returns error when nested group default requires missing args`` () =
-    // DefaultWrapsArgInnerDefault: Inner wraps InnerWithArgDefault
-    // InnerWithArgDefault's default is Execute of count: int
-    // Parsing "inner" with no further args triggers the group-level default
-    // which fails because count is missing
+    // "inner" with no further args triggers the group-level default, which fails
+    // because its required `count` is missing.
     let tree = CommandReflection.fromUnion<DefaultWrapsArgInnerDefault> "Test"
     let result = CommandTree.parse tree [| "inner" |]
 
@@ -812,7 +810,7 @@ let ``parse returns InvalidArguments when DU flag value missing`` () =
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
 
 // =============================================================================
-// Positional + flag-DU list parsing tests (AUTOMATION-187)
+// Positional + flag-DU list parsing tests
 // =============================================================================
 
 [<Fact>]
@@ -950,7 +948,7 @@ let ``unsupported positional type beside flag-DU list is a spec error`` () =
     | other -> failwith $"Expected UnsupportedFieldType spec error, got: %A{other}"
 
 // =============================================================================
-// OPTIONAL-VALUE flag parsing tests (AUTOMATION-195)
+// OPTIONAL-VALUE flag parsing tests
 // A flag that parses bare (`--wait` -> Wait None) OR with an inline value
 // (`--wait=5` -> Wait (Some 5)), coexisting with a nullary flag in the same DU.
 // =============================================================================
@@ -1011,7 +1009,6 @@ let ``optional-value flag: --wait=5 binds Some 5`` () =
 
 [<Fact>]
 let ``optional-value flag: --wait --detach is None + Detach (no swallow)`` () =
-    // The load-bearing no-swallow rule: bare --wait binds None WITHOUT consuming --detach.
     let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
     let result = CommandTree.parse tree [| "claim"; "T-1"; "--wait"; "--detach" |]
     Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None; ClaimFlag.Detach ])), result)
@@ -1024,7 +1021,6 @@ let ``optional-value flag: --wait=5 --detach is Some 5 + Detach`` () =
 
 [<Fact>]
 let ``optional-value flag: --detach --wait is Detach + None`` () =
-    // Reversed order: --wait sits at the end of args and still binds None.
     let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
     let result = CommandTree.parse tree [| "claim"; "T-1"; "--detach"; "--wait" |]
     Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Detach; ClaimFlag.Wait None ])), result)
@@ -1055,7 +1051,6 @@ let ``optional-value flag: leading positional then --wait=5 --detach`` () =
 
 [<Fact>]
 let ``optional-value flag: space form --wait 5 keeps 5 as a positional`` () =
-    // No-swallow rule again: `--wait 5` is `Wait None` + `5` as the (only) positional.
     let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
     let result = CommandTree.parse tree [| "claim"; "--wait"; "5" |]
     Assert.Equal(Ok(OptionalValueFlagCommand.Claim("5", [ ClaimFlag.Wait None ])), result)
@@ -1076,7 +1071,6 @@ let ``separator makes an inline flag token a positional`` () =
 
 [<Fact>]
 let ``required flag now accepts inline '=' value`` () =
-    // Required-value flags gain the inline form too (space form still works, below).
     let tree = CommandReflection.fromUnion<OptionalValueFlagCommand> "Test"
     let result = CommandTree.parse tree [| "claim"; "T-1"; "--conf=cfg.json" |]
     Assert.Equal(Ok(OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Conf "cfg.json" ])), result)
@@ -1144,7 +1138,7 @@ let ``optional-value flag renders help with inline placeholder`` () =
     test <@ helpText.Contains("<string>") @>
 
 // =============================================================================
-// POSIX `--` end-of-flags separator tests (AUTOMATION-187)
+// POSIX `--` end-of-flags separator tests
 // =============================================================================
 
 [<Fact>]
@@ -1215,7 +1209,7 @@ let ``global flag scan with trailing separator forwards empty tail`` () =
     | other -> failwith $"Expected Ok(Scan [Watch]), got: %A{other}"
 
 // =============================================================================
-// Positional + flag-DU help / completion / format tests (AUTOMATION-187)
+// Positional + flag-DU help / completion / format tests
 // =============================================================================
 
 [<Fact>]
@@ -1251,7 +1245,7 @@ let ``format roundtrips positional flag-DU command through the tree`` () =
     test <@ result = Some "test remove x --force --keep-branch" @>
 
 // =============================================================================
-// Multiple positionals + flag-DU list (AUTOMATION-187)
+// Multiple positionals + flag-DU list
 // =============================================================================
 
 [<Fact>]
@@ -1280,7 +1274,7 @@ let ``format roundtrips two-positional flag-DU command`` () =
     test <@ result = Some "test move a b --force" @>
 
 // =============================================================================
-// Typed positional + flag-DU list (AUTOMATION-187)
+// Typed positional + flag-DU list
 // =============================================================================
 
 [<Fact>]
@@ -1856,7 +1850,7 @@ let ``parse does not return VersionRequested for version subcommand at nested le
     | _ -> ()
 
 // =============================================================================
-// Bug fix: zero-arg commands must reject trailing arguments
+// Zero-arg commands must reject trailing arguments
 // =============================================================================
 
 [<Fact>]
@@ -1887,7 +1881,7 @@ let ``parse rejects trailing args on nested zero-arg command`` () =
     | other -> failwith $"Expected UnknownFlag, got: %O{other}"
 
 // =============================================================================
-// Bug fix: record-typed arguments should default missing fields
+// Record-typed arguments default their missing fields
 // =============================================================================
 
 [<Fact>]
@@ -1976,8 +1970,7 @@ let ``fromUnionWithGlobals rejects short flag name collision`` () =
 
 [<Fact>]
 let ``fromUnionWithGlobals accepts command flags with no short names`` () =
-    // NoShortFlag has Timeout and Trace both starting with 't', so no short names
-    // This exercises the None -> () branch in short name collision check
+    // Timeout and Trace both start with 't', so neither gets an auto short name.
     let spec = CommandReflection.fromUnionWithGlobals<NoShortCmd, NoShortGlobal> "Test"
     let result = spec.Parse [| "run"; "--timeout"; "30" |]
 
@@ -2045,7 +2038,7 @@ let ``parse returns error for list field with invalid element`` () =
     | other -> failwith $"Expected InvalidArguments, got: %O{other}"
 
 // =============================================================================
-// renderParseError tests (Capability 1: canonical error + nearest help)
+// renderParseError tests — canonical error line + nearest help
 // =============================================================================
 
 [<Fact>]
@@ -2053,7 +2046,6 @@ let ``renderParseError UnknownFlag shows error line and command help`` () =
     let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
     let err = UnknownFlag("--foo", "deploy", [ "--env"; "--dry-run" ])
     let rendered = CommandTree.renderParseError tree err "mycli"
-    // Error line names the flag and command
     test <@ rendered.Contains("Unknown flag '--foo' for 'deploy'.") @>
     // Followed by that command's own help (usage + its flags)
     test <@ rendered.Contains("mycli deploy") @>

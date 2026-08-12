@@ -179,7 +179,6 @@ module CommandTree =
     let parse (tree: CommandTree<'Cmd>) (args: string array) : Result<'Cmd, ParseError> =
         let rec parseRec (node: CommandTree<'Cmd>) (args: string array) (path: string list) =
             match node, args with
-            // Leaf node: check for --help unless leaf has explicit help flag
             | Leaf leaf, _ ->
                 let currentPath = path @ [ leaf.Name ]
 
@@ -188,7 +187,6 @@ module CommandTree =
                 else
                     leaf.Parse args
 
-            // Group with no args: use default if available, otherwise show help
             | Group group, [||] ->
                 let currentPath = if group.Name = "" then path else path @ [ group.Name ]
 
@@ -196,7 +194,8 @@ module CommandTree =
                 | Some def -> def.Parse [||]
                 | None -> Error(HelpRequested currentPath)
 
-            // Group with args: try routing into child first, then check --help
+            // Routing into a child wins over --help, so `cmd sub --help` shows the
+            // child's help rather than this group's.
             | Group group, _ ->
                 let currentPath = if group.Name = "" then path else path @ [ group.Name ]
                 let subCmd = args.[0]
@@ -558,7 +557,6 @@ module CommandTree =
             | Group group ->
                 let currentPath = if group.Name = "" then path else path @ [ group.Name ]
 
-                // Generate condition for this level
                 let condition =
                     if currentPath.IsEmpty then
                         "__fish_use_subcommand"
@@ -571,7 +569,6 @@ module CommandTree =
                         let childNames = group.Children |> List.map name |> String.concat " "
                         $"%s{seen}; and not __fish_seen_subcommand_from %s{childNames}"
 
-                // Generate completions for children at this level
                 let childCompletions =
                     group.Children
                     |> List.map (fun child ->
@@ -579,7 +576,6 @@ module CommandTree =
                         let childDesc = escape (desc child)
                         $"complete -c %s{cmdName} -n \"%s{condition}\" -a \"%s{childName}\" -d \"%s{childDesc}\"")
 
-                // Recurse into child groups and leaves
                 let nestedCompletions =
                     group.Children |> List.collect (fun child -> generate child currentPath)
 
