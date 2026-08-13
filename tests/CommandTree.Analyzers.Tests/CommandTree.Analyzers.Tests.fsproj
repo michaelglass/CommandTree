@@ -29,13 +29,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- FSharp.Analyzers.SDK.Testing 0.37.2 hard-pins FCS = 43.12.201, while the analyzer
-         project (and this repo's solution) floats FCS to 43.* (resolving to 43.12.204). At
-         RUNTIME the analyzer DLL's IL binds to the exact 43.12.x it compiled against, so the
-         test output must carry that same FCS, not the harness's pin. Reference FCS directly
-         at 43.12.204 so it wins the conflict (NU1107's prescribed resolution) AND matches the
-         analyzer's compiled FCS — the testing harness's checker is API-compatible across this
-         43.12.201→43.12.204 patch range for the surface it uses. -->
+    <!-- FSharp.Analyzers.SDK.Testing 0.37.2 hard-pins FCS = 43.12.201. At RUNTIME the analyzer
+         DLL's IL binds to the exact 43.12.x it compiled against, so the test output must carry
+         that same FCS, not the harness's pin. Reference FCS directly at 43.12.204 so it wins
+         the conflict (NU1107's prescribed resolution) AND matches the analyzer's compiled FCS
+         — the testing harness's checker is API-compatible across this 43.12.201→43.12.204 patch
+         range for the surface it uses.
+         This version must stay equal to the one in CommandTree.Analyzers.fsproj; bump both
+         together. It is pinned on both sides precisely because a float on the analyzer side
+         broke the pair once already. -->
     <PackageReference Include="FSharp.Compiler.Service" Version="43.12.204" />
     <PackageReference Include="FSharp.Analyzers.SDK.Testing" Version="0.37.2" />
     <PackageReference Include="Unquote" Version="7.0.1" />

@@ -43,7 +43,14 @@
          CommandTreeAnalyzer.fs), operating on FCS symbols rather than System.Type. -->
     <ItemGroup>
         <PackageReference Include="FSharp.Analyzers.SDK" Version="0.37.2" />
-        <PackageReference Include="FSharp.Compiler.Service" Version="43.*" />
+        <!-- Pinned, NOT floated. The analyzer DLL's IL binds to the exact 43.12.x it compiled
+             against, and CommandTree.Analyzers.Tests references that same version so the test
+             output carries it (see the comment there). A float here silently breaks that pair
+             the day a newer 43.x ships: `43.*` resolved to 43.12.400 while the tests still
+             shipped 43.12.204, and all 32 analyzer tests failed at runtime with
+             "Could not load file or assembly 'FSharp.Compiler.Service, Version=43.12.400.0'"
+             — on unchanged code, in CI and in any fresh restore. Bump both together. -->
+        <PackageReference Include="FSharp.Compiler.Service" Version="43.12.204" />
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="All" />
     </ItemGroup>
 
