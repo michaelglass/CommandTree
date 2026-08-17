@@ -388,16 +388,32 @@ module CommandReflection =
                 | Ok None -> Ok None
                 | Error e -> Error e
         elif isUnionType fieldType then
-            // Match kebab-case input against union case names with prefix matching
+            // Match kebab-case input against union case names: an EXACT name
+            // first, then abbreviation (prefix) matching.
+            //
+            // The exact pass is not an optimisation — it is the only way a case
+            // whose kebab name is shorter than three characters can ever be
+            // named. The `shorter >= 3` floor below compares the SHORTER of the
+            // two strings, so for a case like `Qa` it is 2 no matter what the
+            // caller types, and every candidate was filtered out: `qa` parsed as
+            // "no match" and the whole command died on "Invalid arguments"
+            // while `qa-failed` worked. Typing a case name in full must always
+            // select it; the floor exists to stop an over-eager ABBREVIATION
+            // (`a` matching everything), which is a different question.
             let cases = FSharpType.GetUnionCases(fieldType)
             let valueLower = value.ToLowerInvariant()
+            let nullary = cases |> Array.filter (fun c -> c.GetFields().Length = 0)
 
-            let matches =
-                cases
-                |> Array.filter (fun c ->
-                    if c.GetFields().Length <> 0 then
-                        false
-                    else
+            let exact =
+                nullary
+                |> Array.tryFind (fun c -> String.Equals(toKebabCase c.Name, valueLower, StringComparison.Ordinal))
+
+            match exact with
+            | Some single -> Ok(Some(FSharpValue.MakeUnion(single, [||])))
+            | None ->
+                let matches =
+                    nullary
+                    |> Array.filter (fun c ->
                         let caseName = toKebabCase c.Name
                         let shorter = min caseName.Length valueLower.Length
 
@@ -405,13 +421,13 @@ module CommandReflection =
                         && (caseName.StartsWith(valueLower, StringComparison.Ordinal)
                             || valueLower.StartsWith(caseName, StringComparison.Ordinal)))
 
-            match matches with
-            | [| single |] -> Ok(Some(FSharpValue.MakeUnion(single, [||])))
-            | [||] -> Ok None
-            | ambiguous ->
-                let names = ambiguous |> Array.map (fun c -> toKebabCase c.Name) |> Array.toList
+                match matches with
+                | [| single |] -> Ok(Some(FSharpValue.MakeUnion(single, [||])))
+                | [||] -> Ok None
+                | ambiguous ->
+                    let names = ambiguous |> Array.map (fun c -> toKebabCase c.Name) |> Array.toList
 
-                Error(AmbiguousValue(value, names))
+                    Error(AmbiguousValue(value, names))
         else
             Ok None
 
