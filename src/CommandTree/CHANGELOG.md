@@ -1,11 +1,17 @@
 # Changelog — CommandTree
 
+## Unreleased
+
+## 0.8.1 - 2026-08-17
+
+- docs: prune AI-narration comments across src and tests
+- chore(deps): update dev-tools + external dependencies
+
+
 All notable changes to the CommandTree library are documented in this file.
 
 (The `CommandTree.Analyzers` package has its own
 [`src/CommandTree.Analyzers/CHANGELOG.md`](../CommandTree.Analyzers/CHANGELOG.md).)
-
-## Unreleased
 
 ## 0.8.0 - 2026-07-22
 
