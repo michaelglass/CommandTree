@@ -1,5 +1,9 @@
 # Changelog — CommandTree.Analyzers
 
+All notable changes to the `CommandTree.Analyzers` package are documented in
+this file. The CommandTree library itself has its own
+[`src/CommandTree/CHANGELOG.md`](../CommandTree/CHANGELOG.md).
+
 ## Unreleased
 
 ## 0.1.0-alpha.5 - 2026-08-17
@@ -7,11 +11,6 @@
 - fix(analyzers): pin FCS instead of floating 43.*, which broke all 32 analyzer tests
 - docs: prune AI-narration comments across src and tests
 - chore(deps): update dev-tools + external dependencies
-
-
-All notable changes to the `CommandTree.Analyzers` package are documented in
-this file. The CommandTree library itself has its own
-[`src/CommandTree/CHANGELOG.md`](../CommandTree/CHANGELOG.md).
 
 ## 0.1.0-alpha.4 - 2026-07-22
 
