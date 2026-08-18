@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.8.1 - 2026-08-18
+
 - fix: a union-typed field accepts a case name typed in full, whatever its length.
   Abbreviation matching requires 3 characters and that floor compares the *shorter*
   of the two strings, so a case whose kebab name is shorter — e.g. `Qa` in a
