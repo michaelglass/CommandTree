@@ -388,30 +388,36 @@ module CommandReflection =
                 | Ok None -> Ok None
                 | Error e -> Error e
         elif isUnionType fieldType then
-            // Match kebab-case input against union case names with prefix matching
-            let cases = FSharpType.GetUnionCases(fieldType)
+            // A name typed in FULL selects its case; only when nothing matches
+            // exactly do we fall back to abbreviations. The `>= 3` floor below
+            // stops an over-eager abbreviation (`a` matching everything), but on
+            // its own it also made a case whose kebab name is shorter than the
+            // floor — `qa` — impossible to type at all, because the floor
+            // compares the SHORTER of the two strings.
+            let named =
+                FSharpType.GetUnionCases(fieldType)
+                |> Array.choose (fun c ->
+                    if c.GetFields().Length = 0 then
+                        Some(toKebabCase c.Name, c)
+                    else
+                        None)
+
             let valueLower = value.ToLowerInvariant()
 
-            let matches =
-                cases
-                |> Array.filter (fun c ->
-                    if c.GetFields().Length <> 0 then
-                        false
-                    else
-                        let caseName = toKebabCase c.Name
-                        let shorter = min caseName.Length valueLower.Length
+            let isAbbreviationOf (caseName: string) =
+                min caseName.Length valueLower.Length >= 3
+                && (caseName.StartsWith(valueLower, StringComparison.Ordinal)
+                    || valueLower.StartsWith(caseName, StringComparison.Ordinal))
 
-                        shorter >= 3
-                        && (caseName.StartsWith(valueLower, StringComparison.Ordinal)
-                            || valueLower.StartsWith(caseName, StringComparison.Ordinal)))
+            let candidates =
+                match named |> Array.filter (fun (caseName, _) -> caseName = valueLower) with
+                | [||] -> named |> Array.filter (fst >> isAbbreviationOf)
+                | exact -> exact
 
-            match matches with
-            | [| single |] -> Ok(Some(FSharpValue.MakeUnion(single, [||])))
+            match candidates with
+            | [| (_, single) |] -> Ok(Some(FSharpValue.MakeUnion(single, [||])))
             | [||] -> Ok None
-            | ambiguous ->
-                let names = ambiguous |> Array.map (fun c -> toKebabCase c.Name) |> Array.toList
-
-                Error(AmbiguousValue(value, names))
+            | ambiguous -> Error(AmbiguousValue(value, ambiguous |> Array.map fst |> Array.toList))
         else
             Ok None
 

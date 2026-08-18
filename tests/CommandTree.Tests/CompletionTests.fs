@@ -32,6 +32,16 @@ type NestedCmd =
     | Dev of DevSubCmd
     | [<Cmd("Show help")>] Help
 
+/// A case whose kebab name is SHORTER than the abbreviation floor, beside a
+/// longer case it is a prefix of. Modelled on a real workflow-state union whose
+/// `Qa` case could not be typed at all.
+type WorkflowState =
+    | Qa
+    | QaFailed
+    | Backlog
+
+type WorkflowCommand = | [<Cmd("Move a ticket")>] Move of state: WorkflowState option
+
 [<Fact>]
 let ``CmdCompletion attribute populates Values completion hint`` () =
     let leaf = CommandReflection.fromUnion<CompletedCommand> "Test" |> getLeaf <| "edit"
@@ -143,6 +153,48 @@ let ``parseFieldValue short prefix returns None`` () =
 let ``parseFieldValue single char returns None`` () =
     let result = CommandReflection.parseFieldValue typeof<EnvKind> "s"
     test <@ result = Ok None @>
+
+[<Fact>]
+let ``parseFieldValue matches a case name typed in full, below the abbreviation floor`` () =
+    // REGRESSION: the floor compares the SHORTER of the two strings, so for "qa"
+    // against case "qa" it is 2 — below the >= 3 floor. Every candidate was
+    // filtered out, the field parsed as "no match", and the whole command failed
+    // with "Invalid arguments" while "qa-failed" worked. A name typed in FULL
+    // must select its case, and must win over a longer case it prefixes.
+    let exact = CommandReflection.parseFieldValue typeof<WorkflowState> "qa"
+    let longer = CommandReflection.parseFieldValue typeof<WorkflowState> "qa-failed"
+
+    test <@ exact = Ok(Some(box WorkflowState.Qa)) @>
+    test <@ longer = Ok(Some(box WorkflowState.QaFailed)) @>
+
+[<Fact>]
+let ``parseFieldValue still refuses a too-short abbreviation of a longer case`` () =
+    // The floor keeps its real job. Unlike "st" against EnvKind above, this asks
+    // it beside a case that DOES match exactly at two characters: "ba" is nobody's
+    // full name, so exactness cannot rescue it and it stays a non-match.
+    let result = CommandReflection.parseFieldValue typeof<WorkflowState> "ba"
+    test <@ result = Ok None @>
+
+[<Fact>]
+let ``every completion value a union field advertises parses back to its case`` () =
+    // The completion list and the parser must agree: fish offered "qa" while the
+    // parser rejected it, so tab-completion led straight into "Invalid arguments".
+    // Anything advertised as a completion has to round-trip.
+    let leaf = CommandReflection.fromUnion<WorkflowCommand> "Test" |> getLeaf <| "move"
+
+    let advertised =
+        match leaf.Args.[0].Completions with
+        | Values values -> values
+        | other -> failwith $"Expected Values completions, got %A{other}"
+
+    test <@ advertised = [ "qa"; "qa-failed"; "backlog" ] @>
+
+    for value in advertised do
+        let roundTripped =
+            CommandReflection.parseFieldValue typeof<WorkflowState> value
+            |> Result.map (Option.map CommandReflection.formatFieldValue)
+
+        test <@ roundTripped = Ok(Some value) @>
 
 [<Fact>]
 let ``parseFieldValue ambiguous prefix returns Error`` () =
