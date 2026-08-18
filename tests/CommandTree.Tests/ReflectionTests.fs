@@ -21,6 +21,14 @@ type DevSubCommand =
     | Build
     | Test
 
+/// A nullary case whose kebab name is SHORTER than the abbreviation floor, beside a
+/// longer case it is a prefix of. Modelled on the real `WorkflowState` union whose
+/// `Qa` case could not be typed at all.
+type ShortCaseSubCommand =
+    | Qa
+    | QaFailed
+    | Backlog
+
 type NestedCommand =
     | Dev of DevSubCommand
     | [<Cmd("Show help")>] Help
@@ -442,6 +450,38 @@ let ``parseFieldValue matches union case by reverse prefix`` () =
     // DevSubCommand has Check, Build, Test — only Check matches
     let result = CommandReflection.parseFieldValue typeof<DevSubCommand> "checking"
     test <@ result = Ok(Some(box DevSubCommand.Check)) @>
+
+[<Fact>]
+let ``a two-character case name typed in full selects its case`` () =
+    // REGRESSION. The abbreviation floor compares the SHORTER of the two strings, so
+    // for value "qa" against case "qa" it is 2 — below the >= 3 floor — and every
+    // candidate was filtered out. `parseFieldValue` returned "no match" and the whole
+    // command died on `Invalid arguments`, which reads as a typo rather than a bug.
+    //
+    // The consumer this actually broke: `build plane move <issue> qa`, the step that
+    // lands every completed ticket. `qa` was the only failing token of eight.
+    let result = CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "qa"
+    test <@ result = Ok(Some(box ShortCaseSubCommand.Qa)) @>
+
+[<Fact>]
+let ``an exact case name beats a longer case it is a prefix of`` () =
+    // "qa" is a strict prefix of "qa-failed". Exactness decides, not ordering — and
+    // the longer name must still select itself.
+    let exact = CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "qa"
+
+    let longer =
+        CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "qa-failed"
+
+    test <@ exact = Ok(Some(box ShortCaseSubCommand.Qa)) @>
+    test <@ longer = Ok(Some(box ShortCaseSubCommand.QaFailed)) @>
+
+[<Fact>]
+let ``a short string that is nobody's full name is still not an abbreviation`` () =
+    // The floor's real job survives: "ba" is no case's complete name, so it stays a
+    // non-match rather than quietly selecting Backlog. Without this, "exact wins"
+    // could have been implemented by dropping the floor altogether.
+    let result = CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "ba"
+    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parse and format roundtrip for int64 command`` () =
