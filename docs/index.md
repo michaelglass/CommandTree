@@ -117,7 +117,7 @@ type CheckFlag =
 | `Add of title: string` | `example-cli task add "Buy groceries"` | Fields become positional args |
 | `Start of name: string * size: int64` | `example-cli job start build 1024` | Multiple fields, in order |
 | `Status of env: string option` | `example-cli deploy status prod` or `example-cli deploy status` | Option fields can be omitted |
-| `Push of env: Priority` | `example-cli deploy push high` or `example-cli deploy push hig` | Union fields match by kebab-case prefix (min 3 chars) |
+| `Add of title: string * priority: Priority option` | `example-cli task add "Buy milk" high` or `example-cli task add "Buy milk" hig` | Union-typed field: a name typed in full always matches; abbreviations need 3+ chars |
 | `Tag of label: string * files: string list` | `example-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
 | `Check of CheckFlag list` | `example-cli check --conf x.json --strict` | DU flag list becomes named flags |
 | `Wait of int option` (flag case) | `example-cli check --wait` or `--wait=5` | Optional-value flag: bare binds `None`, inline `=` binds `Some`; never swallows the next token |
