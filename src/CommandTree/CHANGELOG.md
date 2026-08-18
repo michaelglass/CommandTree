@@ -1,17 +1,22 @@
 # Changelog — CommandTree
 
-## Unreleased
-
-## 0.8.1 - 2026-08-17
-
-- docs: prune AI-narration comments across src and tests
-- chore(deps): update dev-tools + external dependencies
-
-
 All notable changes to the CommandTree library are documented in this file.
 
 (The `CommandTree.Analyzers` package has its own
 [`src/CommandTree.Analyzers/CHANGELOG.md`](../CommandTree.Analyzers/CHANGELOG.md).)
+
+## Unreleased
+
+- fix: a union-typed field accepts a case name typed in full, whatever its length.
+  Abbreviation matching requires 3 characters and that floor compares the *shorter*
+  of the two strings, so a case whose kebab name is shorter — e.g. `Qa` in a
+  workflow-state union — could not be typed at all: `qa` matched nothing and the
+  command failed with "Invalid arguments", while `qa-failed` worked. An exact name
+  now selects its case outright, and beats a longer case it prefixes (`qa` → `Qa`,
+  not ambiguous with `qa-failed`). Over-eager abbreviations are unchanged: `ba`
+  still refuses to stand for `backlog`.
+- docs: prune AI-narration comments across src and tests
+- chore(deps): update dev-tools + external dependencies
 
 ## 0.8.0 - 2026-07-22
 

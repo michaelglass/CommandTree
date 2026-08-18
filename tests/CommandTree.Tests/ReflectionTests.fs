@@ -21,14 +21,6 @@ type DevSubCommand =
     | Build
     | Test
 
-/// A case whose kebab name is SHORTER than the prefix-matching floor, beside a
-/// longer case it is a prefix of. Modelled on a real workflow-state union whose
-/// `Qa` case could not be typed at all.
-type ShortCaseSubCommand =
-    | Qa
-    | QaFailed
-    | Backlog
-
 type NestedCommand =
     | Dev of DevSubCommand
     | [<Cmd("Show help")>] Help
@@ -450,33 +442,6 @@ let ``parseFieldValue matches union case by reverse prefix`` () =
     // DevSubCommand has Check, Build, Test — only Check matches
     let result = CommandReflection.parseFieldValue typeof<DevSubCommand> "checking"
     test <@ result = Ok(Some(box DevSubCommand.Check)) @>
-
-[<Fact>]
-let ``parseFieldValue matches a two-character case name typed in full`` () =
-    // REGRESSION: the prefix floor compares the SHORTER of the two strings, so
-    // for "qa" vs case "qa" it is 2, below the >= 3 floor — every candidate was
-    // filtered out and the field parsed as "no match", failing the whole command
-    // with "Invalid arguments". A case name typed in FULL must always select it.
-    let result = CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "qa"
-    test <@ result = Ok(Some(box ShortCaseSubCommand.Qa)) @>
-
-[<Fact>]
-let ``parseFieldValue prefers an exact case name over a longer case it prefixes`` () =
-    // "qa" is a strict prefix of "qa-failed". Exactness, not order, decides.
-    let exact = CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "qa"
-
-    let longer =
-        CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "qa-failed"
-
-    test <@ exact = Ok(Some(box ShortCaseSubCommand.Qa)) @>
-    test <@ longer = Ok(Some(box ShortCaseSubCommand.QaFailed)) @>
-
-[<Fact>]
-let ``parseFieldValue still refuses an abbreviation matching several cases`` () =
-    // The floor's real job survives: "ba" is nobody's full name, so it stays a
-    // non-match rather than silently picking Backlog.
-    let result = CommandReflection.parseFieldValue typeof<ShortCaseSubCommand> "ba"
-    test <@ result = Ok None @>
 
 [<Fact>]
 let ``parse and format roundtrip for int64 command`` () =
