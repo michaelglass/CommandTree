@@ -263,7 +263,8 @@ type AllAttrsRecord =
       Path: string }
 
 type AllAttrsFlag =
-    | [<CmdFlag(Name = "lvl", Short = "l", Description = "Log level"); CmdEnv("LVL")>] Level of string
+    | [<CmdFlag(Name = "lvl", Short = "l", Description = "Log level", Repeatable = true); CmdEnv("LVL")>] Level of
+        string
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
 
 type AllAttrsCommand =
@@ -307,6 +308,15 @@ let ``all Cmd attributes are readable off their real placements`` () =
     test <@ (levelCase.GetCustomAttributes(typeof<CmdFlagAttribute>)).Length = 1 @>
     test <@ (levelCase.GetCustomAttributes(typeof<CmdEnvAttribute>)).Length = 1 @>
     test <@ (noCacheCase.GetCustomAttributes(typeof<CmdEnvRawAttribute>)).Length = 1 @>
+
+    let flagAttr =
+        levelCase.GetCustomAttributes(typeof<CmdFlagAttribute>).[0] :?> CmdFlagAttribute
+
+    test <@ flagAttr.Repeatable @>
+
+    let flagInfo = CommandReflection.getFlagInfoFromDU typeof<AllAttrsFlag> None
+    test <@ (flagInfo |> List.find (fun fi -> fi.LongName = "lvl")).IsRepeatable @>
+    test <@ not (flagInfo |> List.find (fun fi -> fi.LongName = "no-cache")).IsRepeatable @>
 
     // CmdArg on a record field (read as a PropertyInfo)
     let recordField = typeof<AllAttrsRecord>.GetProperty("Path")
@@ -632,6 +642,7 @@ let ``getFlagInfoFromDU generates flag info from union cases`` () =
     test <@ dryRun.Arity = FlagArity.Nullary @>
     test <@ dryRun.TypeName = "bool" @>
     test <@ dryRun.EnvVar = None @>
+    test <@ not dryRun.IsRepeatable @>
 
     let env = flagInfo |> List.find (fun f -> f.LongName = "env")
     test <@ env.Arity = FlagArity.Required @>

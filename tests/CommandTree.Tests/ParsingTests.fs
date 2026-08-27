@@ -85,6 +85,21 @@ type DUFlagCommand =
     | [<Cmd("Deploy")>] Deploy of DeployDUFlag list
     | [<Cmd("Help")>] Help
 
+type RepeatableFlag =
+    | [<CmdFlag(Repeatable = true, Short = "d")>] Deletes of path: string
+    | [<CmdFlag(Repeatable = true)>] Trace
+    | [<CmdFlag(Repeatable = true)>] Wait of seconds: int option
+    | [<CmdFlag(Description = "A value accepted only once")>] Once of value: string
+
+type RepeatableFlagCommand = | [<Cmd("Verify a merge")>] VerifyMerge of RepeatableFlag list
+
+type RepeatableMixedCommand =
+    | [<Cmd("Publish a target")>] PublishRepeated of target: string * flags: RepeatableFlag list
+
+type RepeatableGlobalFlag =
+    | [<CmdFlag(Repeatable = true, Short = "i")>] Include of path: string
+    | Quiet
+
 // Types for positional + flag-DU list tests
 
 type RemoveFlag =
@@ -804,6 +819,97 @@ let ``parse returns DuplicateFlag for repeated DU flag`` () =
     | other -> failwith $"Expected DuplicateFlag, got: %O{other}"
 
 [<Fact>]
+let ``repeatable value flag accepts long short and inline occurrences in argument order`` () =
+    let tree = CommandReflection.fromUnion<RepeatableFlagCommand> "Test"
+
+    let result =
+        CommandTree.parse
+            tree
+            [| "verify-merge"
+               "--deletes=first.fs"
+               "-d"
+               "second.fs"
+               "--deletes"
+               "third.fs" |]
+
+    Assert.Equal(
+        Ok(
+            RepeatableFlagCommand.VerifyMerge
+                [ RepeatableFlag.Deletes "first.fs"
+                  RepeatableFlag.Deletes "second.fs"
+                  RepeatableFlag.Deletes "third.fs" ]
+        ),
+        result
+    )
+
+[<Fact>]
+let ``repeatable nullary and optional-value flags preserve every occurrence`` () =
+    let tree = CommandReflection.fromUnion<RepeatableFlagCommand> "Test"
+
+    let result =
+        CommandTree.parse tree [| "verify-merge"; "--trace"; "--wait"; "--trace"; "--wait=5"; "--wait=8" |]
+
+    Assert.Equal(
+        Ok(
+            RepeatableFlagCommand.VerifyMerge
+                [ RepeatableFlag.Trace
+                  RepeatableFlag.Wait None
+                  RepeatableFlag.Trace
+                  RepeatableFlag.Wait(Some 5)
+                  RepeatableFlag.Wait(Some 8) ]
+        ),
+        result
+    )
+
+[<Fact>]
+let ``repeatable flags remain ordered when interleaved with positionals and sibling flags`` () =
+    let tree = CommandReflection.fromUnion<RepeatableMixedCommand> "Test"
+
+    let result =
+        CommandTree.parse
+            tree
+            [| "publish-repeated"
+               "--deletes"
+               "first.fs"
+               "release"
+               "--once=only"
+               "--deletes=second.fs" |]
+
+    Assert.Equal(
+        Ok(
+            RepeatableMixedCommand.PublishRepeated(
+                "release",
+                [ RepeatableFlag.Deletes "first.fs"
+                  RepeatableFlag.Once "only"
+                  RepeatableFlag.Deletes "second.fs" ]
+            )
+        ),
+        result
+    )
+
+[<Fact>]
+let ``CmdFlag with Repeatable omitted still rejects a second occurrence`` () =
+    let tree = CommandReflection.fromUnion<RepeatableFlagCommand> "Test"
+
+    let result =
+        CommandTree.parse tree [| "verify-merge"; "--once=first"; "--once=second" |]
+
+    Assert.Equal(Error(DuplicateFlag("--once", "verify-merge")), result)
+
+[<Fact>]
+let ``repeatable flag format and parse roundtrip preserves repeated cases`` () =
+    let tree = CommandReflection.fromUnion<RepeatableFlagCommand> "Test"
+
+    let command =
+        RepeatableFlagCommand.VerifyMerge [ RepeatableFlag.Deletes "first.fs"; RepeatableFlag.Deletes "second.fs" ]
+
+    let formatted = CommandTree.format tree command "test"
+    Assert.Equal(Some "test verify-merge --deletes first.fs --deletes second.fs", formatted)
+
+    let argv = formatted.Value.Split(' ') |> Array.skip 1
+    Assert.Equal(Ok command, CommandTree.parse tree argv)
+
+[<Fact>]
 let ``parse returns InvalidArguments when DU flag value missing`` () =
     let tree = CommandReflection.fromUnion<DUFlagCommand> "Test"
     let result = CommandTree.parse tree [| "deploy"; "--env" |]
@@ -1406,6 +1512,48 @@ let ``global flag duplicate rejected`` () =
     match result with
     | Error(DuplicateFlag(flag, _)) -> test <@ flag = "--verbose" @>
     | other -> failwith $"Expected DuplicateFlag, got: %O{other}"
+
+[<Fact>]
+let ``repeatable global flag accepts long short and inline occurrences in argument order`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<GlobalCmd, RepeatableGlobalFlag> "Test"
+
+    let result =
+        spec.Parse [| "--include=first.fs"; "scan"; "-i"; "second.fs"; "--include"; "third.fs" |]
+
+    Assert.Equal(
+        Ok(
+            [ RepeatableGlobalFlag.Include "first.fs"
+              RepeatableGlobalFlag.Include "second.fs"
+              RepeatableGlobalFlag.Include "third.fs" ],
+            GlobalCmd.Scan
+        ),
+        result
+    )
+
+[<Fact>]
+let ``repeatable env fallback contributes once only when the case is absent from CLI`` () =
+    System.Environment.SetEnvironmentVariable("REPEAT_DELETES", "from-env.fs")
+
+    try
+        let tree = CommandReflection.fromUnionWithEnv<RepeatableFlagCommand> "Test" "REPEAT"
+
+        let fromEnv = CommandTree.parse tree [| "verify-merge" |]
+
+        Assert.Equal(Ok(RepeatableFlagCommand.VerifyMerge [ RepeatableFlag.Deletes "from-env.fs" ]), fromEnv)
+
+        let fromCli =
+            CommandTree.parse tree [| "verify-merge"; "--deletes=first.fs"; "--deletes=second.fs" |]
+
+        Assert.Equal(
+            Ok(
+                RepeatableFlagCommand.VerifyMerge
+                    [ RepeatableFlag.Deletes "first.fs"; RepeatableFlag.Deletes "second.fs" ]
+            ),
+            fromCli
+        )
+    finally
+        System.Environment.SetEnvironmentVariable("REPEAT_DELETES", null)
 
 [<Fact>]
 let ``global flag unknown rejected`` () =

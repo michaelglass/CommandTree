@@ -82,10 +82,11 @@ type JobCommand =
     | [<Cmd("List recent jobs"); CmdDefault>] List
 
 // sync:check-flag:start
-// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --conf custom.json --strict --no-cache --wait=30 --include src --include tests
 // example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<CmdFlag(Repeatable = true, Description = "Path to include")>] Include of path: string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
     | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
@@ -246,6 +247,12 @@ let handleCheck (flags: CheckFlag list) =
 
     if flags |> List.contains NoCache then
         UI.dimInfo "Cache disabled"
+
+    flags
+    |> List.choose (function
+        | Include path -> Some path
+        | _ -> None)
+    |> List.iter (fun path -> UI.dimInfo $"Including path: %s{path}")
 
     // Optional-value flag: present-but-bare (`--wait`) vs inline (`--wait=30`) vs absent.
     match

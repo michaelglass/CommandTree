@@ -101,10 +101,11 @@ A flag DU becomes named `--flags`:
 
 <!-- sync:check-flag:start src=examples/ExampleCli/Program.fs -->
 ```fsharp
-// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --conf custom.json --strict --no-cache --wait=30 --include src --include tests
 // example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<CmdFlag(Repeatable = true, Description = "Path to include")>] Include of path: string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
     | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option

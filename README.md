@@ -112,10 +112,11 @@ A flag DU becomes named `--flags`:
 
 <!-- sync:check-flag:start src=examples/ExampleCli/Program.fs -->
 ```fsharp
-// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --conf custom.json --strict --no-cache --wait=30 --include src --include tests
 // example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<CmdFlag(Repeatable = true, Description = "Path to include")>] Include of path: string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
     | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
@@ -183,7 +184,7 @@ Decorate union cases to customize parsing, help, and completions:
 | `[<CmdExample("ex1", "ex2")>]` | Adds an `Examples:` help section. The command path is prepended automatically. |
 | `[<CmdCompletion("a", "b")>]` | Provides fish completion values; `FieldIndex` selects which argument. |
 | `[<CmdFileCompletion>]` | Enables file-path completion in fish (repeatable per case with `FieldIndex`). |
-| `[<CmdFlag(Name, Short, Description)>]` | Overrides the derived name/short/description of a DU flag case. |
+| `[<CmdFlag(Name, Short, Description, Repeatable)>]` | Overrides the derived name/short/description of a DU flag case. `Repeatable = true` allows multiple occurrences. |
 | `[<CmdEnv("SUFFIX")>]` | Overrides the env-var suffix for a flag (the prefix still applies). |
 | `[<CmdEnvRaw("VAR_NAME")>]` | Sets the exact env-var name, ignoring the prefix. |
 
@@ -194,6 +195,14 @@ Define flags as their own DU and attach them as a `list` field (e.g.
 `'T option` field is an *optional-value* flag; any other single field is a
 *required-value* flag. Short flags are auto-derived from the first letter
 (collisions are dropped); override with `[<CmdFlag>]`.
+
+Flags accept one occurrence by default; a second long, short, or inline spelling
+of the same case returns `DuplicateFlag`. Opt a case into multiple occurrences
+with `[<CmdFlag(Repeatable = true)>]`. Each occurrence appends one DU value in
+argument order, for every arity: `--include a --include=b` produces
+`[ Include "a"; Include "b" ]`, while repeated nullary cases can model a count.
+An environment variable contributes at most one value and only when that flag
+case had no CLI occurrence.
 
 Required-value flags take their value space-separated (`--conf custom.json`) or
 inline (`--conf=custom.json`). Optional-value flags are **inline-only**: bare
@@ -210,10 +219,11 @@ stays a value.
 
 <!-- sync:flags-check:start src=examples/ExampleCli/Program.fs#check-flag -->
 ```fsharp
-// example-cli check --conf custom.json --strict --no-cache --wait=30
+// example-cli check --conf custom.json --strict --no-cache --wait=30 --include src --include tests
 // example-cli check --wait          ← bare optional-value flag binds `Wait None` (never swallows a value)
 type CheckFlag =
     | [<CmdFlag(Name = "conf", Short = "k")>] Config of string
+    | [<CmdFlag(Repeatable = true, Description = "Path to include")>] Include of path: string
     | [<Cmd("Enable strict checking")>] Strict
     | [<CmdEnvRaw("NO_CACHE")>] NoCache
     | [<Cmd("Wait N seconds; bare for the default")>] Wait of int option
