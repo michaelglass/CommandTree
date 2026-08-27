@@ -60,6 +60,8 @@ type FlagInfo =
         TypeName: string
         /// Value arity: nullary toggle, required value, or optional inline-only value
         Arity: FlagArity
+        /// Whether the flag may occur more than once
+        IsRepeatable: bool
         /// Human-readable description for help text
         Description: string
         /// Environment variable binding, if configured
@@ -244,6 +246,12 @@ module CommandTree =
         elif arg.IsOptional then $"[%s{arg.Name}]"
         else $"<%s{arg.Name}>"
 
+    let private flagDescription (fi: FlagInfo) =
+        if fi.IsRepeatable then
+            $"%s{fi.Description} (repeatable)"
+        else
+            fi.Description
+
     /// Render a single flag info line for help output
     let private renderFlagLine (fi: FlagInfo) =
         let longPart = $"--%s{fi.LongName}"
@@ -265,7 +273,7 @@ module CommandTree =
             | None -> ""
 
         let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
-        $"%s{label.PadRight(30)} %s{fi.Description}%s{envPart}"
+        $"%s{label.PadRight(30)} %s{flagDescription fi}%s{envPart}"
 
     /// Format arguments for a command
     let private formatArgs' (argList: ArgInfo list) =
@@ -551,7 +559,7 @@ module CommandTree =
                             | Some s -> $" -s %s{s}"
                             | None -> ""
 
-                        [ $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape fi.Description}\"" ])
+                        [ $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape (flagDescription fi)}\"" ])
 
                 argCompletions @ flagCompletions
             | Group group ->

@@ -301,13 +301,14 @@ module CommandReflection =
                     | _ -> toDescription case.Name
 
                 let envVar = deriveEnvVar case envPrefix
+                let isRepeatable = flagAttr |> Option.exists _.Repeatable
 
-                (longName, explicitShort, arity, typeName, description, envVar))
+                (longName, explicitShort, arity, typeName, description, envVar, isRepeatable))
 
         // Short flag collision detection
         let shortCounts =
             flagData
-            |> Array.choose (fun (longName, explicitShort, _, _, _, _) ->
+            |> Array.choose (fun (longName, explicitShort, _, _, _, _, _) ->
                 match explicitShort with
                 | Some _ -> None
                 | None -> Some(string longName.[0]))
@@ -315,7 +316,7 @@ module CommandReflection =
             |> Map.ofArray
 
         flagData
-        |> Array.map (fun (longName, explicitShort, arity, typeName, description, envVar) ->
+        |> Array.map (fun (longName, explicitShort, arity, typeName, description, envVar, isRepeatable) ->
             let shortName =
                 match explicitShort with
                 | Some s -> Some s
@@ -330,6 +331,7 @@ module CommandReflection =
               ShortName = shortName
               TypeName = typeName
               Arity = arity
+              IsRepeatable = isRepeatable
               Description = description
               EnvVar = envVar })
         |> Array.toList
@@ -551,7 +553,8 @@ module CommandReflection =
     type internal FlagLookup =
         { LongMap: Map<string, int>
           ShortMap: Map<string, int>
-          ValidFlags: string list }
+          ValidFlags: string list
+          RepeatableTags: Set<int> }
 
     /// Build flag lookup tables from FlagInfo (called once at tree construction)
     let internal buildFlagLookup (flagInfo: FlagInfo list) : FlagLookup =
@@ -561,7 +564,12 @@ module CommandReflection =
             |> List.mapi (fun i fi -> i, fi)
             |> List.choose (fun (i, fi) -> fi.ShortName |> Option.map (fun s -> $"-%s{s}", i))
             |> Map.ofList
-          ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}") }
+          ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}")
+          RepeatableTags =
+            flagInfo
+            |> List.indexed
+            |> List.choose (fun (i, fi) -> if fi.IsRepeatable then Some i else None)
+            |> Set.ofList }
 
     /// Split argv at the first standalone POSIX `--` end-of-flags separator:
     /// (tokens before it, Some tokens after it) — or (args, None) when absent.
@@ -608,7 +616,7 @@ module CommandReflection =
                 | Some e -> error <- Some e
                 | None -> i <- i + 1
             | Some idx ->
-                if not (seenTags.Add(idx)) then
+                if not (seenTags.Add(idx)) && not (lookup.RepeatableTags.Contains(idx)) then
                     error <- Some(DuplicateFlag(flagToken, cmdName))
                 else
                     let case = cases.[idx]

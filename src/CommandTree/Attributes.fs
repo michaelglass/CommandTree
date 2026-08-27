@@ -115,11 +115,13 @@ type CmdArgAttribute() =
 /// Name overrides the long flag name (derived from case name via toKebabCase by default).
 /// Short overrides the auto-derived short flag (first letter of flag name by default).
 /// Description overrides the auto-derived description (derived from case name by default).
+/// Repeatable allows the same flag case to occur more than once (default: false).
 ///
 /// Example:
 /// ```fsharp
 /// type CheckFlag =
 ///     | [<CmdFlag(Name = "conf", Short = "k", Description = "Path to config file")>] Config of string
+///     | [<CmdFlag(Repeatable = true, Description = "Path to include")>] Include of string
 ///     | Verbose
 /// ```
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
@@ -131,6 +133,8 @@ type CmdFlagAttribute() =
     member val Short: string = null with get, set
     /// Description override (defaults to case name in sentence case)
     member val Description: string = null with get, set
+    /// Whether this flag may occur more than once
+    member val Repeatable = false with get, set
 
 /// Attribute to provide example invocations for a command case.
 /// Applied to union cases; accepts multiple examples in one attribute or stack for many.

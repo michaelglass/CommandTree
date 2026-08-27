@@ -7,11 +7,17 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat!: a DU flag case can opt into multiple occurrences with
+  `[<CmdFlag(Repeatable = true)>]`. Each long, short, or inline occurrence
+  appends one value in argument order; ordinary flags still reject duplicates.
+  `FlagInfo.IsRepeatable` exposes the cardinality to help and completion
+  renderers, which label repeatable flags explicitly.
+
 - feat!: ordinary trailing positional list fields now accept zero values and bind
   the empty list. For example, `Tag of label: string * files: string list` accepts
   both `tag v1 a.fs` and `tag v1`. Help renders the zero-or-more argument as
-  `[<files...>]`, and its `ArgInfo.IsOptional` metadata is `true`; DU flag lists
-  remain named options and are unchanged.
+  `[<files...>]`, and its `ArgInfo.IsOptional` metadata is `true`. This positional-list
+  change does not affect DU flag lists, which remain named options.
 
 ## 0.8.1 - 2026-08-18
 

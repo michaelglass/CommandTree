@@ -35,7 +35,7 @@ type RecordArgCommand =
 
 type DocFlag =
     | [<CmdFlag(Description = "Skip the actual operation")>] DryRun
-    | [<CmdFlag(Name = "out", Description = "Output file path")>] Output of string
+    | [<CmdFlag(Name = "out", Description = "Output file path", Repeatable = true)>] Output of string
 
 type FlagDescCommand = | [<Cmd("Generate docs")>] Generate of DocFlag list
 
@@ -111,6 +111,12 @@ let ``CmdFlag Description overrides derived description`` () =
     let outFlag = leaf.Flags |> List.find (fun fi -> fi.LongName = "out")
     test <@ dryRunFlag.Description = "Skip the actual operation" @>
     test <@ outFlag.Description = "Output file path" @>
+
+[<Fact>]
+let ``help identifies a repeatable flag`` () =
+    let tree = CommandReflection.fromUnion<FlagDescCommand> "Test"
+    let helpText = CommandTree.helpForPath tree [ "generate" ] "test"
+    test <@ helpText.Contains("Output file path (repeatable)") @>
 
 [<Fact>]
 let ``help includes Arguments section when args have descriptions`` () =

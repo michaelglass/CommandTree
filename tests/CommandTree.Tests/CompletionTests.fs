@@ -277,7 +277,7 @@ let ``fishCompletions includes file completion for list field`` () =
 
 type CompDeployFlag =
     | DryRun
-    | [<CmdFlag(Short = "e")>] Env of string
+    | [<CmdFlag(Short = "e", Repeatable = true)>] Env of string
 
 type DUFlagCompCommand =
     | [<Cmd("Deploy")>] Deploy of CompDeployFlag list
@@ -291,3 +291,9 @@ let ``fishCompletions generates flag completions with long and short names`` () 
     test <@ completions.Contains("-s e") @>
     test <@ completions.Contains("-l dry-run") @>
     test <@ completions.Contains("-s d") @>
+
+[<Fact>]
+let ``fishCompletions identifies a repeatable flag`` () =
+    let tree = CommandReflection.fromUnion<DUFlagCompCommand> "Test"
+    let completions = CommandTree.fishCompletions tree "test"
+    test <@ completions.Contains("-l env -s e -d \"Env (repeatable)\"") @>
