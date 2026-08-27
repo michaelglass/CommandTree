@@ -641,13 +641,10 @@ let ``parse handles list field with single element`` () =
     Assert.Equal(Ok(ListArgCommand.Tag("v1", [ "file.fs" ])), result)
 
 [<Fact>]
-let ``parse rejects list field with no elements`` () =
+let ``parse accepts trailing list field with no elements`` () =
     let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
     let result = CommandTree.parse tree [| "tag"; "v1" |]
-
-    match result with
-    | Error(InvalidArguments _) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    Assert.Equal(Ok(ListArgCommand.Tag("v1", [])), result)
 
 [<Fact>]
 let ``parse handles list field with int elements`` () =
@@ -690,19 +687,25 @@ let ``parse handles list-only command`` () =
     Assert.Equal(Ok(ListOnlyCommand.Run [ "a.fs"; "b.fs" ]), result)
 
 [<Fact>]
-let ``parse rejects list-only command with no args`` () =
+let ``parse accepts list-only command with no args`` () =
     let tree = CommandReflection.fromUnion<ListOnlyCommand> "Test"
     let result = CommandTree.parse tree [| "run" |]
-
-    match result with
-    | Error(InvalidArguments _) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    Assert.Equal(Ok(ListOnlyCommand.Run []), result)
 
 [<Fact>]
-let ``help shows list field with ellipsis`` () =
+let ``help shows list field as optional with ellipsis`` () =
     let tree = CommandReflection.fromUnion<ListArgCommand> "Test"
     let helpText = CommandTree.help tree [] "test"
-    test <@ helpText.Contains("<files...>") @>
+    test <@ helpText.Contains("[<files...>]") @>
+
+[<Fact>]
+let ``empty list command roundtrips through format and parse`` () =
+    let tree = CommandReflection.fromUnion<ListOnlyCommand> "Test"
+    let formatted = CommandTree.format tree (ListOnlyCommand.Run []) "test"
+    Assert.Equal(Some "test run", formatted)
+
+    let argv = formatted.Value.Split(' ') |> Array.skip 1
+    Assert.Equal(Ok(ListOnlyCommand.Run []), CommandTree.parse tree argv)
 
 // =============================================================================
 // UnknownFlag and DuplicateFlag error tests

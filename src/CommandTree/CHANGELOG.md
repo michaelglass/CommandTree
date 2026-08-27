@@ -7,6 +7,12 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat!: ordinary trailing positional list fields now accept zero values and bind
+  the empty list. For example, `Tag of label: string * files: string list` accepts
+  both `tag v1 a.fs` and `tag v1`. Help renders the zero-or-more argument as
+  `[<files...>]`, and its `ArgInfo.IsOptional` metadata is `true`; DU flag lists
+  remain named options and are unchanged.
+
 ## 0.8.1 - 2026-08-18
 
 - fix: a union-typed field accepts a case name typed in full, whatever its length.

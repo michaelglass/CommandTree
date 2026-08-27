@@ -63,7 +63,8 @@ type CoverageCommand =
     | [<Cmd("Show coverage summary"); CmdDefault>] Summary
 
 // sync:files-command:start
-// example-cli tag v1.0 src/App.fs src/Lib.fs   ← list field collects 1+ remaining args
+// example-cli tag v1.0 src/App.fs src/Lib.fs   ← list field collects remaining args
+// example-cli tag v1.0                         ← an omitted list binds []
 // example-cli diff old.dll new.dll             ← multiple CmdFileCompletion with FieldIndex
 type FilesCommand =
     | [<Cmd("Tag files with a label"); CmdFileCompletion>] Tag of label: string * files: string list

@@ -46,8 +46,8 @@ type EqGlobalFlag =
     | [<CmdFlag(Description = "Verbose output")>] Verbose
     | [<CmdFlag(Name = "log-level", Description = "Log level")>] LogLevel of string
 
-/// Golden full help text captured from the pre-refactor path. Byte-equal across
-/// `fromUnion*` (wrapper) and `tryFromUnion*` (direct) on this valid DU.
+/// Golden full help text for the public contract. Byte-equal across `fromUnion*`
+/// (wrapper) and `tryFromUnion*` (direct) on this valid DU.
 let private goldenHelpFull =
     "Usage: refcli <command>\n"
     + "\n"
@@ -58,12 +58,12 @@ let private goldenHelpFull =
     + "  complete <id>        Complete a task\n"
     + "deploy [options]     Deploy somewhere\n"
     + "merge <baseline> [output] Merge with record args\n"
-    + "tag <label> <files...> Tag files\n"
+    + "tag <label> [<files...>] Tag files\n"
     + "test                 Run the suite\n"
     + "ident <id>           A guid arg"
 
 [<Fact>]
-let ``tryFromUnionWithGlobalsAndEnv Ok-path help text matches pre-refactor golden`` () =
+let ``tryFromUnionWithGlobalsAndEnv Ok-path help text matches canonical golden`` () =
     match CommandReflection.tryFromUnionWithGlobalsAndEnv<EqCommand, EqGlobalFlag> "Reference CLI" "REF" with
     | Ok spec -> test <@ CommandTree.helpFull spec.Tree "refcli" = goldenHelpFull @>
     | Error errs -> failwith $"Expected Ok, got Error: %A{errs}"

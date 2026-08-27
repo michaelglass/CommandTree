@@ -97,7 +97,8 @@ A trailing `list` field collects remaining args; file completions per field:
 
 <!-- sync:files-command:start src=examples/ExampleCli/Program.fs -->
 ```fsharp
-// example-cli tag v1.0 src/App.fs src/Lib.fs   ← list field collects 1+ remaining args
+// example-cli tag v1.0 src/App.fs src/Lib.fs   ← list field collects remaining args
+// example-cli tag v1.0                         ← an omitted list binds []
 // example-cli diff old.dll new.dll             ← multiple CmdFileCompletion with FieldIndex
 type FilesCommand =
     | [<Cmd("Tag files with a label"); CmdFileCompletion>] Tag of label: string * files: string list
@@ -129,7 +130,7 @@ type CheckFlag =
 | `Start of name: string * size: int64` | `example-cli job start build 1024` | Multiple fields, in order |
 | `Status of env: string option` | `example-cli deploy status prod` or `example-cli deploy status` | Option fields can be omitted |
 | `Add of title: string * priority: Priority option` | `example-cli task add "Buy milk" high` or `example-cli task add "Buy milk" hig` | Union-typed field: a name typed in full always matches; abbreviations need 3+ chars |
-| `Tag of label: string * files: string list` | `example-cli files tag v1 a.fs b.fs` | List field (must be last) collects 1+ remaining args |
+| `Tag of label: string * files: string list` | `example-cli files tag v1 a.fs b.fs` or `example-cli files tag v1` | List field (must be last) collects zero or more remaining args |
 | `Check of CheckFlag list` | `example-cli check --conf x.json --strict` | DU flag list becomes named flags |
 | `Wait of int option` (flag case) | `example-cli check --wait` or `--wait=5` | Optional-value flag: bare binds `None`, inline `=` binds `Some`; never swallows the next token |
 | `Remove of name: string * flags: RemoveFlag list` | `example-cli remove old-ws --force` | Positionals + trailing DU flag list; flags may appear anywhere |
@@ -237,7 +238,7 @@ each flag case also reads `PREFIX_SCREAMING_SNAKE_CASE`. Resolution order is
 | `Guid` | `of id: Guid` | Guid |
 | `'T option` | `of env: string option` | `None` when omitted |
 | Union | `of priority: Priority option` | Exact kebab-case name, or prefix matching (min 3 chars). A union as a case's *only* field is a subcommand group instead |
-| `'T list` | `of files: string list` | Collects remaining args (1+, must be last field) |
+| `'T list` | `of files: string list` | Collects remaining args (zero or more, must be last field) |
 | `'Flag list` | `of CheckFlag list` | DU flag list becomes named `--flags` |
 
 A field whose type isn't supported is a *spec error* — a malformed command

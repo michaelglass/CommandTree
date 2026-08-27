@@ -208,7 +208,7 @@ module CommandReflection =
 
             { Name = toKebabCase f.Name
               TypeName = getTypeName f.PropertyType
-              IsOptional = isOptionalType f.PropertyType
+              IsOptional = isOptionalType f.PropertyType || isListType f.PropertyType
               IsList = isListType f.PropertyType
               Completions = getCompletionHint case i f
               Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
@@ -483,7 +483,7 @@ module CommandReflection =
                 let remaining = if i < args.Length then args.[i..] else [||]
 
                 if remaining.Length = 0 then
-                    Ok None
+                    Ok(Some(buildTypedList elemType []))
                 else
                     let parsed = remaining |> Array.map (fun arg -> parseFieldValue elemType arg)
 
