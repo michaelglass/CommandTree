@@ -531,12 +531,12 @@ let ``formatFieldValue handles empty list`` () =
     test <@ result = "" @>
 
 [<Fact>]
-let ``fromUnion list field has correct type name`` () =
+let ``fromUnion marks zero-or-more list field optional`` () =
     let leaf = CommandReflection.fromUnion<ListFormatCommand> "Test" |> getLeaf <| "tag"
     let filesArg = leaf.Args |> List.find (fun a -> a.Name = "files")
     test <@ filesArg.TypeName = "string list" @>
     test <@ filesArg.IsList = true @>
-    test <@ filesArg.IsOptional = false @>
+    test <@ filesArg.IsOptional = true @>
 
 [<Fact>]
 let ``formatCmd formats command with list field`` () =

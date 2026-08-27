@@ -16,7 +16,7 @@ type ArgInfo =
         Name: string
         /// Display type name for help text (e.g. "string", "int", "string list")
         TypeName: string
-        /// Whether the argument is optional (wrapped in option)
+        /// Whether the argument may be omitted (an option or ordinary list field)
         IsOptional: bool
         /// Whether the argument accepts multiple values (list field)
         IsList: bool
@@ -240,7 +240,7 @@ module CommandTree =
 
     /// Format argument info for display
     let private formatArg (arg: ArgInfo) =
-        if arg.IsList then $"<%s{arg.Name}...>"
+        if arg.IsList then $"[<%s{arg.Name}...>]"
         elif arg.IsOptional then $"[%s{arg.Name}]"
         else $"<%s{arg.Name}>"
 
