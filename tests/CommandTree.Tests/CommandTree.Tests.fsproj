@@ -20,6 +20,7 @@
     <Compile Include="UITests.fs" />
     <Compile Include="ProcessTests.fs" />
     <Compile Include="FishTests.fs" />
+    <Compile Include="RepositoryPolicyTests.fs" />
   </ItemGroup>
 
   <!-- xUnit runner configuration -->

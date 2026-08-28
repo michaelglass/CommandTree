@@ -101,8 +101,8 @@ run = "dotnet tool run fsprojlint"
 depends = ["tool-restore"]
 
 [tasks.check]
-description = "Run all checks with auto-fix (format, sync-docs, then verify)"
-depends = ["format", "sync-docs", "lint", "lint-project", "coverage-ratchet", "docs", "example-build"]
+description = "Run all checks (auto-fix format/docs, verify cross-platform coverage floors)"
+depends = ["format", "sync-docs", "lint", "lint-project", "coverage-check", "docs", "example-build"]
 
 [tasks.ci]
 description = "Run all CI checks (no auto-fix)"
