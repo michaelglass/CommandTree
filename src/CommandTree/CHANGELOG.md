@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.9.0 - 2026-08-28
+
 - feat!: a DU flag case can opt into multiple occurrences with
   `[<CmdFlag(Repeatable = true)>]`. Each long, short, or inline occurrence
   appends one value in argument order; ordinary flags still reject duplicates.
