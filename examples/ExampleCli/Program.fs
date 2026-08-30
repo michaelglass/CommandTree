@@ -600,6 +600,12 @@ let main argv =
     | Error(InvalidArguments(cmd, msg)) ->
         UI.fail $"Invalid arguments for %s{cmd}: %s{msg}"
         1
+    | Error(BadPositionalValue(token, argument, acceptedValues)) ->
+        let error =
+            CommandTree.renderParseError spec.Tree (BadPositionalValue(token, argument, acceptedValues)) cmdName
+
+        UI.fail error
+        1
     | Error(AmbiguousArgument(input, candidates)) ->
         let joined = String.concat ", " candidates
         UI.fail $"Ambiguous: '{input}' matches: {joined}"

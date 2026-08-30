@@ -7,6 +7,10 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat!: invalid typed positional values now return `BadPositionalValue`, carrying
+  the offending token, argument name, and finite accepted rendered values when
+  available. `UnknownFlag` continues to carry the valid flag slice.
+
 ## 0.9.0 - 2026-08-28
 
 - feat!: a DU flag case can opt into multiple occurrences with

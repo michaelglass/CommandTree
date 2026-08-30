@@ -82,6 +82,8 @@ type ParseError =
     | UnknownCommand of input: string * rest: string array * groupPath: string list
     /// Arguments couldn't be parsed for a known command.
     | InvalidArguments of command: string * message: string
+    /// A positional token could not be parsed. Carries the argument name and any finite accepted values.
+    | BadPositionalValue of token: string * argument: string * acceptedValues: string list
     /// Argument value matched multiple union cases.
     | AmbiguousArgument of input: string * candidates: string list
     /// Flag not recognized for this command. Includes valid flags for suggestions.
@@ -451,6 +453,7 @@ module CommandTree =
     /// <c>UnknownFlag</c> → "Unknown flag …" + that command's help.
     /// <c>UnknownCommand</c> → "Unknown command …" + the nearest group's help (its child listing).
     /// <c>InvalidArguments</c> → the message + that command's help.
+    /// <c>BadPositionalValue</c> → a compact one-line token/argument diagnostic.
     /// <c>AmbiguousArgument</c> → "Ambiguous …" + nearest group's help.
     /// <c>DuplicateFlag</c> → a duplicate message + that command's help.
     /// <c>HelpRequested</c> → just the help for that path (not an error; no error line).
@@ -469,6 +472,12 @@ module CommandTree =
         | UnknownCommand(input, _, groupPath) ->
             withHelp $"Unknown command '%s{input}'." (closestGroupPath tree groupPath)
         | InvalidArguments(command, message) -> withHelp message [ command ]
+        | BadPositionalValue(token, argument, accepted) ->
+            match accepted with
+            | [] -> $"'%s{token}' is not a valid <%s{argument}>."
+            | values ->
+                let joined = String.concat ", " values
+                $"'%s{token}' is not a valid <%s{argument}> — expected one of: %s{joined}."
         | AmbiguousArgument(input, candidates) ->
             // input is an argument *value* (an ambiguous union-case prefix), never a group
             // name, so there is no nearer group to scope help to — show root help.
@@ -486,6 +495,7 @@ module CommandTree =
         | VersionRequested -> false
         | UnknownCommand _
         | InvalidArguments _
+        | BadPositionalValue _
         | AmbiguousArgument _
         | UnknownFlag _
         | DuplicateFlag _ -> true

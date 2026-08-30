@@ -460,6 +460,56 @@ module CommandReflection =
         | AmbiguousValue(input, candidates) -> AmbiguousArgument(input, candidates)
         | InvalidValue msg -> InvalidArguments(cmdName, msg)
 
+    let private acceptedPositionalValues (fieldType: Type) =
+        let valueType =
+            if isOptionalType fieldType || isListType fieldType then
+                fieldType.GetGenericArguments().[0]
+            else
+                fieldType
+
+        if valueType = typeof<bool> then
+            [ "true"; "false" ]
+        elif isUnionType valueType then
+            FSharpType.GetUnionCases(valueType)
+            |> Array.choose (fun case ->
+                if case.GetFields().Length = 0 then
+                    Some(toKebabCase case.Name)
+                else
+                    None)
+            |> Array.toList
+        else
+            []
+
+    let private firstBadPositional (fields: Reflection.PropertyInfo array) (args: string array) =
+        fields
+        |> Array.indexed
+        |> Array.tryPick (fun (index, field) ->
+            let isList = isListType field.PropertyType
+
+            let valueType =
+                if isList then
+                    listElementType field.PropertyType
+                else
+                    field.PropertyType
+
+            let tokens =
+                if isList then
+                    if index < args.Length then args.[index..] else [||]
+                elif index < args.Length then
+                    [| args.[index] |]
+                else
+                    [||]
+
+            tokens
+            |> Array.tryPick (fun token ->
+                match parseFieldValue valueType token with
+                | Ok None
+                | Error(InvalidValue _) ->
+                    Some(
+                        BadPositionalValue(token, toKebabCase field.Name, acceptedPositionalValues field.PropertyType)
+                    )
+                | _ -> None))
+
     /// Build a typed F# list from a sequence of boxed values
     let internal buildTypedList (elemType: Type) (items: obj seq) : obj =
         let listType = typedefof<list<_>>.MakeGenericType(elemType)
@@ -934,32 +984,37 @@ module CommandReflection =
                             let extra = positionals.[positionalFields.Length]
                             Error(InvalidArguments(cmdName, $"Unexpected argument '%s{extra}'"))
                         else
-                            let fieldValues =
-                                positionalFields
-                                |> Array.mapi (fun i pf ->
-                                    if i < positionals.Length then
-                                        parseFieldValue pf.PropertyType positionals.[i]
-                                    elif isOptionalType pf.PropertyType then
-                                        Ok(Some(makeNone pf.PropertyType))
-                                    else
-                                        Error(InvalidValue $"Missing required argument '<%s{toKebabCase pf.Name}>'"))
+                            match firstBadPositional positionalFields positionals with
+                            | Some error -> Error error
+                            | None ->
+                                let fieldValues =
+                                    positionalFields
+                                    |> Array.mapi (fun i pf ->
+                                        if i < positionals.Length then
+                                            parseFieldValue pf.PropertyType positionals.[i]
+                                        elif isOptionalType pf.PropertyType then
+                                            Ok(Some(makeNone pf.PropertyType))
+                                        else
+                                            Error(
+                                                InvalidValue $"Missing required argument '<%s{toKebabCase pf.Name}>'"
+                                            ))
 
-                            match validateFields cmdName fieldValues with
-                            | Error e -> Error e
-                            | Ok values ->
-                                let cliItems = cliFlags |> Seq.cast<obj>
-
-                                match resolveEnvVars flagDUType flagInfo cliItems with
+                                match validateFields cmdName fieldValues with
                                 | Error e -> Error e
-                                | Ok envItems ->
-                                    let mergedList = buildTypedList flagDUType (Seq.append cliItems envItems)
+                                | Ok values ->
+                                    let cliItems = cliFlags |> Seq.cast<obj>
 
-                                    let cmdValue =
-                                        wrapValue (
-                                            FSharpValue.MakeUnion(outerCase, Array.append values [| mergedList |])
-                                        )
+                                    match resolveEnvVars flagDUType flagInfo cliItems with
+                                    | Error e -> Error e
+                                    | Ok envItems ->
+                                        let mergedList = buildTypedList flagDUType (Seq.append cliItems envItems)
 
-                                    Ok(cmdValue :?> 'Cmd)
+                                        let cmdValue =
+                                            wrapValue (
+                                                FSharpValue.MakeUnion(outerCase, Array.append values [| mergedList |])
+                                            )
+
+                                        Ok(cmdValue :?> 'Cmd)
 
                 let formatArgs =
                     findMatchingCase outerCase (fun fs ->
@@ -1041,23 +1096,26 @@ module CommandReflection =
                     if args.Length > recordFields.Length then
                         Error(rejectExtraArg cmdName args.[recordFields.Length])
                     else
-                        let fieldValues =
-                            recordFields
-                            |> Array.mapi (fun i rf ->
-                                if i < args.Length then
-                                    parseFieldValue rf.PropertyType args.[i]
-                                else
-                                    match recordDefaults.[i] with
-                                    | Some v -> v
-                                    | None -> Ok None)
+                        match firstBadPositional recordFields args with
+                        | Some error -> Error error
+                        | None ->
+                            let fieldValues =
+                                recordFields
+                                |> Array.mapi (fun i rf ->
+                                    if i < args.Length then
+                                        parseFieldValue rf.PropertyType args.[i]
+                                    else
+                                        match recordDefaults.[i] with
+                                        | Some v -> v
+                                        | None -> Ok None)
 
-                        match validateFields cmdName fieldValues with
-                        | Ok values ->
-                            let recordValue = FSharpValue.MakeRecord(recordType, values)
-                            let innerValue = FSharpValue.MakeUnion(outerCase, [| recordValue |])
-                            let cmdValue = wrapValue innerValue
-                            Ok(cmdValue :?> 'Cmd)
-                        | Error e -> Error e
+                            match validateFields cmdName fieldValues with
+                            | Ok values ->
+                                let recordValue = FSharpValue.MakeRecord(recordType, values)
+                                let innerValue = FSharpValue.MakeUnion(outerCase, [| recordValue |])
+                                let cmdValue = wrapValue innerValue
+                                Ok(cmdValue :?> 'Cmd)
+                            | Error e -> Error e
 
                 let formatArgs =
                     findMatchingCase outerCase (fun fs ->
@@ -1099,14 +1157,17 @@ module CommandReflection =
                     if not hasListField && args.Length > fields.Length then
                         Error(rejectExtraArg cmdName args.[fields.Length])
                     else
-                        let fieldValues = parseFields fields args
+                        match firstBadPositional fields args with
+                        | Some error -> Error error
+                        | None ->
+                            let fieldValues = parseFields fields args
 
-                        match validateFields cmdName fieldValues with
-                        | Ok values ->
-                            let innerValue = FSharpValue.MakeUnion(outerCase, values)
-                            let cmdValue = wrapValue innerValue
-                            Ok(cmdValue :?> 'Cmd)
-                        | Error e -> Error e
+                            match validateFields cmdName fieldValues with
+                            | Ok values ->
+                                let innerValue = FSharpValue.MakeUnion(outerCase, values)
+                                let cmdValue = wrapValue innerValue
+                                Ok(cmdValue :?> 'Cmd)
+                            | Error e -> Error e
 
                 let formatArgs =
                     findMatchingCase outerCase (fun fs ->
