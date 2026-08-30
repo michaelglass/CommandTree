@@ -72,6 +72,8 @@ type AmbiguousAction =
 
 type AmbiguousCmd = Do of action: AmbiguousAction * count: int
 
+type OptionalStateCmd = MaybeState of state: AmbiguousAction option
+
 type ListAmbiguousCommand = | [<Cmd("Do actions")>] DoActions of actions: AmbiguousAction list
 
 // Types for flag parsing tests
@@ -671,10 +673,7 @@ let ``parse handles list field with int elements`` () =
 let ``parse rejects list field with invalid element type`` () =
     let tree = CommandReflection.fromUnion<IntListCommand> "Test"
     let result = CommandTree.parse tree [| "sum"; "1"; "abc"; "3" |]
-
-    match result with
-    | Error(InvalidArguments _) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    Assert.Equal(Error(BadPositionalValue("abc", "values", [])), result)
 
 [<Fact>]
 let ``parse DU list as flags — unknown input is UnknownFlag`` () =
@@ -685,6 +684,12 @@ let ``parse DU list as flags — unknown input is UnknownFlag`` () =
     match result with
     | Error(UnknownFlag("sta", _, _)) -> ()
     | other -> failwith $"Expected UnknownFlag, got: %O{other}"
+
+[<Fact>]
+let ``invalid inline required flag value remains InvalidArguments`` () =
+    let tree = CommandReflection.fromUnion<NoShortCmd> "Test"
+    let result = CommandTree.parse tree [| "run"; "--timeout=wat" |]
+    Assert.Equal(Error(InvalidArguments("run", "Invalid value 'wat' for flag '--timeout'")), result)
 
 [<Fact>]
 let ``parse DU list as flags — valid flags are accepted`` () =
@@ -736,6 +741,23 @@ let ``UnknownFlag error carries flag name, command, and valid flags`` () =
         test <@ cmd = "deploy" @>
         test <@ valid = [ "--env"; "--config"; "--dry-run" ] @>
     | _ -> failwith "Expected UnknownFlag"
+
+[<Fact>]
+let ``invalid positional error carries token argument name and accepted rendered values`` () =
+    let tree = CommandReflection.fromUnion<AmbiguousCmd> "Test"
+
+    match CommandTree.parse tree [| "do"; "wat"; "2" |] with
+    | Error(BadPositionalValue(token, argument, accepted)) ->
+        test <@ token = "wat" @>
+        test <@ argument = "action" @>
+        test <@ accepted = [ "start"; "stop"; "status" ] @>
+    | other -> failwith $"Expected BadPositionalValue, got: %A{other}"
+
+[<Fact>]
+let ``invalid optional positional carries its inner accepted rendered values`` () =
+    let tree = CommandReflection.fromUnion<OptionalStateCmd> "Test"
+    let result = CommandTree.parse tree [| "maybe-state"; "wat" |]
+    Assert.Equal(Error(BadPositionalValue("wat", "state", [ "start"; "stop"; "status" ])), result)
 
 [<Fact>]
 let ``DuplicateFlag error carries flag name and command`` () =
@@ -1394,12 +1416,9 @@ let ``parse binds a typed int positional beside flags`` () =
 
 [<Fact>]
 let ``parse rejects an invalid typed positional value on a flag-DU leaf`` () =
-    // An int positional that fails to parse yields the same generic error the
-    // non-flag leaf path produces (validateFields' catch-all), reached here with
-    // the flags already scanned off — not a missing-argument error.
     let tree = CommandReflection.fromUnion<TypedPositionalFlagDUCommand> "Test"
     let result = CommandTree.parse tree [| "scale"; "notanint"; "--force" |]
-    Assert.Equal(Error(InvalidArguments("scale", "Invalid arguments")), result)
+    Assert.Equal(Error(BadPositionalValue("notanint", "count", [])), result)
 
 // =============================================================================
 // DU-based flag help display tests
@@ -2048,6 +2067,12 @@ let ``parse accepts explicit bool value in record arg`` () =
     Assert.Equal(Ok(RecordCommand.Alpha { publish = true }), result)
 
 [<Fact>]
+let ``invalid record positional carries rendered boolean values`` () =
+    let tree = CommandReflection.fromUnion<RecordCommand> "Test"
+    let result = CommandTree.parse tree [| "alpha"; "sometimes" |]
+    Assert.Equal(Error(BadPositionalValue("sometimes", "publish", [ "true"; "false" ])), result)
+
+[<Fact>]
 let ``parse defaults optional and bool fields in record arg`` () =
     let tree = CommandReflection.fromUnion<RecordOptCommand> "Test"
     let result = CommandTree.parse tree [| "run" |]
@@ -2184,9 +2209,7 @@ let ``parse returns error for list field with invalid element`` () =
     let tree = CommandReflection.fromUnion<IntListCmd> "Test"
     let result = CommandTree.parse tree [| "sum"; "1"; "abc"; "3" |]
 
-    match result with
-    | Error(InvalidArguments _) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    Assert.Equal(Error(BadPositionalValue("abc", "values", [])), result)
 
 // =============================================================================
 // renderParseError tests — canonical error line + nearest help
@@ -2231,6 +2254,22 @@ let ``renderParseError InvalidArguments shows message and command help`` () =
     test <@ rendered.Contains("missing name") @>
     test <@ rendered.Contains("mycli greet") @>
     test <@ rendered.Contains("<name>") @>
+
+[<Fact>]
+let ``renderParseError BadPositionalValue keeps a compact diagnostic`` () =
+    let tree = CommandReflection.fromUnion<AmbiguousCmd> "Test"
+    let err = BadPositionalValue("wat", "action", [ "start"; "stop"; "status" ])
+    let rendered = CommandTree.renderParseError tree err "mycli"
+    Assert.Equal("'wat' is not a valid <action> — expected one of: start, stop, status.", rendered)
+
+[<Fact>]
+let ``renderParseError BadPositionalValue without finite values stays compact`` () =
+    let tree = CommandReflection.fromUnion<CommandWithArgs> "Test"
+
+    let rendered =
+        CommandTree.renderParseError tree (BadPositionalValue("wat", "count", [])) "mycli"
+
+    Assert.Equal("'wat' is not a valid <count>.", rendered)
 
 [<Fact>]
 let ``renderParseError AmbiguousArgument shows candidates and help`` () =
@@ -2328,9 +2367,7 @@ let ``parse surfaces leaf parse errors, not UnknownCommand`` () =
     // "add" is known but the args are invalid -> a real error, not an unknown command.
     let result = CommandTree.parse tree [| "add"; "notanint"; "2" |]
 
-    match result with
-    | Error(InvalidArguments("add", _)) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    Assert.Equal(Error(BadPositionalValue("notanint", "x", [])), result)
 
 [<Fact>]
 let ``parse empty args yields default or help, never UnknownCommand`` () =
