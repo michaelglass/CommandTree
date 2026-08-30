@@ -1,10 +1,15 @@
 # Changelog — CommandTree.Analyzers
 
+## Unreleased
+
+## 0.1.0-alpha.6 - 2026-08-30
+
+- docs(analyzers): lift the changelog intro back above `## Unreleased`
+
+
 All notable changes to the `CommandTree.Analyzers` package are documented in
 this file. The CommandTree library itself has its own
 [`src/CommandTree/CHANGELOG.md`](../CommandTree/CHANGELOG.md).
-
-## Unreleased
 
 ## 0.1.0-alpha.5 - 2026-08-17
 
