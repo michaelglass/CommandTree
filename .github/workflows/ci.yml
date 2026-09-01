@@ -17,3 +17,8 @@ jobs:
     with:
       solution: CommandTree.slnx
       fantomas-paths: 'src/ tests/ examples/'
+
+  lint-project:
+    uses: michaelglass/MichaelsWackyFsPackageTools/.github/workflows/michaels-wacky-lint-project.yml@main
+    permissions:
+      contents: read
