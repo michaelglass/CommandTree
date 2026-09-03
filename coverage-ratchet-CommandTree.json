@@ -5,11 +5,20 @@
       "branch": 0,
       "reason": "installHook calls external process + writes to ~/.config"
     },
-    "Process.fs": {
-      "line": 99.06542056074767,
-      "branch": 70,
-      "reason": "Remaining uncovered branch is compiler-generated. The branch floor tracks the LINUX number, which is the stricter platform: CI instruments 38 branches (28 covered, 73.7%) where macOS instruments 22 (18 covered, 81.8%). Branch totals are toolchain-dependent and grew on the runner with no source change (22 -> 38 between the 2026-07-23 and 2026-08-13 runs), so this is set below the Linux value with headroom instead of being re-tightened to the macOS one. Line coverage did not drift and remains the real guard."
-    },
+    "Process.fs": [
+      {
+        "line": 99.06542056074767,
+        "branch": 81.8,
+        "platform": "macos",
+        "reason": "Remaining uncovered branch is compiler-generated. Measured by the 2026-09-02 full run on macOS: 127/128 lines, 18/22 branches. Branch TOTALS are toolchain-dependent (the collector instruments 22 here and 38 on the Linux runner), so the percentage is per-platform context; the absolute covered counts in countFloors are the guard (AUTOMATION-312)."
+      },
+      {
+        "line": 99,
+        "branch": 73,
+        "platform": "linux",
+        "reason": "Linux figures come from the coverage-thresholds artifact of the last green main run (CI run 33491314702, 2026-09-01): 127/128 lines, 28/38 branches. These are the numbers loosen-from-ci would merge; written by hand because that verb also pushes."
+      }
+    ],
     "Reflection.fs": {
       "line": 97.7,
       "branch": 87,
@@ -20,10 +29,49 @@
       "branch": 90,
       "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching; plus the entryAssemblyVersion entry-vs-calling-assembly fallback (GetEntryAssembly() is non-null under the test host, so the null branch is host-dependent and not deterministically coverable) — its testable logic lives in assemblyVersion(asm) which is 100% line-covered, and the wrapper is covered indirectly via renderVersion"
     },
+    "UI.fs": [
+      {
+        "line": 41.80327868852459,
+        "branch": 84.6,
+        "platform": "macos",
+        "reason": "Spinner threads use Console.Write directly; non-interactive path covered. Measured by the 2026-09-02 full run on macOS: 51/122 lines, 22/26 branches. Branch TOTALS are toolchain-dependent (26 here, 38 on the Linux runner), so the percentage is per-platform context; the absolute covered counts in countFloors are the guard (AUTOMATION-312)."
+      },
+      {
+        "line": 41,
+        "branch": 63,
+        "platform": "linux",
+        "reason": "Linux figures come from the coverage-thresholds artifact of the last green main run (CI run 33491314702, 2026-09-01): 51/122 lines, 24/38 branches. These are the numbers loosen-from-ci would merge; written by hand because that verb also pushes."
+      }
+    ]
+  },
+  "countFloors": {
+    "Attributes.fs": {
+      "coveredLines": 28,
+      "coveredBranches": 0
+    },
+    "Fish.fs": {
+      "coveredLines": 20,
+      "coveredBranches": 0
+    },
+    "Process.fs": {
+      "coveredLines": 127,
+      "coveredBranches": 18
+    },
+    "Reflection.fs": {
+      "coveredLines": 855,
+      "coveredBranches": 294
+    },
+    "SpecError.fs": {
+      "coveredLines": 16,
+      "coveredBranches": 0
+    },
+    "Tree.fs": {
+      "coveredLines": 206,
+      "coveredBranches": 66
+    },
     "UI.fs": {
-      "line": 41.80327868852459,
-      "branch": 58,
-      "reason": "Spinner threads use Console.Write directly; non-interactive path covered. The branch floor tracks the LINUX number, which is the stricter platform: CI instruments 38 branches (24 covered, 63.2%) where macOS instruments 26 (22 covered, 84.6%). Branch totals are toolchain-dependent and grew on the runner with no source change (26 -> 38 between the 2026-07-23 and 2026-08-13 runs; UI.fs itself changed only in comments over that span), so this is set below the Linux value with headroom instead of being re-tightened to the macOS one. Line coverage did not drift and remains the real guard."
+      "coveredLines": 51,
+      "coveredBranches": 22
     }
   }
 }

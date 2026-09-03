@@ -5,5 +5,11 @@
       "branch": 95.23,
       "reason": "Residual uncovered line/branches are compiler-generated or defensive and not reachable from ordinary F# fixtures: (1) the array-pattern decision tree the F# compiler emits for 'match fields with [| single |]' (a length-1 sub-branch no source-level input distinguishes), and (2) the None arm of 'match mfv.DeclaringEntity' - FCS attributes a declaring entity to every member/function call the typed-tree walk encounters (top-level and nested local functions alike), so the None guard never fires in tests though it is a sound defensive guard. Same category as the Reflection.fs (branch 87) and Tree.fs (branch 90) overrides in coverage-ratchet-CommandTree.json. All other lines and branches are covered."
     }
+  },
+  "countFloors": {
+    "CommandTreeAnalyzer.fs": {
+      "coveredLines": 140,
+      "coveredBranches": 40
+    }
   }
 }
