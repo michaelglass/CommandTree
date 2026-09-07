@@ -2387,3 +2387,110 @@ let ``unresolved top-level command renders canonical error and help`` () =
         test <@ rendered.Contains("Unknown command 'frobnicate'.") @>
         test <@ rendered.Contains("check") @>
     | other -> failwith $"Expected UnknownCommand at root, got: %O{other}"
+
+// =============================================================================
+// Suggesting the full path of a verb that lives elsewhere in the tree
+//
+// Shaped after the invocation that motivated this: `deploy prod` typed at the
+// top level, where the real verb is `infra deploy prod`. `status` deliberately
+// exists at the root AND in both groups, and `restart` exists in both groups and
+// nowhere else, so the ranking rules have something to actually decide between.
+// =============================================================================
+
+type SuggestInfraCommand =
+    | [<Cmd("Deploy the app")>] Deploy of target: string
+    | [<Cmd("Show infrastructure status")>] Status
+    | [<Cmd("Restart the app")>] Restart
+
+type SuggestDbCommand =
+    | [<Cmd("Run migrations")>] Migrate
+    | [<Cmd("Show database status")>] Status
+    | [<Cmd("Restart the database")>] Restart
+
+type SuggestRootCommand =
+    | [<Cmd("Infrastructure commands")>] Infra of SuggestInfraCommand
+    | [<Cmd("Database commands")>] Db of SuggestDbCommand
+    | [<Cmd("Show overall status")>] Status
+    | [<Cmd("Show the build plan")>] Plan
+
+let private suggestTree () =
+    CommandReflection.fromUnion<SuggestRootCommand> "Test"
+
+[<Fact>]
+let ``the verb spelled at its own level parses`` () =
+    // Positive control: `infra deploy prod` really is in this tree, so every refusal
+    // below is about where the verb lives, not about it being absent.
+    let result = CommandTree.parse (suggestTree ()) [| "infra"; "deploy"; "prod" |]
+    test <@ result = Ok(SuggestRootCommand.Infra(SuggestInfraCommand.Deploy "prod")) @>
+
+[<Fact>]
+let ``a verb that exists only in a subgroup is refused by its full path`` () =
+    let tree = suggestTree ()
+    let result = CommandTree.parse tree [| "deploy"; "prod" |]
+    test <@ result = Error(UnknownCommand("deploy", [| "prod" |], [])) @>
+
+    let rendered =
+        CommandTree.renderParseError tree (UnknownCommand("deploy", [| "prod" |], [])) "mycli"
+
+    test <@ rendered.Contains("Unknown command 'deploy'. Did you mean 'mycli infra deploy'?") @>
+
+[<Fact>]
+let ``a verb that matches nothing anywhere is refused without a suggestion`` () =
+    let tree = suggestTree ()
+    test <@ CommandTree.suggestPath tree [] "frobnicate" = None @>
+
+    let rendered =
+        CommandTree.renderParseError tree (UnknownCommand("frobnicate", [||], [])) "mycli"
+
+    test <@ rendered.Contains("Unknown command 'frobnicate'.") @>
+    test <@ not (rendered.Contains("Did you mean")) @>
+
+[<Fact>]
+let ``two equally close candidates resolve alphabetically, not by declaration order`` () =
+    let tree = suggestTree ()
+    // `restar` is one edit from `restart`, which exists under `infra` and under `db` and
+    // nowhere else: same distance, same depth, neither a sibling of the root. `db` is
+    // declared second but sorts first.
+    test <@ CommandTree.suggestPath tree [] "restar" = Some [ "db"; "restart" ] @>
+    test <@ CommandTree.parse tree [| "db"; "restart" |] = Ok(SuggestRootCommand.Db SuggestDbCommand.Restart) @>
+
+    test
+        <@ CommandTree.parse tree [| "infra"; "restart" |] = Ok(SuggestRootCommand.Infra SuggestInfraCommand.Restart) @>
+
+[<Fact>]
+let ``a near miss inside a group names the sibling over a shallower match elsewhere`` () =
+    let tree = suggestTree ()
+    // `status` sits at the root (depth 1) and under both groups (depth 2), all one edit
+    // from `statuss`. Typed inside `infra`, the sibling wins despite the longer path.
+    test <@ CommandTree.suggestPath tree [ "infra" ] "statuss" = Some [ "infra"; "status" ] @>
+
+[<Fact>]
+let ``a near miss at the root names the root sibling`` () =
+    test <@ CommandTree.suggestPath (suggestTree ()) [] "plann" = Some [ "plan" ] @>
+
+[<Fact>]
+let ``a mistyped group name is suggested like any other`` () =
+    test <@ CommandTree.suggestPath (suggestTree ()) [] "dbb" = Some [ "db" ] @>
+
+[<Fact>]
+let ``a two-character token is suggested only on an exact match elsewhere`` () =
+    let tree = suggestTree ()
+    // At two characters an edit of one is most of the word, so only an exact name counts.
+    test <@ CommandTree.suggestPath tree [ "infra" ] "db" = Some [ "db" ] @>
+    test <@ CommandTree.suggestPath tree [ "infra" ] "dc" = None @>
+
+[<Fact>]
+let ``a token two edits from a short name is not suggested`` () =
+    // `plan` is four characters; `plom` is two edits away, past the tolerance for a token
+    // of that length.
+    test <@ CommandTree.suggestPath (suggestTree ()) [] "plom" = None @>
+
+[<Fact>]
+let ``a long token is suggested at two edits`` () =
+    // `migrate` is seven characters, so a two-edit miss still names it.
+    test <@ CommandTree.suggestPath (suggestTree ()) [] "migrata" = Some [ "db"; "migrate" ] @>
+    test <@ CommandTree.suggestPath (suggestTree ()) [] "migrtae" = Some [ "db"; "migrate" ] @>
+
+[<Fact>]
+let ``suggestions ignore case`` () =
+    test <@ CommandTree.suggestPath (suggestTree ()) [] "DEPLOY" = Some [ "infra"; "deploy" ] @>

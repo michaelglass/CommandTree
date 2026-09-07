@@ -15,6 +15,7 @@ CommandTree.helpWithGlobals tree flags prefix // Help with a global-options sect
 CommandTree.format tree cmd prefix       // Format a command back to a CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path
+CommandTree.suggestPath tree groupPath token // Full path of the closest command, if any
 CommandTree.renderParseError tree err prefix // Error line + nearest help (full stderr text)
 CommandTree.isError err                  // true for genuine errors, false for help/version
 CommandTree.renderVersion prefix         // "<prefix> <version>" banner for the version arm
@@ -33,6 +34,24 @@ functions.
 one-line "invalid input" message followed by the nearest command/group's help —
 so every consumer renders errors uniformly. Pair it with `isError` for the exit
 code (`HelpRequested` / `VersionRequested` are not errors).
+
+An `UnknownCommand` whose token exists elsewhere in the tree is refused by its
+full path, so a verb typed one level too high names the command that would have
+worked:
+
+```
+$ my-cli deploy prod
+Unknown command 'deploy'. Did you mean 'my-cli infra deploy'?
+```
+
+`suggestPath` is that lookup on its own, for a consumer rendering its own
+refusals. It returns at most one path — never a candidate list — and `None` when
+nothing in the tree is close enough, so a refusal never invents a suggestion.
+Candidates are every command *and group* name whose case-insensitive edit
+distance from the token is within tolerance (exact only up to two characters, one
+edit up to five, two beyond that). Ties break by closest spelling, then a sibling
+of the level the token was typed at, then the shortest path, then alphabetically —
+so the answer never depends on declaration order.
 
 ```fsharp
 match CommandTree.parse tree argv with
