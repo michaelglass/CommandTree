@@ -7,6 +7,24 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat: an unknown command whose verb exists elsewhere in the tree is now refused by
+  its full path. `renderParseError` appends a single `Did you mean '<prefix> infra
+  deploy'?` to the `UnknownCommand` line whenever the new `CommandTree.suggestPath`
+  finds a command or group name within edit distance of the token; when nothing is
+  close enough the refusal is unchanged and invents nothing. This is the case where
+  `my-cli deploy prod` was refused with the top-level verb listing, which does not
+  contain `deploy`, so the refusal read as "no such capability" rather than "two
+  words away". The nearest-group help still follows the line — one suggestion, not a
+  candidate list.
+
+  Ranking, when more than one name is close: closest spelling first; then a sibling
+  of the level the token was typed at, that being the context the operator was
+  already in; then the shortest path, as the least to retype; then alphabetically, so
+  two otherwise-tied candidates resolve the same way on every run instead of
+  following declaration order. Tolerance scales with the token: one- and
+  two-character tokens match only exactly, up to five characters allows one edit, and
+  longer tokens allow two (which is also what covers a transposed pair).
+
 ## 0.10.0 - 2026-08-31
 
 - feat!: invalid typed positional values now return `BadPositionalValue`, carrying

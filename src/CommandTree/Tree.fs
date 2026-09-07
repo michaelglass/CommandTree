@@ -444,6 +444,78 @@ module CommandTree =
 
         findDeepest [] args
 
+    /// Case-insensitive Levenshtein edit distance, used to rank near-miss command names.
+    /// Plain edit distance (no transposition rule): a swapped pair costs two edits, which the
+    /// tolerance for longer tokens already allows, so the extra rule would buy nothing.
+    let private editDistance (left: string) (right: string) : int =
+        let left = left.ToLowerInvariant()
+        let right = right.ToLowerInvariant()
+
+        // Standard row-at-a-time dynamic program: row i holds the distances from left[0..i-1]
+        // to every prefix of right, so only the previous row is ever needed.
+        let nextRow (previous: int array) (i: int) =
+            let current = Array.zeroCreate (right.Length + 1)
+            current.[0] <- i
+
+            for j in 1 .. right.Length do
+                let substitute = previous.[j - 1] + (if left.[i - 1] = right.[j - 1] then 0 else 1)
+                current.[j] <- min (min (previous.[j] + 1) (current.[j - 1] + 1)) substitute
+
+            current
+
+        let firstRow = Array.init (right.Length + 1) id
+        let lastRow = List.fold nextRow firstRow [ 1 .. left.Length ]
+        lastRow.[right.Length]
+
+    /// How far a typed token may sit from a command name and still be worth offering.
+    /// One- and two-character tokens get no slack at all — at that length an edit of one is
+    /// most of the word, so only an exact name elsewhere in the tree is evidence of intent.
+    let private suggestionTolerance (input: string) =
+        if input.Length <= 2 then 0
+        elif input.Length <= 5 then 1
+        else 2
+
+    /// Every command path in the tree, deepest-last, with group nodes included in their own
+    /// right (a mistyped group name is as worth suggesting as a mistyped leaf). The unnamed
+    /// root contributes no segment.
+    let rec private allCommandPaths (node: CommandTree<'Cmd>) (prefix: string list) : string list list =
+        match node with
+        | Leaf leaf -> [ prefix @ [ leaf.Name ] ]
+        | Group group ->
+            let here = if group.Name = "" then prefix else prefix @ [ group.Name ]
+            let self = if group.Name = "" then [] else [ here ]
+
+            self
+            @ (group.Children |> List.collect (fun child -> allCommandPaths child here))
+
+    /// The single command path a refusal should offer for <paramref name="input" />, a token
+    /// that did not match at <paramref name="groupPath" /> — the whole point being that the
+    /// tree already knows where the verb the operator wanted actually lives. Returns
+    /// <c>None</c> when nothing in the tree is close enough, so a refusal never invents a
+    /// suggestion.
+    ///
+    /// Candidates are every command and group name in the tree whose edit distance from the
+    /// token is within <c>suggestionTolerance</c>; the best one is chosen by, in order:
+    /// closest spelling; then a sibling at the level where the token was typed, since that is
+    /// the context the operator was already in; then the shortest path, being the least to
+    /// retype; then alphabetically, so two otherwise-tied candidates resolve the same way on
+    /// every run and never depend on declaration order.
+    let suggestPath (tree: CommandTree<'Cmd>) (groupPath: string list) (input: string) : string list option =
+        let tolerance = suggestionTolerance input
+        let depth = List.length groupPath
+
+        let isSibling (path: string list) =
+            List.length path = depth + 1 && List.truncate depth path = groupPath
+
+        allCommandPaths tree []
+        |> List.choose (fun path ->
+            let distance = editDistance input (List.last path)
+            if distance <= tolerance then Some(path, distance) else None)
+        |> List.sortBy (fun (path, distance) ->
+            distance, (if isSibling path then 0 else 1), List.length path, String.concat " " path)
+        |> List.tryHead
+        |> Option.map fst
+
     /// Render a <c>ParseError</c> as the full user-facing stderr text: a clear one-line
     /// "invalid input" message followed by the help for the nearest relevant command or
     /// group. Pure — returns the string; the caller prints it and chooses the exit code
@@ -451,7 +523,8 @@ module CommandTree =
     ///
     /// Per case:
     /// <c>UnknownFlag</c> → "Unknown flag …" + that command's help.
-    /// <c>UnknownCommand</c> → "Unknown command …" + the nearest group's help (its child listing).
+    /// <c>UnknownCommand</c> → "Unknown command …", plus a single "Did you mean …" naming the
+    /// full path when <c>suggestPath</c> finds one, + the nearest group's help (its child listing).
     /// <c>InvalidArguments</c> → the message + that command's help.
     /// <c>BadPositionalValue</c> → a compact one-line token/argument diagnostic.
     /// <c>AmbiguousArgument</c> → "Ambiguous …" + nearest group's help.
@@ -470,7 +543,14 @@ module CommandTree =
         | VersionRequested -> ""
         | UnknownFlag(flag, command, _) -> withHelp $"Unknown flag '%s{flag}' for '%s{command}'." [ command ]
         | UnknownCommand(input, _, groupPath) ->
-            withHelp $"Unknown command '%s{input}'." (closestGroupPath tree groupPath)
+            let suggestion =
+                match suggestPath tree groupPath input with
+                | Some path ->
+                    let joined = String.concat " " path
+                    $" Did you mean '%s{cmdPrefix} %s{joined}'?"
+                | None -> ""
+
+            withHelp $"Unknown command '%s{input}'.%s{suggestion}" (closestGroupPath tree groupPath)
         | InvalidArguments(command, message) -> withHelp message [ command ]
         | BadPositionalValue(token, argument, accepted) ->
             match accepted with
