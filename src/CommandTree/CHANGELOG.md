@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.10.1 - 2026-09-07
+
 - feat: an unknown command whose verb exists elsewhere in the tree is now refused by
   its full path. `renderParseError` appends a single `Did you mean '<prefix> infra
   deploy'?` to the `UnknownCommand` line whenever the new `CommandTree.suggestPath`
