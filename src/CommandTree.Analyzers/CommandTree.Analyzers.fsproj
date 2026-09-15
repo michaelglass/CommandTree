@@ -51,7 +51,7 @@
              "Could not load file or assembly 'FSharp.Compiler.Service, Version=43.12.400.0'"
              — on unchanged code, in CI and in any fresh restore. Bump both together. -->
         <PackageReference Include="FSharp.Compiler.Service" Version="43.12.204" />
-        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.301" PrivateAssets="All" />
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.303" PrivateAssets="All" />
     </ItemGroup>
 
     <!-- Place the analyzer assembly under analyzers/dotnet/fs/ in the nupkg so analyzer
