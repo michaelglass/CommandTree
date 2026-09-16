@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.11.0 - 2026-09-16
+
 - fix!: a flag-DU case with more than one field is now a construction-time
   `SpecError.MultiFieldFlagCase` (carrying the flag DU type, the case name and its
   field names) instead of a runtime crash. A flag binds at most one

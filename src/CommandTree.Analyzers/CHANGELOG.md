@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.7 - 2026-09-16
+
+- Fix: patch SourceLink against CVE-2026-62900
+
+
 ## 0.1.0-alpha.6 - 2026-08-30
 
 - docs(analyzers): lift the changelog intro back above `## Unreleased`
