@@ -142,6 +142,15 @@ type ClaimFlag =
 
 type OptionalValueFlagCommand = | [<Cmd("Claim a ticket")>] Claim of ticket: string * flags: ClaimFlag list
 
+// A `string option` optional-value flag: the inline value parses as the inner
+// `string`, for which the empty string is a real value (as it is for a
+// required-value `string` flag), so `--label=` binds `Some ""`, not an error.
+type LabelFlag =
+    | Label of string option
+    | Note of string
+
+type LabelCommand = | [<Cmd("Label a ticket")>] Tag of ticket: string * flags: LabelFlag list
+
 // Types for global flag tests
 
 type GlobalFlag =
@@ -1164,6 +1173,34 @@ let ``optional-value flag: --wait= (empty) is InvalidArguments`` () =
     match result with
     | Error(InvalidArguments("claim", msg)) -> test <@ msg.Contains("--wait") @>
     | other -> failwith $"Expected InvalidArguments for empty inline value, got: %A{other}"
+
+[<Fact>]
+let ``optional-value string flag: --label= (empty) binds Some empty string`` () =
+    // Unlike `--wait=` on an `int option`, an empty inline value is a valid
+    // `string`, so it binds `Some ""` rather than erroring or collapsing to None.
+    let tree = CommandReflection.fromUnion<LabelCommand> "Test"
+    let result = CommandTree.parse tree [| "tag"; "T-1"; "--label=" |]
+    Assert.Equal(Ok(LabelCommand.Tag("T-1", [ LabelFlag.Label(Some "") ])), result)
+
+[<Fact>]
+let ``optional-value string flag: bare --label binds None and --label=x binds Some x`` () =
+    let tree = CommandReflection.fromUnion<LabelCommand> "Test"
+
+    Assert.Equal(
+        Ok(LabelCommand.Tag("T-1", [ LabelFlag.Label None ])),
+        CommandTree.parse tree [| "tag"; "T-1"; "--label" |]
+    )
+
+    Assert.Equal(
+        Ok(LabelCommand.Tag("T-1", [ LabelFlag.Label(Some "x") ])),
+        CommandTree.parse tree [| "tag"; "T-1"; "--label=x" |]
+    )
+
+[<Fact>]
+let ``required-value string flag: --note= (empty) binds the empty string, matching optional-value`` () =
+    let tree = CommandReflection.fromUnion<LabelCommand> "Test"
+    let result = CommandTree.parse tree [| "tag"; "T-1"; "--note=" |]
+    Assert.Equal(Ok(LabelCommand.Tag("T-1", [ LabelFlag.Note "" ])), result)
 
 [<Fact>]
 let ``optional-value flag: --wait=abc (bad int) is InvalidArguments`` () =

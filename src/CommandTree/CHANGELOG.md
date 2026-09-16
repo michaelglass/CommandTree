@@ -7,6 +7,24 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- fix!: a flag-DU case with more than one field is now a construction-time
+  `SpecError.MultiFieldFlagCase` (carrying the flag DU type, the case name and its
+  field names) instead of a runtime crash. A flag binds at most one
+  value, but such a case (e.g. `Endpoint of host: string * port: int`) used to build
+  a tree without complaint and then throw `TargetParameterCountException` the first
+  time the flag was parsed (from the CLI or its env var). It is now reported by
+  `tryFromUnion*` alongside every other shape problem, and `fromUnion*` throws
+  `InvalidOperationException` at construction. Command flag DUs and global flag DUs
+  are both checked; a flag DU shared by several commands (or by a command and the
+  globals) reports each bad case once.
+  - **Breaking:** `SpecError` gains a case, so an exhaustive `match` over it must add
+    an arm; and a DU carrying a multi-field flag case, which previously constructed
+    and crashed only when that flag was used, now fails at construction.
+- docs: the optional-value flag parser comment now states what `--flag=` (empty)
+  actually does: the inline value gets the inner type's verdict on `""`, so it is an
+  error for `int option` (`--wait=`) but binds `Some ""` for `string option`, the
+  same as a required-value `string` flag binds `""`. Tests pin both.
+
 ## 0.10.1 - 2026-09-07
 
 - feat: an unknown command whose verb exists elsewhere in the tree is now refused by
@@ -78,6 +96,13 @@ All notable changes to the CommandTree library are documented in this file.
   - **Breaking (API):** `FlagInfo.IsBool: bool` is replaced by
     `FlagInfo.Arity: FlagArity` (`Nullary | Required | Optional`). Every consumer that
     matches `FlagInfo` gets a compiler error at the match site — a mechanical migration.
+  - **Help output change** (omitted from this entry at release): the value placeholder
+    in a required-value flag's help line is now the value's *type* name, where it used
+    to repeat the flag's long name — `--conf <conf>` became `--conf <string>`,
+    `--port <port>` became `--port <int>` (a union-typed value shows its lowercased type
+    name, e.g. `<environment>`). Optional-value flags render the new inline-only form
+    `--wait[=<int>]`; nullary flags are unchanged. Anything that snapshots or scrapes
+    help text sees the new placeholders.
 
 ## 0.7.1 - 2026-07-22
 

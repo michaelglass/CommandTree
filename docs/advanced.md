@@ -125,7 +125,8 @@ type ReportCommand =
 
 A command DU's *shape* can be malformed independently of any user input: a field
 whose type the parser can't handle (e.g. `DateTimeOffset`), a list field that
-isn't last, more than one list field in a case, or a command flag name that
+isn't last, more than one list field in a case, a flag-DU case with more than
+one field (a flag binds at most one value), or a command flag name that
 collides with a global flag. These are deterministic programming errors over the
 static shape, so the `fromUnion*` constructors fail fast by throwing
 `InvalidOperationException`.
@@ -153,7 +154,7 @@ match CommandReflection.tryFromUnion<Bad> "My CLI" with
 
 `SpecError` is a DU with one case per construction-time problem
 (`UnsupportedFieldType`, `ListFieldNotLast`, `MultipleListFields`,
-`GlobalFlagCollision`, `GlobalShortFlagCollision`). `SpecError.format` renders one
+`MultiFieldFlagCase`, `GlobalFlagCollision`, `GlobalShortFlagCollision`). `SpecError.format` renders one
 error as a line; `SpecError.formatAll` renders a list with a count header (this is
 exactly the message the throwing constructors raise). `SpecError` is distinct from
 `ParseError`, which describes runtime parse failures over user input.

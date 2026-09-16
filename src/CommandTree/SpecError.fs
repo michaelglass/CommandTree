@@ -16,6 +16,12 @@ type SpecError =
     | ListFieldNotLast of case: string * field: string
     /// A case declares more than one list-typed field. At most one is allowed.
     | MultipleListFields of case: string
+    /// A flag DU case declares more than one field. A flag binds at most one
+    /// value: no field (a switch), one field (a required value), or one
+    /// <c>'T option</c> field (an optional inline value). Carries the flag DU
+    /// type, the case name, and the case's field names. Reported once per flag
+    /// DU case, however many commands share the flag DU.
+    | MultiFieldFlagCase of flagType: System.Type * case: string * fields: string list
     /// A command flag's long name (<c>--name</c>) collides with a global flag.
     | GlobalFlagCollision of flag: string * command: string
     /// A command flag's short name (<c>-x</c>) collides with a global flag.
@@ -44,6 +50,12 @@ module SpecError =
             $"List field '%s{field}' in case '%s{case}' must be the last field and there can be only one"
         | MultipleListFields case ->
             $"Case '%s{case}' has multiple list fields; a case may have at most one list field and it must be last"
+        | MultiFieldFlagCase(flagType, case, fields) ->
+            let fieldList = fields |> List.map (fun f -> $"'%s{f}'") |> String.concat ", "
+
+            $"Flag case '%s{flagType.Name}.%s{case}' has %d{List.length fields} fields (%s{fieldList}); "
+            + "a flag case takes no field (a switch), one field (a required value), "
+            + "or one 'T option field (an optional value)"
         | GlobalFlagCollision(flag, command) -> $"Flag '%s{flag}' on command '%s{command}' conflicts with a global flag"
         | GlobalShortFlagCollision(flag, command) ->
             $"Flag '%s{flag}' on command '%s{command}' conflicts with a global flag"

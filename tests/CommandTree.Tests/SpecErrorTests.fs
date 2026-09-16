@@ -334,3 +334,160 @@ let ``tryFromUnion maps multiple list fields to MultipleListFields`` () =
     match CommandReflection.tryFromUnion<EqMultipleLists> "Test" with
     | Error [ MultipleListFields "bad" ] -> ()
     | other -> failwith $"Expected single MultipleListFields, got %A{other}"
+
+// =============================================================================
+// Flag DU case arity: a flag binds at most one value
+//
+// A multi-field flag case used to construct fine and then crash with a
+// TargetParameterCountException the first time the flag was parsed. It is now a
+// construction-time MultiFieldFlagCase naming the flag DU case.
+// =============================================================================
+
+type MultiFieldFlag =
+    | Verbose
+    | Endpoint of host: string * port: int
+
+type MultiFieldFlagCmd = | [<Cmd("Connect")>] Connect of MultiFieldFlag list
+
+// First field is an option: `flagArity` alone would call this Optional.
+type OptionFirstMultiFieldFlag = Proxy of url: string option * port: int
+
+type OptionFirstMultiFieldFlagCmd = | [<Cmd("Fetch")>] Fetch of target: string * flags: OptionFirstMultiFieldFlag list
+
+type TwoBadCasesFlag =
+    | Endpoint of host: string * port: int
+    | Force
+    | Range of lo: int * hi: int * step: int
+
+type SharedFlagCmd =
+    | [<Cmd("Up")>] Up of MultiFieldFlag list
+    | [<Cmd("Down")>] Down of name: string * flags: MultiFieldFlag list
+
+type ArityControlFlag =
+    | Force
+    | Target of string
+    | Wait of int option
+
+type ArityControlCmd = | [<Cmd("Go")>] Go of name: string * flags: ArityControlFlag list
+
+let private endpointError =
+    MultiFieldFlagCase(typeof<MultiFieldFlag>, "Endpoint", [ "host"; "port" ])
+
+[<Fact>]
+let ``multi-field flag case is a MultiFieldFlagCase spec error naming the case`` () =
+    match CommandReflection.tryFromUnion<MultiFieldFlagCmd> "Test" with
+    | Error [ single ] -> test <@ single = endpointError @>
+    | other -> failwith $"Expected single MultiFieldFlagCase, got %A{other}"
+
+[<Fact>]
+let ``multi-field flag case beside positionals whose first field is an option is a spec error`` () =
+    match CommandReflection.tryFromUnion<OptionFirstMultiFieldFlagCmd> "Test" with
+    | Error [ MultiFieldFlagCase(t, "Proxy", [ "url"; "port" ]) ] -> test <@ t = typeof<OptionFirstMultiFieldFlag> @>
+    | other -> failwith $"Expected single MultiFieldFlagCase for Proxy, got %A{other}"
+
+[<Fact>]
+let ``multi-field flag case: fromUnion throws InvalidOperationException naming the case, not a parse-time crash`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnion<MultiFieldFlagCmd> "Test" |> ignore)
+
+    test <@ ex.Message.Contains("MultiFieldFlag.Endpoint") @>
+    test <@ ex.Message.Contains("'host', 'port'") @>
+
+[<Fact>]
+let ``every multi-field case of a flag DU is reported in declaration order`` () =
+    let cmdResult =
+        CommandReflection.tryFromUnionWithEnv<SharedFlagCmd> "Test" "APP"
+        |> Result.map ignore
+
+    let twoBad =
+        CommandReflection.tryFromUnionWithGlobals<EqCommand, TwoBadCasesFlag> "Test"
+        |> Result.map ignore
+
+    test <@ cmdResult = Error [ endpointError ] @>
+
+    test
+        <@
+            twoBad = Error
+                [ MultiFieldFlagCase(typeof<TwoBadCasesFlag>, "Endpoint", [ "host"; "port" ])
+                  MultiFieldFlagCase(typeof<TwoBadCasesFlag>, "Range", [ "lo"; "hi"; "step" ]) ]
+        @>
+
+[<Fact>]
+let ``a flag DU shared by several commands and the globals reports each bad case once`` () =
+    // Sharing the DU with the globals also (rightly) collides every flag name; only
+    // the MultiFieldFlagCase errors are under test here.
+    let flagCaseErrors =
+        match CommandReflection.tryFromUnionWithGlobalsAndEnv<SharedFlagCmd, MultiFieldFlag> "Test" "APP" with
+        | Ok _ -> failwith "Expected Error"
+        | Error errs ->
+            errs
+            |> List.filter (function
+                | MultiFieldFlagCase _ -> true
+                | _ -> false)
+
+    test <@ flagCaseErrors = [ endpointError ] @>
+
+[<Fact>]
+let ``multi-field global flag case: fromUnionWithGlobals throws at construction`` () =
+    let ex =
+        Assert.Throws<System.InvalidOperationException>(fun () ->
+            CommandReflection.fromUnionWithGlobals<EqCommand, MultiFieldFlag> "Test"
+            |> ignore)
+
+    test <@ ex.Message.Contains("MultiFieldFlag.Endpoint") @>
+
+[<Fact>]
+let ``format MultiFieldFlagCase carries flag DU, case, field count and field names`` () =
+    let s = SpecError.format endpointError
+    test <@ s.Contains("MultiFieldFlag.Endpoint") @>
+    test <@ s.Contains("2 fields") @>
+    test <@ s.Contains("'host', 'port'") @>
+    test <@ s.Contains("one field") @>
+
+[<Fact>]
+let ``positive control: nullary, required and optional flag cases construct and parse as before`` () =
+    let tree =
+        match CommandReflection.tryFromUnion<ArityControlCmd> "Test" with
+        | Ok tree -> tree
+        | Error errs -> failwith $"Expected Ok, got %A{errs}"
+
+    let parse args = CommandTree.parse tree args
+
+    test
+        <@
+            parse [| "go"; "x"; "--force"; "--target"; "prod"; "--wait=5" |] = Ok(
+                ArityControlCmd.Go(
+                    "x",
+                    [ ArityControlFlag.Force
+                      ArityControlFlag.Target "prod"
+                      ArityControlFlag.Wait(Some 5) ]
+                )
+            )
+        @>
+
+    test
+        <@
+            parse [| "go"; "x"; "--target=prod"; "--wait" |] = Ok(
+                ArityControlCmd.Go("x", [ ArityControlFlag.Target "prod"; ArityControlFlag.Wait None ])
+            )
+        @>
+
+    test <@ parse [| "go"; "x" |] = Ok(ArityControlCmd.Go("x", [])) @>
+
+[<Fact>]
+let ``positive control: single-field flag DU as globals constructs and parses as before`` () =
+    let spec =
+        match CommandReflection.tryFromUnionWithGlobals<EqTaskCmd, ArityControlFlag> "Test" with
+        | Ok spec -> spec
+        | Error errs -> failwith $"Expected Ok, got %A{errs}"
+
+    test
+        <@
+            spec.Parse [| "--wait=3"; "--target"; "prod"; "--force"; "complete"; "7" |] = Ok(
+                [ ArityControlFlag.Wait(Some 3)
+                  ArityControlFlag.Target "prod"
+                  ArityControlFlag.Force ],
+                EqTaskCmd.Complete 7
+            )
+        @>

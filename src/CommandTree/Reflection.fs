@@ -250,7 +250,9 @@ module CommandReflection =
     /// truth shared by <c>getFlagInfoFromDU</c> (help/metadata) and
     /// <c>parseFlagsLoop</c> (parsing): no fields → <c>Nullary</c>; a single
     /// <c>'T option</c> field → <c>Optional</c> (inline-only value); otherwise
-    /// <c>Required</c>.
+    /// <c>Required</c>. Only meaningful for a case with at most one field: a
+    /// multi-field flag case is rejected at spec construction
+    /// (<c>SpecError.MultiFieldFlagCase</c>), so no parser is ever built over one.
     let private flagArity (fields: Reflection.PropertyInfo array) : FlagArity =
         if fields.Length = 0 then
             FlagArity.Nullary
@@ -716,8 +718,10 @@ module CommandReflection =
                     | FlagArity.Optional ->
                         // Value comes ONLY via inline `=`; bare → None. Never consumes the
                         // next token. The inline value parses as the INNER (unwrapped) type
-                        // and is re-wrapped in `Some`, so `--wait=` (empty) is an error rather
-                        // than a silent None.
+                        // and is re-wrapped in `Some`, so `--flag=` (empty) is never a silent
+                        // None: it gets exactly the inner type's verdict on "", the same as a
+                        // required-value flag of that type. For `int option` that is an error
+                        // (`--wait=`); for `string option` "" is a valid string (`Some ""`).
                         let optionType = fields.[0].PropertyType
                         let innerType = unwrapOptionType optionType
 
@@ -909,6 +913,24 @@ module CommandReflection =
             if not (isSupportedFieldType fieldType) then
                 errors.Add(SpecError.UnsupportedFieldType(cmdName, fieldName, fieldType)))
 
+    /// Collect a SpecError for every case of a flag DU that declares more than one
+    /// field. A flag binds at most one value, so the parser (via <c>flagArity</c>)
+    /// constructs a value-flag case from exactly one value; a multi-field case would
+    /// otherwise build fine and crash with a reflection exception the first time the
+    /// flag is parsed. An error already collected (the same flag DU shared by
+    /// several commands, or by a command and the globals) is not repeated.
+    let private validateFlagCases (errors: ResizeArray<SpecError>) (flagType: Type) : unit =
+        FSharpType.GetUnionCases(flagType)
+        |> Array.iter (fun case ->
+            let fields = case.GetFields()
+
+            if fields.Length > 1 then
+                let fieldNames = fields |> Array.map _.Name |> Array.toList
+                let error = SpecError.MultiFieldFlagCase(flagType, case.Name, fieldNames)
+
+                if not (errors.Contains error) then
+                    errors.Add error)
+
     /// Internal: build a CommandTree from a union type, accumulating every
     /// construction-time shape error into <paramref name="errors"/> instead of
     /// throwing on the first one. The returned tree is well-formed only when the
@@ -950,6 +972,7 @@ module CommandReflection =
                 validateFieldTypes errors cmdName (positionalFields |> Seq.map (fun f -> f.Name, f.PropertyType))
 
                 let flagDUType = listElementType fields.[fields.Length - 1].PropertyType
+                validateFlagCases errors flagDUType
                 let flagInfo = getFlagInfoFromDU flagDUType envPrefix
                 let flagLookup = buildFlagLookup flagInfo
                 let flagCases = FSharpType.GetUnionCases(flagDUType)
@@ -1331,8 +1354,9 @@ module CommandReflection =
             (globalResults, commandArgs.ToArray()))
 
     /// Internal: build a GlobalSpec, accumulating every construction-time shape
-    /// error (command-tree field/list errors first, in DU declaration order,
-    /// then global/command flag collisions in tree order) into one Result.
+    /// error (command-tree field/list/flag-case errors first, in DU declaration
+    /// order, then multi-field global flag cases, then global/command flag
+    /// collisions in tree order) into one Result.
     let private fromUnionWithGlobalsInternal<'Cmd, 'Globals>
         (envPrefix: string option)
         (rootDesc: string)
@@ -1343,6 +1367,7 @@ module CommandReflection =
         let globalFlagInfo = getFlagInfoFromDU globalType envPrefix
         let globalLookup = buildFlagLookup globalFlagInfo
 
+        validateFlagCases errors globalType
         collectFlagCollisions errors globalFlagInfo tree
 
         if errors.Count > 0 then
