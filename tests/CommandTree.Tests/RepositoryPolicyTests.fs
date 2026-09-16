@@ -2,6 +2,7 @@ module CommandTree.Tests.RepositoryPolicyTests
 
 open System
 open System.IO
+open System.Xml.Linq
 open Xunit
 open Swensen.Unquote
 
@@ -28,3 +29,24 @@ let ``check verifies cross-platform coverage floors without auto-ratcheting host
 
     test <@ checkTask.Contains "coverage-check" @>
     test <@ not (checkTask.Contains "coverage-ratchet") @>
+
+[<Fact>]
+let ``the library publishes a declared FSharp.Core floor rather than the building SDK's`` () =
+    let project =
+        XDocument.Load(Path.Combine(repositoryRoot, "src", "CommandTree", "CommandTree.fsproj"))
+
+    let elements name =
+        project.Descendants(XName.Get name) |> List.ofSeq
+
+    let implicitDisabled =
+        elements "DisableImplicitFSharpCoreReference"
+        |> List.exists (fun element -> element.Value.Trim() = "true")
+
+    let fsharpCoreVersions =
+        elements "PackageReference"
+        |> List.filter (fun element -> element.Attribute(XName.Get "Include") |> isNull |> not)
+        |> List.filter (fun element -> element.Attribute(XName.Get "Include").Value = "FSharp.Core")
+        |> List.map (fun element -> element.Attribute(XName.Get "Version").Value)
+
+    test <@ implicitDisabled @>
+    test <@ fsharpCoreVersions = [ "10.1.301" ] @>

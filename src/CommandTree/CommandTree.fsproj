@@ -21,9 +21,14 @@
     <!-- NETSDK1188: harmless locale warnings from FSharp.Core -->
     <!-- FS0052: string indexer copy warning - harmless -->
     <NoWarn>$(NoWarn);NETSDK1188;FS0052</NoWarn>
+    <!-- The published FSharp.Core floor is a compatibility promise to consumers. The
+         implicit reference would instead publish whatever FSharp.Core the building
+         machine's SDK bundles, so a routine SDK update raises every consumer's floor. -->
+    <DisableImplicitFSharpCoreReference>true</DisableImplicitFSharpCoreReference>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FSharp.Core" Version="10.1.301" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.303" PrivateAssets="All" />
   </ItemGroup>
 

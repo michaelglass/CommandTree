@@ -7,6 +7,13 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- fix: the package declares an explicit FSharp.Core floor of 10.1.301. Earlier releases
+  published whatever FSharp.Core the releasing machine's SDK bundled: 10.1.400 for 0.10.1
+  and 10.1.401 for 0.11.0. The 0.11.0 floor broke restore for consumers that pin
+  FSharp.Compiler.Service 43.12.400, which requires FSharp.Core exactly 10.1.400. The
+  floor is now a deliberate choice, and a repository policy test fails if the reference
+  goes back to implicit.
+
 ## 0.11.0 - 2026-09-16
 
 - fix!: a flag-DU case with more than one field is now a construction-time
