@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.11.1 - 2026-09-16
+
 - fix: the package declares an explicit FSharp.Core floor of 10.1.301. Earlier releases
   published whatever FSharp.Core the releasing machine's SDK bundled: 10.1.400 for 0.10.1
   and 10.1.401 for 0.11.0. The 0.11.0 floor broke restore for consumers that pin
