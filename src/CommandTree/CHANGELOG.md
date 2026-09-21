@@ -7,6 +7,24 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat: `Process.runSilentWith` takes a `SilentRun` record, so an environment, a
+  timeout, a working directory and a streaming sink can be combined freely. The
+  individual `runSilentWith*` helpers cover a cross-product of which only some
+  corners were ever built — `runSilentWithEnv` has no timeout and
+  `runSilentWithTimeout` has no environment — so a caller needing both could not
+  reach it by choosing a different helper, because none has it.
+- feat: a run killed at its timeout now reports what the child already said.
+  `runSilentWith` reads both streams line by line as they arrive and hands each line
+  to an optional sink, where the existing timeout helpers buffer until the end and so
+  return an empty stdout for the one case — a process that hung — in which its output
+  is what you wanted. The existing helpers are unchanged: their `(-1, "", message)`
+  contract is documented and callers may rely on it, and a test pins the difference on
+  identical input rather than describing it.
+- feat: `SilentRunResult` reports a timeout as a `TimedOut` field instead of a
+  sentinel exit code plus a sentence in stderr, so a child that genuinely exited -1 is
+  distinguishable from one this runner killed, and a runner diagnostic is no longer
+  mixed into the channel carrying the child's own words.
+
 ## 0.11.1 - 2026-09-16
 
 - fix: the package declares an explicit FSharp.Core floor of 10.1.301. Earlier releases

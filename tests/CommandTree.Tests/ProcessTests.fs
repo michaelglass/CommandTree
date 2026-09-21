@@ -266,3 +266,95 @@ let ``CommandResult has expected field names`` () =
     test <@ result.ExitCode = 0 @>
     test <@ result.Stdout = "out" @>
     test <@ result.Stderr = "err" @>
+
+// =============================================================================
+// runSilentWith — the cross-product the individual helpers leave with holes
+// =============================================================================
+
+[<Fact>]
+let ``runSilentWith passes an environment AND a timeout in one call`` () =
+    // The combination that had no helper: every env-taking runner lacked a timeout
+    // and every timeout-taking runner lacked an environment, so a caller needing
+    // both could not reach it by choosing differently.
+    let options =
+        SilentRun.defaults
+        |> SilentRun.withEnv [ "CT_TEST_VALUE", "from-the-environment" ]
+        |> SilentRun.withTimeoutMs 30_000
+
+    let result =
+        Process.runSilentWith options "sh" [ "-c"; "printf '%s' \"$CT_TEST_VALUE\"" ]
+
+    test <@ result.ExitCode = 0 @>
+    test <@ result.Stdout = "from-the-environment" @>
+    test <@ result.TimedOut = false @>
+
+[<Fact>]
+let ``runSilentWith runs in a given directory`` () =
+    let options = SilentRun.defaults |> SilentRun.inDirectory "/"
+    let result = Process.runSilentWith options "sh" [ "-c"; "pwd" ]
+
+    test <@ result.ExitCode = 0 @>
+    test <@ result.Stdout = "/" @>
+
+[<Fact>]
+let ``runSilentWith hands each line to the sink as it arrives, tagged by stream`` () =
+    let seen = System.Collections.Concurrent.ConcurrentQueue<OutputStream * string>()
+
+    let options =
+        SilentRun.defaults
+        |> SilentRun.withSink (fun stream line -> seen.Enqueue(stream, line))
+
+    let result = Process.runSilentWith options "sh" [ "-c"; "echo out; echo err >&2" ]
+
+    let delivered = seen |> List.ofSeq
+    test <@ result.ExitCode = 0 @>
+    test <@ List.contains (Stdout, "out") delivered @>
+    test <@ List.contains (Stderr, "err") delivered @>
+
+[<Fact>]
+let ``runSilentWith keeps what a killed child already said`` () =
+    // The guard. A child that speaks and then hangs is the case where its output is
+    // most wanted, and the case the buffered runners cannot serve: the buffer is read
+    // after the process ends, so killing it discards exactly what was needed.
+    //
+    // Deterministic without a sleep-race: the child writes BEFORE it blocks, so the
+    // line is delivered at process start while the timeout is three seconds away.
+    let options = SilentRun.defaults |> SilentRun.withTimeoutMs 3_000
+
+    let result =
+        Process.runSilentWith options "sh" [ "-c"; "echo spoke-before-hanging; sleep 30" ]
+
+    test <@ result.TimedOut = true @>
+    test <@ result.ExitCode = -1 @>
+    test <@ result.Stdout = "spoke-before-hanging" @>
+
+[<Fact>]
+let ``runSilentWith reports TimedOut false for a child that finishes in time`` () =
+    // The positive control for the guard above. Without it, `TimedOut = true` could be
+    // a constant rather than a measurement, and `Stdout` surviving would prove nothing
+    // about the kill path — the same assertions would pass on a runner that never
+    // times out at all.
+    let options = SilentRun.defaults |> SilentRun.withTimeoutMs 3_000
+
+    let result =
+        Process.runSilentWith options "sh" [ "-c"; "echo spoke-before-hanging" ]
+
+    test <@ result.TimedOut = false @>
+    test <@ result.ExitCode = 0 @>
+    test <@ result.Stdout = "spoke-before-hanging" @>
+
+[<Fact>]
+let ``runSilentWithTimeout discards on a kill what runSilentWith keeps`` () =
+    // Pins the difference rather than describing it, so neither behaviour can quietly
+    // become the other. This characterises the existing helper, it does not complain
+    // about it: its documented contract is (-1, "", message), callers may depend on
+    // that, and it is deliberately left alone.
+    let command = [ "-c"; "echo spoke-before-hanging; sleep 30" ]
+
+    let (oldCode, oldStdout, _) = Process.runSilentWithTimeout "sh" command (Some 3_000)
+
+    let fresh =
+        Process.runSilentWith (SilentRun.defaults |> SilentRun.withTimeoutMs 3_000) "sh" command
+
+    test <@ oldCode = -1 && oldStdout = "" @>
+    test <@ fresh.ExitCode = -1 && fresh.Stdout = "spoke-before-hanging" @>
