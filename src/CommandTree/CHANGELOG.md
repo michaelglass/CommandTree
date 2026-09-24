@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.11.2 - 2026-09-24
+
 - fix: under Jujutsu, the build stamp names the working-copy commit's parent (plus
   `.dirty` when there are edits) instead of `@` itself. jj rewrites `@` on every edit,
   so the old stamp gave every build a different assembly. Every project referencing
