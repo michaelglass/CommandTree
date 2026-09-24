@@ -93,10 +93,19 @@ let private jjAvailable () =
     with _ ->
         false
 
+/// Skips a jj test on a machine without jj, but FAILS it in CI: CI installs a pinned
+/// jj (scripts/install-jj.sh), so a missing one there means the workflow stopped
+/// testing the jj arm, and a skip would hide that.
+let private requireJj () =
+    if not (jjAvailable ()) then
+        if String.IsNullOrEmpty(Environment.GetEnvironmentVariable "CI") then
+            Assert.Skip "jj is not installed; the jj arm of the stamp target is untested here"
+        else
+            failwith "CI is set but jj is not on PATH: scripts/install-jj.sh did not run or did not install it"
+
 [<Fact>]
 let ``under jj, edits to the working copy do not move the stamped revision`` () =
-    if not (jjAvailable ()) then
-        Assert.Skip "jj is not installed; the jj arm of the stamp target is untested here"
+    requireJj ()
 
     use repo = jjRepoWithProject ()
     let parent = repo.CommitId "@-"
@@ -112,8 +121,7 @@ let ``under jj, edits to the working copy do not move the stamped revision`` () 
 
 [<Fact>]
 let ``under jj, an unchanged working copy stamps the commit it sits on, not dirty`` () =
-    if not (jjAvailable ()) then
-        Assert.Skip "jj is not installed; the jj arm of the stamp target is untested here"
+    requireJj ()
 
     use repo = jjRepoWithProject ()
 
@@ -121,8 +129,7 @@ let ``under jj, an unchanged working copy stamps the commit it sits on, not dirt
 
 [<Fact>]
 let ``under jj, a merge working copy is never stamped with its parents' ids run together`` () =
-    if not (jjAvailable ()) then
-        Assert.Skip "jj is not installed; the jj arm of the stamp target is untested here"
+    requireJj ()
 
     use repo = jjRepoWithProject ()
     let baseId = repo.CommitId "@-"
