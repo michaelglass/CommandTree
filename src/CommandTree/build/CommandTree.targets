@@ -29,8 +29,16 @@
           BeforeTargets="AddSourceRevisionToInformationalVersion;CoreCompile"
           Condition="'$(SourceRevisionId)' == '' And '$(CommandTreeStampRevision)' != 'false' And '$(DesignTimeBuild)' != 'true'">
 
-    <!-- Resolve the commit id: prefer jj, fall back to git. Trim jj output once and reuse it. -->
-    <Exec Command="jj log --no-graph -r @ -T commit_id"
+    <!-- Resolve the commit id: prefer jj, fall back to git. Trim jj output once and reuse it.
+
+         Under jj the stamp is the working-copy commit's PARENT, not @ itself. @ is
+         rewritten on every snapshot, so its id moves with each edit, and a stamp that
+         moves makes every build write a different assembly (so every consumer
+         recompiles and every tool that versions references by content re-checks).
+         The parent names the tree the edits sit on, and the dirty marker below says
+         there are edits. A merge (@ with several parents) prints several ids; the
+         bare-hex check below rejects that, and the git fallback applies. -->
+    <Exec Command="jj log --no-graph -r @ -T &quot;parents.map(|c| c.commit_id())&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)"
           ConsoleToMSBuild="true"
           IgnoreExitCode="true"

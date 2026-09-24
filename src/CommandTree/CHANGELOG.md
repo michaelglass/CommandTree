@@ -7,6 +7,13 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- fix: under Jujutsu, the build stamp names the working-copy commit's parent (plus
+  `.dirty` when there are edits) instead of `@` itself. jj rewrites `@` on every edit,
+  so the old stamp gave every build a different assembly. Every project referencing
+  the stamped one then recompiled, and tools that version references by content
+  re-checked them on every edit. A merge working copy, whose parents are several
+  commits, falls back to Git as before. Git repositories are unchanged.
+
 - feat: `Process.runSilentWith` takes a `SilentRun` record, so an environment, a
   timeout, a working directory and a streaming sink can be combined freely. The
   individual `runSilentWith*` helpers cover a cross-product of which only some

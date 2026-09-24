@@ -180,7 +180,10 @@ build commit id into `AssemblyInformationalVersion` for dev builds, so a binary
 built without CI/SourceLink metadata still reports the commit it came from. It
 resolves the revision from your version control (it tries Jujutsu, then Git),
 sets `SourceRevisionId`, and the SDK folds it in as `+<commit>` (with a `.dirty`
-suffix when the working copy has uncommitted changes). It never fails the build
+suffix when the working copy has uncommitted changes). Under Jujutsu the commit is
+the working-copy commit's parent: `@` is rewritten on every edit, and stamping it
+would give every build a different assembly. A merge working copy falls back to
+Git. It never fails the build
 and never overrides a `SourceRevisionId` already set by CI/SourceLink. Opt out
 with `-p:CommandTreeStampRevision=false` (whole feature) or
 `-p:CommandTreeStampDirty=false` (dirty marker only).
