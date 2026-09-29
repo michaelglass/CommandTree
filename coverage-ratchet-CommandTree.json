@@ -58,15 +58,15 @@
       "coveredBranches": 44
     },
     "Reflection.fs": {
-      "coveredLines": 869,
-      "coveredBranches": 414
+      "coveredLines": 823,
+      "coveredBranches": 407
     },
     "SpecError.fs": {
       "coveredLines": 20,
       "coveredBranches": 11
     },
     "Tree.fs": {
-      "coveredLines": 256,
+      "coveredLines": 257,
       "coveredBranches": 161
     },
     "UI.fs": {

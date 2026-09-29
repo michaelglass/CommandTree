@@ -53,6 +53,32 @@ type DefaultWrapsArgInnerDefault =
     | [<CmdDefault>] Inner of InnerWithArgDefault
     | Other
 
+type OptionalFieldDefault =
+    | [<CmdDefault>] Ratchet of config: string option
+    | Check
+
+type DefaultFlag =
+    | DryRun
+    | Port of int
+
+type FlagFieldDefault =
+    | [<CmdDefault>] Serve of flags: DefaultFlag list
+    | Stop
+
+type CleanArgs = { Path: string option; Force: bool }
+
+type RecordFieldDefault =
+    | [<CmdDefault>] Clean of CleanArgs
+    | Other
+
+type InnerFlagDefault =
+    | [<CmdDefault>] View of flags: DefaultFlag list
+    | Close
+
+type DefaultWrapsFlagInnerDefault =
+    | [<CmdDefault>] Report of InnerFlagDefault
+    | Other
+
 // Types for list field tests
 
 type ListArgCommand =
@@ -73,6 +99,10 @@ type AmbiguousAction =
 type AmbiguousCmd = Do of action: AmbiguousAction * count: int
 
 type OptionalStateCmd = MaybeState of state: AmbiguousAction option
+
+type AmbiguousActionFlag = Action of AmbiguousAction
+
+type AmbiguousFlagCmd = | [<Cmd("Act")>] Act of AmbiguousActionFlag list
 
 type ListAmbiguousCommand = | [<Cmd("Do actions")>] DoActions of actions: AmbiguousAction list
 
@@ -483,22 +513,65 @@ let ``parse uses zero-field root default`` () =
     Assert.Equal(Ok SimpleDefaultCommand.Status, result)
 
 [<Fact>]
-let ``parse returns error when nested group has no inner default`` () =
+let ``parse of empty args at a default group without its own default asks for that group's help`` () =
     let tree = CommandReflection.fromUnion<DefaultWrapsNoInnerDefault> "Test"
-    let result = CommandTree.parse tree [||]
-
-    match result with
-    | Error(InvalidArguments _) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    test <@ CommandTree.parse tree [||] = Error(HelpRequested [ "inner" ]) @>
+    test <@ CommandTree.parse tree [||] = CommandTree.parse tree [| "inner" |] @>
 
 [<Fact>]
-let ``parse returns error when root default has non-union argument`` () =
+let ``parse of empty args reports a default's missing required argument like explicit invocation`` () =
     let tree = CommandReflection.fromUnion<DefaultWithNonUnionArg> "Test"
     let result = CommandTree.parse tree [||]
 
+    test <@ result = CommandTree.parse tree [| "run" |] @>
+
     match result with
-    | Error(InvalidArguments _) -> ()
-    | other -> failwith $"Expected InvalidArguments, got: %O{other}"
+    | Error(InvalidArguments("run", msg)) -> test <@ not (msg.Contains "requires no arguments") @>
+    | other -> failwith $"Expected InvalidArguments for run, got: %O{other}"
+
+[<Fact>]
+let ``parse of empty args runs a default whose fields are all optional`` () =
+    let tree = CommandReflection.fromUnion<OptionalFieldDefault> "Test"
+    test <@ CommandTree.parse tree [||] = Ok(OptionalFieldDefault.Ratchet None) @>
+
+[<Fact>]
+let ``parse binds a default command's positional when it is named`` () =
+    let tree = CommandReflection.fromUnion<OptionalFieldDefault> "Test"
+
+    test <@ CommandTree.parse tree [| "ratchet"; "cfg.json" |] = Ok(OptionalFieldDefault.Ratchet(Some "cfg.json")) @>
+
+[<Fact>]
+let ``parse of empty args runs a default whose only field is a flag list`` () =
+    let tree = CommandReflection.fromUnion<FlagFieldDefault> "Test"
+    test <@ CommandTree.parse tree [||] = Ok(FlagFieldDefault.Serve []) @>
+
+[<Fact>]
+let ``parse of empty args runs a default whose record fields all have defaults`` () =
+    let tree = CommandReflection.fromUnion<RecordFieldDefault> "Test"
+    test <@ CommandTree.parse tree [||] = Ok(RecordFieldDefault.Clean { Path = None; Force = false }) @>
+
+[<Fact>]
+let ``parse of empty args runs a nested default whose only field is a flag list`` () =
+    let tree = CommandReflection.fromUnion<DefaultWrapsFlagInnerDefault> "Test"
+
+    let expected: Result<DefaultWrapsFlagInnerDefault, ParseError> =
+        Ok(DefaultWrapsFlagInnerDefault.Report(InnerFlagDefault.View []))
+
+    test <@ CommandTree.parse tree [||] = expected @>
+    test <@ CommandTree.parse tree [| "report" |] = expected @>
+
+[<Fact>]
+let ``global flags with no command reach the default command`` () =
+    let spec =
+        CommandReflection.fromUnionWithGlobals<OptionalFieldDefault, GlobalFlag> "Test"
+
+    test
+        <@
+            spec.Parse [| "--verbose"; "--log-level"; "debug" |] = Ok(
+                [ GlobalFlag.Verbose; GlobalFlag.LogLevel "debug" ],
+                OptionalFieldDefault.Ratchet None
+            )
+        @>
 
 [<Fact>]
 let ``parse returns error when nested default requires args not provided`` () =
@@ -2531,3 +2604,10 @@ let ``a long token is suggested at two edits`` () =
 [<Fact>]
 let ``suggestions ignore case`` () =
     test <@ CommandTree.suggestPath (suggestTree ()) [] "DEPLOY" = Some [ "infra"; "deploy" ] @>
+
+[<Fact>]
+let ``parse reports an ambiguous union flag value, inline or as the next token`` () =
+    let tree = CommandReflection.fromUnion<AmbiguousFlagCmd> "Test"
+
+    for args in [ [| "act"; "--action=sta" |]; [| "act"; "--action"; "sta" |] ] do
+        test <@ CommandTree.parse tree args = Error(AmbiguousArgument("sta", [ "start"; "status" ])) @>
