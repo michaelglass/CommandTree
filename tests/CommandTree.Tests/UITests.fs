@@ -56,6 +56,14 @@ let captureBoth (action: unit -> 'T) : string * string * 'T =
             Console.SetOut(oldOut)
             Console.SetError(oldErr))
 
+/// Like captureBoth, but keeps what was written when the action throws.
+let captureBothOrExn (action: unit -> 'T) : string * string * Result<'T, exn> =
+    captureBoth (fun () ->
+        try
+            Ok(action ())
+        with ex ->
+            Error ex)
+
 // =============================================================================
 // Color module constants
 // =============================================================================

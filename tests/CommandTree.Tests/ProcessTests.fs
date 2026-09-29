@@ -154,6 +154,59 @@ let ``runWithSpinner throws on non-zero exit code`` () =
 
     test <@ ex.Message.Contains("exit code") @>
 
+[<Fact>]
+let ``runWithSpinner echoes a successful child's stdout and stderr after the spinner line`` () =
+    let (out, err, (code, stdout, stderr)) =
+        UITests.captureBoth (fun () -> Process.runWithSpinner "noisy" "sh" [ "-c"; "echo to-out; echo to-err >&2" ])
+
+    test <@ code = 0 @>
+    test <@ stdout.Trim() = "to-out" @>
+    test <@ stderr.Trim() = "to-err" @>
+    test <@ out.EndsWith("to-out\n") @>
+    test <@ err = "to-err\n" @>
+
+[<Fact>]
+let ``runWithSpinner echoes nothing but the spinner lines for a silent child`` () =
+    let (out, err, (code, stdout, stderr)) =
+        UITests.captureBoth (fun () -> Process.runWithSpinner "quiet" "sh" [ "-c"; "exit 0" ])
+
+    test <@ code = 0 @>
+    test <@ stdout = "" && stderr = "" @>
+    test <@ err = "" @>
+    test <@ out.StartsWith("  quiet...\n") @>
+    test <@ out.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length = 2 @>
+
+[<Fact>]
+let ``runWithSpinner surfaces a failing child's output before throwing`` () =
+    let (out, err, result) =
+        UITests.captureBothOrExn (fun () ->
+            Process.runWithSpinner "failing" "sh" [ "-c"; "echo out; echo err >&2; exit 3" ])
+
+    test
+        <@
+            (match result with
+             | Error ex -> ex.Message = "Command failed with exit code 3"
+             | Ok _ -> false)
+        @>
+
+    test <@ err = "err\n\n" @>
+    test <@ out.Contains("out\n") @>
+    test <@ out.Contains("✗") @>
+
+[<Fact>]
+let ``runWithSpinner fails without echoing when the failing child said nothing`` () =
+    let (out, err, result) =
+        UITests.captureBothOrExn (fun () -> Process.runWithSpinner "mute" "sh" [ "-c"; "exit 2" ])
+
+    test <@ Result.isError result @>
+    test <@ err = "" @>
+
+    test
+        <@
+            out.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            |> Array.forall (fun l -> l.Contains("mute"))
+        @>
+
 // =============================================================================
 // runWithEnv — interactive with environment variables
 // =============================================================================

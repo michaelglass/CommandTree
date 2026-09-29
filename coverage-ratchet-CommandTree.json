@@ -2,31 +2,31 @@
   "overrides": {
     "Fish.fs": {
       "line": 35.714285714285715,
-      "branch": 0,
+      "branch": 10,
       "reason": "installHook calls external process + writes to ~/.config"
     },
     "Process.fs": [
       {
-        "line": 99.40119760479041,
-        "branch": 80,
-        "platform": "macos",
-        "reason": "Measured on macOS (CodeCoverage 18.9.0, SDK 10.0.400): 166/167 lines, 40/50 branches. Uncovered: runWithSpinner echoing stderr of a successful run and its empty-output arms, plus the compiler-generated null checks of each `use proc` disposal. Line and branch TOTALS are toolchain-dependent, so the percentage is per-platform; the absolute covered counts in countFloors are the guard."
+        "line": 100,
+        "branch": 88,
+        "reason": "Measured on macOS (CodeCoverage 18.9.0, SDK 10.0.400): 167/167 lines, 44/50 branches. The uncovered branches are the compiler-generated null checks of `use proc` disposals.",
+        "platform": "macos"
       },
       {
         "line": 99,
         "branch": 73,
-        "platform": "linux",
-        "reason": "Linux figures come from the coverage-thresholds artifact of the last green main run (CI run 33491314702, 2026-09-01): 127/128 lines, 28/38 branches. These are the numbers loosen-from-ci would merge; written by hand because that verb also pushes."
+        "reason": "Linux figures come from the coverage-thresholds artifact of the last green main run (CI run 33491314702, 2026-09-01): 127/128 lines, 28/38 branches. These are the numbers loosen-from-ci would merge; written by hand because that verb also pushes.",
+        "platform": "linux"
       }
     ],
     "Reflection.fs": {
-      "line": 97.7,
-      "branch": 87,
+      "line": 98,
+      "branch": 91,
       "reason": "Remaining uncovered: inline caseName (coverage artifact), defensive null/unreachable branches, parseFieldValue Error paths only reachable for union types but called from non-union contexts, compiler-generated branches from parseFlagsLoop closure"
     },
     "Tree.fs": {
       "line": 98,
-      "branch": 90,
+      "branch": 94,
       "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching; plus the entryAssemblyVersion entry-vs-calling-assembly fallback (GetEntryAssembly() is non-null under the test host, so the null branch is host-dependent and not deterministically coverable) — its testable logic lives in assemblyVersion(asm) which is 100% line-covered, and the wrapper is covered indirectly via renderVersion"
     },
     "UI.fs": [
@@ -51,27 +51,27 @@
     },
     "Fish.fs": {
       "coveredLines": 20,
-      "coveredBranches": 0
+      "coveredBranches": 1
     },
     "Process.fs": {
-      "coveredLines": 127,
-      "coveredBranches": 18
+      "coveredLines": 167,
+      "coveredBranches": 44
     },
     "Reflection.fs": {
-      "coveredLines": 855,
-      "coveredBranches": 294
+      "coveredLines": 869,
+      "coveredBranches": 414
     },
     "SpecError.fs": {
-      "coveredLines": 16,
-      "coveredBranches": 0
+      "coveredLines": 20,
+      "coveredBranches": 11
     },
     "Tree.fs": {
-      "coveredLines": 206,
-      "coveredBranches": 66
+      "coveredLines": 256,
+      "coveredBranches": 161
     },
     "UI.fs": {
       "coveredLines": 51,
-      "coveredBranches": 22
+      "coveredBranches": 24
     }
   }
 }
