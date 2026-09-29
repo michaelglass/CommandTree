@@ -35,6 +35,12 @@ let UnsupportedFieldTypeCode = "CT001"
 [<Literal>]
 let ListFieldPlacementCode = "CT002"
 
+/// CT003: a root command DU whose env prefix or globals are passed at the call site instead
+/// of declared with `[<CmdEnvPrefix>]` / `[<CmdGlobals>]`, so tools can't read them from
+/// metadata.
+[<Literal>]
+let UndeclaredRootMetadataCode = "CT003"
+
 /// Human-readable list of supported field types — mirrors
 /// `CommandTree.Reflection.supportedTypesDescription`.
 [<Literal>]
@@ -268,11 +274,59 @@ let private unionsFromCall (mfv: FSharpMemberOrFunctionOrValue) (memberTypeArgs:
     else
         []
 
+let private hasAttribute (fullName: string) (entity: FSharpEntity) =
+    entity.Attributes
+    |> Seq.exists (fun a -> a.AttributeType.TryFullName = Some fullName)
+
+/// CT003 for one `fromUnion*` call: a runtime env prefix, or globals the root DU doesn't
+/// declare. `'Cmd` is the first type argument; the prefix is the last argument.
+let private undeclaredRootMetadata
+    (mfv: FSharpMemberOrFunctionOrValue)
+    (memberTypeArgs: FSharpType list)
+    (argExprs: FSharpExpr list)
+    (range: range)
+    : Finding list =
+    match memberTypeArgs with
+    | cmdType :: globalsTypes when isUnion cmdType ->
+        let cmd = (strip cmdType).TypeDefinition
+
+        let prefix =
+            if mfv.CompiledName.EndsWith "Env" then
+                let shown =
+                    List.tryLast argExprs
+                    |> Option.bind (function
+                        | FSharpExprPatterns.Const(value, _) -> Some $"\"%O{value}\""
+                        | _ -> None)
+                    |> Option.defaultValue "\"...\""
+
+                [ { Code = UndeclaredRootMetadataCode
+                    Message =
+                      $"Declare [<CmdEnvPrefix(%s{shown})>] on '%s{cmd.DisplayName}' instead of passing "
+                      + "the prefix at runtime, so tools can read it from metadata."
+                    Range = range } ]
+            else
+                []
+
+        let globals =
+            match globalsTypes with
+            | [ globalsType ] when not (hasAttribute "CommandTree.CmdGlobalsAttribute" cmd) ->
+                [ { Code = UndeclaredRootMetadataCode
+                    Message =
+                      $"Declare [<CmdGlobals(typeof<%s{typeDisplayName globalsType}>)>] on "
+                      + $"'%s{cmd.DisplayName}' so tools can read the globals from metadata."
+                    Range = range } ]
+            | _ -> []
+
+        prefix @ globals
+    | _ -> []
+
 /// Walk every `FSharpExpr` reachable from an implementation file, collecting the command DU
-/// entities at `fromUnion*` call sites. Recursion is generic via `ImmediateSubExpressions`,
-/// so no per-expression-shape enumeration is needed (and nothing drifts as FCS adds nodes).
-let private collectCommandUnions (typedTree: FSharpImplementationFileContents) : FSharpEntity list =
+/// entities at `fromUnion*` call sites plus their CT003 findings. Recursion is generic via
+/// `ImmediateSubExpressions`, so no per-expression-shape enumeration is needed (and nothing
+/// drifts as FCS adds nodes).
+let private collectCommandUnions (typedTree: FSharpImplementationFileContents) : FSharpEntity list * Finding list =
     let entities = ResizeArray<FSharpEntity>()
+    let callFindings = ResizeArray<Finding>()
     let seen = System.Collections.Generic.HashSet<string>()
 
     let add (ent: FSharpEntity) =
@@ -281,8 +335,12 @@ let private collectCommandUnions (typedTree: FSharpImplementationFileContents) :
 
     let rec walkExpr (expr: FSharpExpr) =
         match expr with
-        | FSharpExprPatterns.Call(_objExprOpt, mfv, _objTypeArgs, memberTypeArgs, _argExprs) ->
-            unionsFromCall mfv memberTypeArgs |> List.iter add
+        | FSharpExprPatterns.Call(_objExprOpt, mfv, _objTypeArgs, memberTypeArgs, argExprs) ->
+            match unionsFromCall mfv memberTypeArgs with
+            | [] -> ()
+            | unions ->
+                List.iter add unions
+                callFindings.AddRange(undeclaredRootMetadata mfv memberTypeArgs argExprs expr.Range)
         | _ -> ()
 
         for sub in expr.ImmediateSubExpressions do
@@ -295,18 +353,22 @@ let private collectCommandUnions (typedTree: FSharpImplementationFileContents) :
         | FSharpImplementationFileDeclaration.InitAction expr -> walkExpr expr
 
     List.iter walkDecl typedTree.Declarations
-    List.ofSeq entities
+    List.ofSeq entities, List.ofSeq callFindings
 
-/// Build SDK messages from findings. Severity is `Warning`: these are real shape bugs that
-/// will crash the program at startup, but the analyzer is opt-in and must never break a
-/// build by itself — a warning gives the IDE squiggle / `fshw check` surface the design wants.
+/// Build SDK messages from findings. CT001/CT002 are `Warning`: real shape bugs that will
+/// crash the program at startup, but the analyzer is opt-in and must never break a build by
+/// itself. CT003 is `Info`: the call works, it only hides the declaration from tools.
 let private toMessages (findings: Finding list) : Message list =
     findings
     |> List.map (fun f ->
         { Type = Name
           Message = f.Message
           Code = f.Code
-          Severity = Severity.Warning
+          Severity =
+            if f.Code = UndeclaredRootMetadataCode then
+                Severity.Info
+            else
+                Severity.Warning
           Range = f.Range
           Fixes = [] })
 
@@ -314,8 +376,9 @@ let private toMessages (findings: Finding list) : Message list =
 /// DU(s), and validate their shape. De-duplicates findings by (code, range, message) so a
 /// DU constructed at several call sites is reported once.
 let analyzeTypedTree (typedTree: FSharpImplementationFileContents) : Message list =
-    collectCommandUnions typedTree
-    |> List.collect (analyzeCommandUnion Set.empty)
+    let unions, callFindings = collectCommandUnions typedTree
+
+    (unions |> List.collect (analyzeCommandUnion Set.empty)) @ callFindings
     |> List.distinctBy (fun f -> f.Code, f.Range, f.Message)
     |> toMessages
 
@@ -329,6 +392,8 @@ let analyzeOptionalTypedTree (typedTree: FSharpImplementationFileContents option
 
 /// Analyzer entry point. Requires the typed tree (recovers `'Cmd` from call-site generic
 /// instantiation), so it is a CLI/editor analyzer with full type-check information.
-[<CliAnalyzer(Name, "Flags CommandTree command-DU shape errors (unsupported field types, list-field placement)")>]
+[<CliAnalyzer(Name,
+              "Flags CommandTree command-DU shape errors (unsupported field types, list-field placement) "
+              + "and undeclared root env prefix / globals")>]
 let commandTreeAnalyzer: Analyzer<CliContext> =
     fun (context: CliContext) -> async { return analyzeOptionalTypedTree context.TypedTree }

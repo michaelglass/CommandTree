@@ -153,7 +153,7 @@ type CmdExampleAttribute([<ParamArray>] examples: string[]) =
     member val Examples: string[] = examples
 
 /// Attribute to override the env var suffix for a flag union case.
-/// The prefix (set via fromUnionWithEnv/fromUnionWithGlobalsAndEnv) is prepended.
+/// The prefix (declared with [<CmdEnvPrefix>] or passed to a *WithEnv entry point) is prepended.
 /// E.g., [<CmdEnv("LVL")>] with prefix "MYAPP" resolves to MYAPP_LVL.
 [<AttributeUsage(AttributeTargets.Property, AllowMultiple = false)>]
 type CmdEnvAttribute(suffix: string) =
@@ -170,3 +170,40 @@ type CmdEnvRawAttribute(varName: string) =
 
     /// Full env var name (prefix ignored)
     member val VarName: string = varName
+
+/// Declares the env var prefix on a root command union. Every
+/// `CommandReflection.fromUnion*` entry point reads it, so
+/// `fromUnion` / `fromUnionWithGlobals` need no prefix argument.
+/// A runtime prefix that differs is `SpecError.EnvPrefixConflict`.
+///
+/// Example:
+/// ```fsharp
+/// [<CmdEnvPrefix("MYAPP")>]
+/// type Command =
+///     | Build of BuildFlag list   // BuildFlag.Verbose binds MYAPP_VERBOSE
+/// ```
+[<AttributeUsage(AttributeTargets.Class, AllowMultiple = false)>]
+type CmdEnvPrefixAttribute(prefix: string) =
+    inherit Attribute()
+
+    /// Env var prefix; flag env names are PREFIX_SUFFIX
+    member val Prefix: string = prefix
+
+/// Declares the global-flag union of a root command union. The declaration
+/// lets tools read the globals from metadata; the entry point still names the
+/// type (`fromUnionWithGlobals<Command, GlobalFlag>`) so parse results
+/// stay typed. A different type argument is `SpecError.GlobalsConflict`;
+/// an entry point without globals is `SpecError.DeclaredGlobalsIgnored`.
+///
+/// Example:
+/// ```fsharp
+/// [<CmdGlobals(typeof<GlobalFlag>)>]
+/// type Command =
+///     | Build
+/// ```
+[<AttributeUsage(AttributeTargets.Class, AllowMultiple = false)>]
+type CmdGlobalsAttribute(globalsType: Type) =
+    inherit Attribute()
+
+    /// The global-flag union type
+    member val GlobalsType: Type = globalsType
