@@ -7,10 +7,10 @@
     },
     "Process.fs": [
       {
-        "line": 99.06542056074767,
-        "branch": 81.8,
+        "line": 99.40119760479041,
+        "branch": 80,
         "platform": "macos",
-        "reason": "Remaining uncovered branch is compiler-generated. Measured by the 2026-09-02 full run on macOS: 127/128 lines, 18/22 branches. Branch TOTALS are toolchain-dependent (the collector instruments 22 here and 38 on the Linux runner), so the percentage is per-platform context; the absolute covered counts in countFloors are the guard."
+        "reason": "Measured on macOS (CodeCoverage 18.9.0, SDK 10.0.400): 166/167 lines, 40/50 branches. Uncovered: runWithSpinner echoing stderr of a successful run and its empty-output arms, plus the compiler-generated null checks of each `use proc` disposal. Line and branch TOTALS are toolchain-dependent, so the percentage is per-platform; the absolute covered counts in countFloors are the guard."
       },
       {
         "line": 99,
@@ -32,9 +32,9 @@
     "UI.fs": [
       {
         "line": 41.80327868852459,
-        "branch": 84.6,
+        "branch": 63.1578947368421,
         "platform": "macos",
-        "reason": "Spinner threads use Console.Write directly; non-interactive path covered. Measured by the 2026-09-02 full run on macOS: 51/122 lines, 22/26 branches. Branch TOTALS are toolchain-dependent (26 here, 38 on the Linux runner), so the percentage is per-platform context; the absolute covered counts in countFloors are the guard."
+        "reason": "Spinner threads write to the console only when stdout is a terminal; the non-interactive path is covered. Measured on macOS (CodeCoverage 18.9.0, SDK 10.0.400): 51/122 lines, 24/38 branches, the same branch total Linux instruments."
       },
       {
         "line": 41,
