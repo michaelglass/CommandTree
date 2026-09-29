@@ -7,6 +7,17 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- fix: a multi-line description now renders correctly in every help surface. Write
+  it flush-left; each two-column table (the command listing from `help`,
+  `helpForPath` and `helpWithGlobals`, the expanded listing from `helpFull` at any
+  nesting depth, and the Arguments and Options rows) indents continuation lines to
+  that row's own description column, and a group's `(default)` marker now follows
+  the first line. Per-command help still prints the description flush-left.
+  Previously continuation lines landed at column 0 in the listings, where they read
+  as commands. **Output change:** a caller that pre-padded continuation lines to
+  work around this (for example with 19 spaces for the command listing) now gets
+  double indentation in the listings and should remove the padding.
+
 ## 0.11.2 - 2026-09-24
 
 - fix: under Jujutsu, the build stamp names the working-copy commit's parent (plus

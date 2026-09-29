@@ -248,6 +248,22 @@ module CommandTree =
         elif arg.IsOptional then $"[%s{arg.Name}]"
         else $"<%s{arg.Name}>"
 
+    /// Split a description into its lines, accepting either line ending.
+    let private descriptionLines (description: string) : string list =
+        description.Split([| "\r\n"; "\n" |], StringSplitOptions.None) |> List.ofArray
+
+    /// Lay out one row of a two-column help table. The first description line follows
+    /// the label; each further line is indented to start in the same column, wherever
+    /// the label's width put it. Blank lines stay empty rather than trailing spaces.
+    let private tableRow (label: string) (lines: string list) : string list =
+        let hang = String.replicate (label.Length + 1) " "
+
+        lines
+        |> List.mapi (fun i line ->
+            if i = 0 then $"%s{label} %s{line}"
+            elif line = "" then ""
+            else hang + line)
+
     let private flagDescription (fi: FlagInfo) =
         if fi.IsRepeatable then
             $"%s{fi.Description} (repeatable)"
@@ -275,7 +291,10 @@ module CommandTree =
             | None -> ""
 
         let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
-        $"%s{label.PadRight(30)} %s{flagDescription fi}%s{envPart}"
+
+        descriptionLines $"%s{flagDescription fi}%s{envPart}"
+        |> tableRow (label.PadRight(30))
+        |> String.concat "\n"
 
     /// Format arguments for a command
     let private formatArgs' (argList: ArgInfo list) =
@@ -293,7 +312,11 @@ module CommandTree =
             let argsStr = formatArgs' (args c)
             let cmdStr = $"%s{name c}%s{argsStr}"
             let marker = if defChild = Some(name c) then " (default)" else ""
-            $"  %s{cmdStr.PadRight(16)} %s{desc c}%s{marker}")
+
+            descriptionLines (desc c)
+            |> List.mapi (fun i line -> if i = 0 then line + marker else line)
+            |> tableRow $"  %s{cmdStr.PadRight(16)}"
+            |> String.concat "\n")
         |> String.concat "\n"
 
     /// Render a single arg description line for the Arguments section
@@ -305,7 +328,9 @@ module CommandTree =
             | Some d -> $" (default: %s{d})"
             | None -> ""
 
-        $"%s{label.PadRight(20)} %s{desc}%s{defaultSuffix}"
+        descriptionLines $"%s{desc}%s{defaultSuffix}"
+        |> tableRow (label.PadRight(20))
+        |> String.concat "\n"
 
     /// Render a named help section (returns empty string when lines is empty)
     let private renderSection (header: string) (lines: string list) =
@@ -363,14 +388,14 @@ module CommandTree =
                 let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
 
                 let cmdStr = $"%s{leaf.Name}%s{argsStr}%s{optionsStr}"
-                [ $"%s{pad}%s{cmdStr.PadRight(20)} %s{leaf.Description}" ]
+                tableRow $"%s{pad}%s{cmdStr.PadRight(20)}" (descriptionLines leaf.Description)
 
             | Group group ->
                 let header =
                     if group.Name = "" then
                         []
                     else
-                        [ $"%s{pad}%s{group.Name.PadRight(20)} %s{group.Description}" ]
+                        tableRow $"%s{pad}%s{group.Name.PadRight(20)}" (descriptionLines group.Description)
 
                 let childIndent = if group.Name = "" then indent else indent + 1
 

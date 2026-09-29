@@ -168,3 +168,176 @@ let ``helpForPath example renders leaf name exactly once`` () =
 
     test <@ occurrences = 1 @>
     test <@ line.Trim() = "mycli merge old.xml new.xml out.xml" @>
+
+// =============================================================================
+// Multi-line descriptions: the caller writes flush-left prose, and each help
+// surface lays it out. Table rows hang continuation lines under their own
+// description column; the per-command block keeps them flush-left.
+// =============================================================================
+
+[<Literal>]
+let private ThreeLineDescription =
+    "Confirm the gate verdict\nfailed here, not selected by check\nre-run it to see why"
+
+type LayoutFlag = | [<CmdFlag(Description = "Skip the actual operation\nand print what would run")>] DryRun
+
+type LayoutToolsCommand =
+    | [<CmdDefault; Cmd(ThreeLineDescription)>] Confirm
+    | [<Cmd("Show status")>] Status
+
+type LayoutCommand =
+    | [<Cmd(ThreeLineDescription)>] Confirm
+    | [<Cmd("Merge\nthe inputs"); CmdArg("Baseline XML\nfrom main")>] Merge of baseline: string * current: string
+    | [<Cmd("Deploy")>] Deploy of LayoutFlag list
+    | [<Cmd("Nested tools")>] Tools of LayoutToolsCommand
+
+let private layoutTree = CommandReflection.fromUnion<LayoutCommand> "Layout"
+
+[<Fact>]
+let ``group listing hangs multi-line descriptions under the description column`` () =
+    let expected =
+        "Usage: fshw <command>\n"
+        + "\n"
+        + "Layout\n"
+        + "\n"
+        + "Commands:\n"
+        + "  confirm          Confirm the gate verdict\n"
+        + "                   failed here, not selected by check\n"
+        + "                   re-run it to see why\n"
+        + "  merge <baseline> <current> Merge\n"
+        + "                             the inputs\n"
+        + "  deploy           Deploy\n"
+        + "  tools            Nested tools"
+
+    test <@ CommandTree.help layoutTree [] "fshw" = expected @>
+
+[<Fact>]
+let ``nested group listing puts the default marker on the first description line`` () =
+    let expected =
+        "Usage: fshw tools <command>\n"
+        + "\n"
+        + "Nested tools\n"
+        + "\n"
+        + "Commands:\n"
+        + "  confirm          Confirm the gate verdict (default)\n"
+        + "                   failed here, not selected by check\n"
+        + "                   re-run it to see why\n"
+        + "  status           Show status"
+
+    test <@ CommandTree.helpForPath layoutTree [ "tools" ] "fshw" = expected @>
+
+[<Fact>]
+let ``helpWithGlobals listing hangs multi-line descriptions under the description column`` () =
+    let help = CommandTree.helpWithGlobals layoutTree [] "fshw"
+
+    let listing =
+        help.Substring(help.IndexOf("Commands:\n", System.StringComparison.Ordinal))
+
+    test
+        <@
+            listing.StartsWith(
+                "Commands:\n"
+                + "  confirm          Confirm the gate verdict\n"
+                + "                   failed here, not selected by check\n"
+                + "                   re-run it to see why\n",
+                System.StringComparison.Ordinal
+            )
+        @>
+
+[<Fact>]
+let ``helpFull hangs multi-line descriptions under each depth's own column`` () =
+    let expected =
+        "Usage: fshw <command>\n"
+        + "\n"
+        + "Commands:\n"
+        + "confirm              Confirm the gate verdict\n"
+        + "                     failed here, not selected by check\n"
+        + "                     re-run it to see why\n"
+        + "merge <baseline> <current> Merge\n"
+        + "                           the inputs\n"
+        + "deploy [options]     Deploy\n"
+        + "tools                Nested tools\n"
+        + "  confirm              Confirm the gate verdict (default)\n"
+        + "                       failed here, not selected by check\n"
+        + "                       re-run it to see why\n"
+        + "  status               Show status"
+
+    test <@ CommandTree.helpFull layoutTree "fshw" = expected @>
+
+[<Fact>]
+let ``per-command help keeps a multi-line description flush-left`` () =
+    let expected =
+        "Usage: fshw confirm\n"
+        + "\n"
+        + "Confirm the gate verdict\n"
+        + "failed here, not selected by check\n"
+        + "re-run it to see why"
+
+    test <@ CommandTree.helpForPath layoutTree [ "confirm" ] "fshw" = expected @>
+
+[<Fact>]
+let ``nested per-command help keeps a multi-line description flush-left`` () =
+    let expected =
+        "Usage: fshw tools confirm\n"
+        + "\n"
+        + "Confirm the gate verdict\n"
+        + "failed here, not selected by check\n"
+        + "re-run it to see why"
+
+    test <@ CommandTree.helpForPath layoutTree [ "tools"; "confirm" ] "fshw" = expected @>
+
+[<Fact>]
+let ``argument and option rows hang multi-line descriptions under their column`` () =
+    let merge = CommandTree.helpForPath layoutTree [ "merge" ] "fshw"
+
+    let deploy = CommandTree.helpForPath layoutTree [ "deploy" ] "fshw"
+
+    test
+        <@
+            merge = "Usage: fshw merge <baseline> <current>\n"
+                    + "\n"
+                    + "Merge\n"
+                    + "the inputs\n"
+                    + "\n"
+                    + "Arguments:\n"
+                    + "  <baseline>         Baseline XML\n"
+                    + "                     from main"
+        @>
+
+    test
+        <@
+            deploy = "Usage: fshw deploy [options]\n"
+                     + "\n"
+                     + "Deploy\n"
+                     + "\n"
+                     + "Options:\n"
+                     + "  --dry-run, -d                Skip the actual operation\n"
+                     + "                               and print what would run"
+        @>
+
+/// The root listing of layoutTree with its confirm command's description replaced.
+let private listingWithConfirmDescription (description: string) =
+    let confirm =
+        match CommandTree.findByPath layoutTree [ "confirm" ] with
+        | Some(CommandTree.Leaf leaf) -> CommandTree.Leaf { leaf with Description = description }
+        | other -> failwith $"expected the confirm leaf, got %A{other}"
+
+    match layoutTree with
+    | CommandTree.Group g -> CommandTree.help (CommandTree.Group { g with Children = [ confirm ] }) [] "fshw"
+    | other -> failwith $"expected a group, got %A{other}"
+
+[<Fact>]
+let ``Windows line endings in a description render as single newlines in a listing`` () =
+    test
+        <@
+            (listingWithConfirmDescription "first\r\nsecond")
+                .EndsWith("  confirm          first\n                   second")
+        @>
+
+[<Fact>]
+let ``a blank line in a listed description stays empty instead of trailing spaces`` () =
+    test
+        <@
+            (listingWithConfirmDescription "first\n\nsecond")
+                .EndsWith("  confirm          first\n\n                   second")
+        @>
