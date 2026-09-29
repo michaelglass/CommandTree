@@ -341,3 +341,18 @@ let ``a blank line in a listed description stays empty instead of trailing space
             (listingWithConfirmDescription "first\n\nsecond")
                 .EndsWith("  confirm          first\n\n                   second")
         @>
+
+type OptionalDefaultHelpCommand =
+    | [<Cmd("Ratchet coverage"); CmdDefault>] Ratchet of config: string option
+    | [<Cmd("Check coverage")>] Check
+
+[<Fact>]
+let ``help marks a default command that takes arguments`` () =
+    let tree = CommandReflection.fromUnion<OptionalDefaultHelpCommand> "Test"
+    let lines = (CommandTree.help tree [] "tool").Split('\n')
+
+    test
+        <@
+            lines
+            |> Array.exists (fun l -> l.Contains "ratchet [config]" && l.EndsWith "Ratchet coverage (default)")
+        @>

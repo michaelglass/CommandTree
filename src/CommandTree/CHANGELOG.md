@@ -7,6 +7,19 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- fix: running a tool with no command (or only global flags) now runs a
+  `[<CmdDefault>]` command that has arguments, such as
+  `Ratchet of config: string option`, exactly as if it had been named: optional
+  arguments are left empty and a missing required argument reports the same error
+  as naming the command. Previously any default with arguments failed with
+  "Default command requires no arguments".
+- feat!: `GroupData.Default` is now the default child's name (`string option`), and
+  `DefaultCommand` is removed. A group's default no longer carries its own parser,
+  so it cannot parse differently from the child it names. Hand-built trees set
+  `Default = Some "child-name"`. A default that is itself a group without a default
+  now asks for that group's help (`HelpRequested`), as naming it does, instead of
+  returning `InvalidArguments`.
+
 ## 0.11.3 - 2026-09-29
 
 - fix: a multi-line description now renders correctly in every help surface. Write

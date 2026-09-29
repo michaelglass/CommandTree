@@ -1072,31 +1072,11 @@ module CommandReflection =
                         processCase nestedCase nestedWrap)
                     |> Array.toList
 
-                let defaultCase = nestedCases |> Array.tryFind isDefault
-
-                let defaultCmd =
-                    defaultCase
-                    |> Option.map (fun dc ->
-                        let dcName = getCommandName dc
-
-                        { ChildName = dcName
-                          Parse =
-                            fun (args: string array) ->
-                                let nestedFields = dc.GetFields()
-                                let fieldValues = parseFields nestedFields args
-
-                                match validateFields dcName fieldValues with
-                                | Ok values ->
-                                    let nestedValue = FSharpValue.MakeUnion(dc, values)
-                                    let cmdValue = wrapValue (FSharpValue.MakeUnion(outerCase, [| nestedValue |]))
-                                    Ok(cmdValue :?> 'Cmd)
-                                | Error e -> Error e })
-
                 CommandTree.Group
                     { Name = cmdName
                       Description = desc
                       Children = nestedChildren
-                      Default = defaultCmd }
+                      Default = nestedCases |> Array.tryFind isDefault |> Option.map getCommandName }
             elif fields.Length = 1 && FSharpType.IsRecord(fields.[0].PropertyType) then
                 // Record-typed argument: expand record fields as positional args with defaults
                 let recordType = fields.[0].PropertyType
@@ -1212,45 +1192,11 @@ module CommandReflection =
 
         let children = cases |> Array.map (fun case -> processCase case id) |> Array.toList
 
-        let rootDefault = cases |> Array.tryFind isDefault
-
-        let defaultCmd =
-            rootDefault
-            |> Option.map (fun defaultCase ->
-                let defaultName = getCommandName defaultCase
-
-                { ChildName = defaultName
-                  Parse =
-                    fun (args: string array) ->
-                        let fields = defaultCase.GetFields()
-
-                        if fields.Length = 0 then
-                            Ok(FSharpValue.MakeUnion(defaultCase, [||]) :?> 'Cmd)
-                        elif fields.Length = 1 && isUnionType fields.[0].PropertyType then
-                            // Nested group - find its default and delegate
-                            let nestedType = fields.[0].PropertyType
-                            let nestedCases = FSharpType.GetUnionCases(nestedType)
-
-                            match nestedCases |> Array.tryFind isDefault with
-                            | Some nestedDefault ->
-                                let nestedFields = nestedDefault.GetFields()
-                                let fieldValues = parseFields nestedFields args
-
-                                match validateFields defaultName fieldValues with
-                                | Ok values ->
-                                    let nestedValue = FSharpValue.MakeUnion(nestedDefault, values)
-                                    let cmdValue = FSharpValue.MakeUnion(defaultCase, [| nestedValue |])
-                                    Ok(cmdValue :?> 'Cmd)
-                                | Error e -> Error e
-                            | None -> Error(InvalidArguments(defaultName, "No default command in nested group"))
-                        else
-                            Error(InvalidArguments(defaultName, "Default command requires no arguments")) })
-
         CommandTree.Group
             { Name = ""
               Description = rootDesc
               Children = children
-              Default = defaultCmd }
+              Default = cases |> Array.tryFind isDefault |> Option.map getCommandName }
 
     /// Internal: build the tree and surface any accumulated shape errors as a
     /// Result. Single source of truth for the public try-variants below.
