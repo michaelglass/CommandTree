@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.11.3 - 2026-09-29
+
 - fix: a multi-line description now renders correctly in every help surface. Write
   it flush-left; each two-column table (the command listing from `help`,
   `helpForPath` and `helpWithGlobals`, the expanded listing from `helpFull` at any
