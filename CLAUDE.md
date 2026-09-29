@@ -45,7 +45,7 @@ dotnet test --coverage --coverage-output-format cobertura --coverage-output "$PW
 
 Six source files in `src/CommandTree/`:
 
-- **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions), `CmdFlagAttribute` (flag name/short override on DU flag cases), `CmdEnvAttribute` (env var suffix override), `CmdEnvRawAttribute` (exact env var name override).
+- **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions), `CmdFlagAttribute` (flag name/short override on DU flag cases), `CmdEnvAttribute` (env var suffix override), `CmdEnvRawAttribute` (exact env var name override), and the root-union declarations `CmdEnvPrefixAttribute` (env var prefix) and `CmdGlobalsAttribute` (global-flag union), which every `fromUnion*` entry point reads.
 
 - **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, `FlagInfo`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`, `UnknownFlag`, `DuplicateFlag`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, `suggestPath` (closest command path anywhere in the tree, for "Did you mean" refusals), and `fishCompletions`.
 

@@ -22,13 +22,13 @@ type GlobalFlag =
     | [<Cmd("Enable verbose output")>] Verbose
     | [<Cmd("Set log level"); CmdEnv("LVL")>] LogLevel of string
 
+[<CmdEnvPrefix("MYAPP"); CmdGlobals(typeof<GlobalFlag>)>]
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 
-let spec =
-    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "My CLI" "MYAPP"
+let spec = CommandReflection.fromUnionWithGlobals<Command, GlobalFlag> "My CLI"
 
 match spec.Parse argv with
 | Ok(globals, Task(Add(title, _))) -> printfn "Adding %s" title
@@ -165,7 +165,7 @@ let main argv =
         1
 ```
 
-For global flags and env-var binding, use `fromUnionWithGlobalsAndEnv`, which
+For global flags, use `fromUnionWithGlobals`, which
 returns a `GlobalSpec` whose `Parse` yields `(globals, command)`. Global flags
 can appear **anywhere** in the arg list — before, after, or interleaved with
 command args. See [the example](examples/ExampleCli/Program.fs) for a full
@@ -187,6 +187,8 @@ Decorate union cases to customize parsing, help, and completions:
 | `[<CmdFlag(Name, Short, Description, Repeatable)>]` | Overrides the derived name/short/description of a DU flag case. `Repeatable = true` allows multiple occurrences. |
 | `[<CmdEnv("SUFFIX")>]` | Overrides the env-var suffix for a flag (the prefix still applies). |
 | `[<CmdEnvRaw("VAR_NAME")>]` | Sets the exact env-var name, ignoring the prefix. |
+| `[<CmdEnvPrefix("PREFIX")>]` | On the root union: the env-var prefix for every flag (see [Declaring the env prefix and globals](#declaring-the-env-prefix-and-globals)). |
+| `[<CmdGlobals(typeof<GlobalFlag>)>]` | On the root union: its global-flag union. |
 
 ## Flags and env vars
 
@@ -230,10 +232,40 @@ type CheckFlag =
 ```
 <!-- sync:flags-check:end -->
 
-When an env prefix is configured (`fromUnionWithEnv` / `fromUnionWithGlobalsAndEnv`),
-each flag case also reads `PREFIX_SCREAMING_SNAKE_CASE`. Resolution order is
+When an env prefix is configured, each flag case (command and global) also
+reads `PREFIX_SCREAMING_SNAKE_CASE`. Resolution order is
 **CLI flag > env var > absent**. For booleans, `"true"`/`"1"` mean present and
 `"false"`/`"0"`/unset mean absent.
+
+### Declaring the env prefix and globals
+
+Declare the prefix and the global-flag union on the root command union. Every
+`fromUnion*` entry point reads the declarations, and tools can read them from
+the assembly's metadata without running the program:
+
+```fsharp
+[<CmdEnvPrefix("MYAPP"); CmdGlobals(typeof<GlobalFlag>)>]
+type Command =
+    | Check of CheckFlag list
+
+let spec = CommandReflection.fromUnionWithGlobals<Command, GlobalFlag> "My CLI"
+// --conf also reads MYAPP_CONFIG; GlobalFlag.LogLevel reads MYAPP_LVL
+```
+
+`fromUnionWithGlobals` still takes `GlobalFlag` as a type argument so
+`spec.Parse` returns typed globals. A declaration that disagrees with the entry
+point is a spec error, so the two can't drift apart:
+
+| Mismatch | Spec error |
+|---|---|
+| `fromUnionWithEnv`/`…AndEnv` passes a different prefix | `EnvPrefixConflict` |
+| `'Globals` differs from `[<CmdGlobals>]` | `GlobalsConflict` |
+| `fromUnion`/`fromUnionWithEnv` on a union declaring `[<CmdGlobals>]` | `DeclaredGlobalsIgnored` |
+| a blank `[<CmdEnvPrefix>]` | `InvalidEnvPrefix` |
+
+A root union without either attribute behaves exactly as before; the runtime
+prefix arguments (`fromUnionWithEnv`, `fromUnionWithGlobalsAndEnv`) still work.
+Only the root union's attributes are read.
 
 ## Supported field types
 

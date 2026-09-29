@@ -22,13 +22,13 @@ type GlobalFlag =
     | [<Cmd("Enable verbose output")>] Verbose
     | [<Cmd("Set log level"); CmdEnv("LVL")>] LogLevel of string
 
+[<CmdEnvPrefix("MYAPP"); CmdGlobals(typeof<GlobalFlag>)>]
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Run the test suite")>] Test
     | [<Cmd("Show full help")>] Help
 
-let spec =
-    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "My CLI" "MYAPP"
+let spec = CommandReflection.fromUnionWithGlobals<Command, GlobalFlag> "My CLI"
 
 match spec.Parse argv with
 | Ok(globals, Task(Add(title, _))) -> printfn "Adding %s" title
@@ -154,7 +154,7 @@ let main argv =
         1
 ```
 
-For global flags and env-var binding, use `fromUnionWithGlobalsAndEnv`, which
+For global flags, use `fromUnionWithGlobals`, which
 returns a `GlobalSpec` whose `Parse` yields `(globals, command)`. Global flags
 can appear **anywhere** in the arg list — before, after, or interleaved with
 command args. See [the example](examples/ExampleCli/Program.fs) for a full

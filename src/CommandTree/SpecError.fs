@@ -26,6 +26,17 @@ type SpecError =
     | GlobalFlagCollision of flag: string * command: string
     /// A command flag's short name (<c>-x</c>) collides with a global flag.
     | GlobalShortFlagCollision of flag: string * command: string
+    /// The root union's <c>[&lt;CmdEnvPrefix&gt;]</c> differs from the prefix
+    /// passed to a <c>*WithEnv</c> entry point.
+    | EnvPrefixConflict of declared: string * passed: string
+    /// The root union's <c>[&lt;CmdEnvPrefix&gt;]</c> is null, empty, or whitespace.
+    | InvalidEnvPrefix of prefix: string
+    /// The root union's <c>[&lt;CmdGlobals&gt;]</c> type differs from the
+    /// <c>'Globals</c> type argument.
+    | GlobalsConflict of declared: System.Type * passed: System.Type
+    /// The root union declares <c>[&lt;CmdGlobals&gt;]</c> but was built by an
+    /// entry point without globals, which would drop the global flags.
+    | DeclaredGlobalsIgnored of declared: System.Type
 
 /// Rendering helpers for <see cref="T:CommandTree.SpecError"/>.
 [<RequireQualifiedAccess>]
@@ -59,6 +70,15 @@ module SpecError =
         | GlobalFlagCollision(flag, command) -> $"Flag '%s{flag}' on command '%s{command}' conflicts with a global flag"
         | GlobalShortFlagCollision(flag, command) ->
             $"Flag '%s{flag}' on command '%s{command}' conflicts with a global flag"
+        | EnvPrefixConflict(declared, passed) ->
+            $"[<CmdEnvPrefix(\"%s{declared}\")>] conflicts with the env prefix '%s{passed}' passed at runtime; "
+            + $"expected '%s{declared}'. Drop the runtime prefix and use fromUnion / fromUnionWithGlobals"
+        | InvalidEnvPrefix prefix -> $"[<CmdEnvPrefix(\"%s{prefix}\")>] must be a non-blank prefix"
+        | GlobalsConflict(declared, passed) ->
+            $"[<CmdGlobals(typeof<%s{declared.Name}>)>] conflicts with the globals type argument '%s{passed.Name}'"
+        | DeclaredGlobalsIgnored declared ->
+            $"[<CmdGlobals(typeof<%s{declared.Name}>)>] is declared but this entry point takes no globals; "
+            + $"use fromUnionWithGlobals<_, %s{declared.Name}>"
 
     /// Multi-error rendering used by the throwing wrappers: a count header
     /// followed by one line per error.

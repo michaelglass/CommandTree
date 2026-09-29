@@ -46,7 +46,7 @@
   },
   "countFloors": {
     "Attributes.fs": {
-      "coveredLines": 28,
+      "coveredLines": 32,
       "coveredBranches": 0
     },
     "Fish.fs": {
@@ -58,12 +58,12 @@
       "coveredBranches": 44
     },
     "Reflection.fs": {
-      "coveredLines": 823,
-      "coveredBranches": 407
+      "coveredLines": 846,
+      "coveredBranches": 421
     },
     "SpecError.fs": {
-      "coveredLines": 20,
-      "coveredBranches": 11
+      "coveredLines": 26,
+      "coveredBranches": 15
     },
     "Tree.fs": {
       "coveredLines": 257,

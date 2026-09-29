@@ -1,7 +1,7 @@
 // Run with: dotnet run --project examples/ExampleCli -- <command>
 // Example: dotnet run --project examples/ExampleCli -- --verbose task add "Buy groceries"
 // Global flags: --verbose, --log-level <level> (env: EXAMPLE_VERBOSE, EXAMPLE_LVL)
-// Check flags: --conf <file>, --strict, --no-cache (env: EXAMPLE_CONF, EXAMPLE_STRICT, NO_CACHE)
+// Check flags: --conf <file>, --strict, --no-cache (env: EXAMPLE_CONFIG, EXAMPLE_STRICT, NO_CACHE)
 
 open System
 open CommandTree
@@ -151,6 +151,9 @@ type ReportCommand =
         CmdExample("baseline.xml current.xml", "baseline.xml current.xml diff-report.html")>] Diff of MergeReportArgs
     | [<Cmd("View a report file"); CmdDefault; CmdArg(Default = "report.html")>] View of output: string option
 
+// The env prefix and global flags are declared on the root union, so tools can
+// read them from metadata and the entry point below needs no prefix argument.
+[<CmdEnvPrefix("EXAMPLE"); CmdGlobals(typeof<GlobalFlag>)>]
 type Command =
     | [<Cmd("Task management")>] Task of TaskCommand
     | [<Cmd("Database operations")>] Db of DbCommand
@@ -427,7 +430,7 @@ let handleUiDemo (cmd: UiDemoCommand) =
 // =============================================================================
 
 let spec =
-    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "Example project management CLI" "EXAMPLE"
+    CommandReflection.fromUnionWithGlobals<Command, GlobalFlag> "Example project management CLI"
 
 let cmdName = "example-cli"
 

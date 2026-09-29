@@ -74,6 +74,9 @@ match CommandTree.parse tree argv with
 ## Reflection
 
 ```fsharp
+// Every entry point reads the root union's [<CmdEnvPrefix>] and [<CmdGlobals>];
+// a runtime prefix or 'G that disagrees is a SpecError.
+
 // Without global options
 CommandReflection.fromUnion<'Cmd> "desc"                          // CommandTree<'Cmd>
 CommandReflection.fromUnionWithEnv<'Cmd> "desc" "PREFIX"          // CommandTree<'Cmd> (with env vars)
@@ -126,8 +129,9 @@ type ReportCommand =
 A command DU's *shape* can be malformed independently of any user input: a field
 whose type the parser can't handle (e.g. `DateTimeOffset`), a list field that
 isn't last, more than one list field in a case, a flag-DU case with more than
-one field (a flag binds at most one value), or a command flag name that
-collides with a global flag. These are deterministic programming errors over the
+one field (a flag binds at most one value), a command flag name that
+collides with a global flag, or a root-union `[<CmdEnvPrefix>]` /
+`[<CmdGlobals>]` declaration that disagrees with the entry point. These are deterministic programming errors over the
 static shape, so the `fromUnion*` constructors fail fast by throwing
 `InvalidOperationException`.
 
@@ -154,7 +158,9 @@ match CommandReflection.tryFromUnion<Bad> "My CLI" with
 
 `SpecError` is a DU with one case per construction-time problem
 (`UnsupportedFieldType`, `ListFieldNotLast`, `MultipleListFields`,
-`MultiFieldFlagCase`, `GlobalFlagCollision`, `GlobalShortFlagCollision`). `SpecError.format` renders one
+`MultiFieldFlagCase`, `GlobalFlagCollision`, `GlobalShortFlagCollision`,
+`EnvPrefixConflict`, `InvalidEnvPrefix`, `GlobalsConflict`,
+`DeclaredGlobalsIgnored`). `SpecError.format` renders one
 error as a line; `SpecError.formatAll` renders a list with a count header (this is
 exactly the message the throwing constructors raise). `SpecError` is distinct from
 `ParseError`, which describes runtime parse failures over user input.
@@ -211,7 +217,11 @@ would otherwise reject when the tree is built:
 - **CT002 — list-field placement:** a list field that isn't last, or more than
   one list field in a single case.
 
-Both are warnings (the package is opt-in and never fails a build on its own). The
+- **CT003 — undeclared root metadata (Info):** a call that passes the env prefix
+  at runtime, or builds globals for a root union without `[<CmdGlobals>]`. The
+  message names the attribute to declare so tools can read it from metadata.
+
+CT001 and CT002 are warnings (the package is opt-in and never fails a build on its own). The
 analyzer recurses into nested subcommand unions and arg-group records, and also
 validates the global-flags DU. Add a reference to `CommandTree.Analyzers` and
 point your analyzer host at it; the analyzer finds every `fromUnion`,

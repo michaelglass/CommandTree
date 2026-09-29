@@ -7,6 +7,17 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+- feat: declare the env prefix and the global-flag union on the root command
+  union with `[<CmdEnvPrefix("MYAPP")>]` and `[<CmdGlobals(typeof<GlobalFlag>)>]`.
+  Every `fromUnion*` entry point reads them, so `fromUnion` /
+  `fromUnionWithGlobals` bind env vars without a prefix argument, and tools can
+  read both facts from assembly metadata instead of from call sites.
+- feat: a declaration that disagrees with the entry point is a spec error:
+  `EnvPrefixConflict` (a different runtime prefix), `GlobalsConflict` (a
+  different `'Globals` type argument), `DeclaredGlobalsIgnored` (an entry point
+  without globals on a union that declares them), and `InvalidEnvPrefix` (a
+  blank declared prefix). A union without the attributes behaves as before.
+
 ## 0.12.0 - 2026-09-29
 
 - fix: running a tool with no command (or only global flags) now runs a
