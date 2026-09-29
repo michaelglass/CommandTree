@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.12.0 - 2026-09-29
+
 - fix: running a tool with no command (or only global flags) now runs a
   `[<CmdDefault>]` command that has arguments, such as
   `Ratchet of config: string option`, exactly as if it had been named: optional
