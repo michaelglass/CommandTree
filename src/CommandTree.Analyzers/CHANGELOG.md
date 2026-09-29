@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- feat: CT003 (Info) flags a `fromUnion*` call that passes the env prefix at
+  runtime (`fromUnionWithEnv`, `fromUnionWithGlobalsAndEnv`) or builds globals
+  for a root union without `[<CmdGlobals>]`, and names the
+  `[<CmdEnvPrefix(...)>]` / `[<CmdGlobals(typeof<...>)>]` to declare so tools
+  can read them from metadata.
+
 ## 0.1.0-alpha.7 - 2026-09-16
 
 - Fix: patch SourceLink against CVE-2026-62900

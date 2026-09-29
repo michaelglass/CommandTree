@@ -29,6 +29,14 @@ type CommandTree<'Cmd> = Leaf of 'Cmd | Group
 
 type GlobalSpec<'Globals, 'Cmd> = { Dummy: 'Globals * 'Cmd }
 
+type CmdEnvPrefixAttribute(prefix: string) =
+    inherit System.Attribute()
+    member _.Prefix = prefix
+
+type CmdGlobalsAttribute(globalsType: System.Type) =
+    inherit System.Attribute()
+    member _.GlobalsType = globalsType
+
 module CommandReflection =
     let fromUnion<'Cmd> (rootDesc: string) : CommandTree<'Cmd> = failwith "stub"
 
@@ -239,6 +247,7 @@ let tree = CommandReflection.fromUnion<Cmd> "desc"
 type Globals =
     | Stamp of at: System.DateTimeOffset
 
+[<CmdGlobals(typeof<Globals>)>]
 type Cmd =
     | Run
 
@@ -350,6 +359,91 @@ let tree = CommandReflection.fromUnion<Cmd> "desc"
         test <@ codesOf messages = [ "CT001"; "CT001"; "CT002" ] @>
 
 // =============================================================================
+// CT003 — undeclared root env prefix / globals
+// =============================================================================
+
+module ``CT003 undeclared root metadata`` =
+
+    [<Fact>]
+    let ``a literal runtime prefix names the attribute to declare`` () =
+        let messages =
+            analyze
+                """
+type Cmd =
+    | Run
+
+let tree = CommandReflection.fromUnionWithEnv<Cmd> "desc" "MYAPP"
+"""
+
+        let m = List.exactlyOne messages
+        test <@ m.Code = "CT003" @>
+        test <@ m.Severity = FSharp.Analyzers.SDK.Severity.Info @>
+        test <@ m.Message.Contains "[<CmdEnvPrefix(\"MYAPP\")>]" && m.Message.Contains "'Cmd'" @>
+
+    [<Fact>]
+    let ``a computed runtime prefix is flagged without a value`` () =
+        let messages =
+            analyze
+                """
+type Cmd =
+    | Run
+
+let prefix = System.String('A', 3)
+let tree = CommandReflection.fromUnionWithEnv<Cmd> "desc" prefix
+"""
+
+        let m = List.exactlyOne messages
+        test <@ m.Message.Contains "[<CmdEnvPrefix(\"...\")>]" @>
+
+    [<Fact>]
+    let ``undeclared globals name the globals type`` () =
+        let messages =
+            analyze
+                """
+type G =
+    | Verbose
+
+type Cmd =
+    | Run
+
+let spec = CommandReflection.fromUnionWithGlobals<Cmd, G> "desc"
+"""
+
+        let m = List.exactlyOne messages
+        test <@ m.Code = "CT003" @>
+        test <@ m.Message.Contains "[<CmdGlobals(typeof<G>)>]" @>
+
+    [<Fact>]
+    let ``a non-union 'Cmd is not flagged`` () =
+        let messages =
+            analyze
+                """
+type G =
+    | Verbose
+
+let spec = CommandReflection.fromUnionWithGlobals<int, G> "desc"
+"""
+
+        test <@ List.isEmpty messages @>
+
+    [<Fact>]
+    let ``the declared form is not flagged`` () =
+        let messages =
+            analyze
+                """
+type G =
+    | Verbose
+
+[<CmdEnvPrefix("MYAPP"); CmdGlobals(typeof<G>)>]
+type Cmd =
+    | Run
+
+let spec = CommandReflection.fromUnionWithGlobals<Cmd, G> "desc"
+"""
+
+        test <@ List.isEmpty messages @>
+
+// =============================================================================
 // Constructor-variant coverage
 // =============================================================================
 
@@ -366,7 +460,7 @@ type Cmd =
 let tree = CommandReflection.fromUnionWithEnv<Cmd> "desc" "PREFIX"
 """
 
-        test <@ codesOf messages = [ "CT001" ] @>
+        test <@ codesOf messages = [ "CT001"; "CT003" ] @>
 
     [<Fact>]
     let ``fromUnionWithGlobals is recognized`` () =
@@ -382,7 +476,7 @@ type Cmd =
 let spec = CommandReflection.fromUnionWithGlobals<Cmd, Globals> "desc"
 """
 
-        test <@ codesOf messages = [ "CT001" ] @>
+        test <@ codesOf messages = [ "CT001"; "CT003" ] @>
 
     [<Fact>]
     let ``fromUnionWithGlobalsAndEnv is recognized`` () =
@@ -398,7 +492,7 @@ type Cmd =
 let spec = CommandReflection.fromUnionWithGlobalsAndEnv<Cmd, Globals> "desc" "PREFIX"
 """
 
-        test <@ codesOf messages = [ "CT001" ] @>
+        test <@ codesOf messages = [ "CT001"; "CT003"; "CT003" ] @>
 
     [<Fact>]
     let ``a call to an unrelated function is ignored`` () =
@@ -534,10 +628,10 @@ let tree = CommandReflection.fromUnion<Cmd> "desc"
 // =============================================================================
 // Negative control (MANDATORY): a realistic full command tree — ExampleCli's
 // Command DU + GlobalFlag — produces ZERO diagnostics. Structure copied from
-// examples/ExampleCli/Program.fs; CommandTree attributes are dropped (they don't
-// affect CT001/CT002 — only the field types and case structure do), and the
-// constructor is the same fromUnionWithGlobalsAndEnv<Command, GlobalFlag> the
-// example uses.
+// examples/ExampleCli/Program.fs; case attributes are dropped (they don't
+// affect CT001/CT002 — only the field types and case structure do), the root
+// declarations are kept (they satisfy CT003), and the constructor is the same
+// fromUnionWithGlobals<Command, GlobalFlag> the example uses.
 //
 // `ReportCommand.Diff of MergeReportArgs * ReportFlag list` is excluded: a
 // multi-field case whose first field is a RECORD is rejected by the runtime (only
@@ -618,6 +712,7 @@ type ReportCommand =
     | Generate of input: string * output: string option * ReportFlag list
     | View of output: string option
 
+[<CmdEnvPrefix("EXAMPLE"); CmdGlobals(typeof<GlobalFlag>)>]
 type Command =
     | Task of TaskCommand
     | Db of DbCommand
@@ -636,7 +731,7 @@ type Command =
     | Help
 
 let spec =
-    CommandReflection.fromUnionWithGlobalsAndEnv<Command, GlobalFlag> "Example project management CLI" "EXAMPLE"
+    CommandReflection.fromUnionWithGlobals<Command, GlobalFlag> "Example project management CLI"
 """
 
 module ``Negative control — ExampleCli`` =
