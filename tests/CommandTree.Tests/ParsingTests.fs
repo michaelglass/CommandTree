@@ -2632,15 +2632,17 @@ let ``zero-field root default and non-empty argv parse as pinned`` () =
     let tree = CommandReflection.fromUnion<SimpleDefaultCommand> "Test"
 
     let cases: (string list * Result<SimpleDefaultCommand, ParseError>) list =
-        [ [], Ok SimpleDefaultCommand.Status
-          [ "status" ], Ok SimpleDefaultCommand.Status
-          [ "status"; "x" ], Error(InvalidArguments("status", "Unexpected argument 'x'"))
-          [ "run"; "f" ], Ok(SimpleDefaultCommand.Run "f")
-          [ "run" ], Error(InvalidArguments("run", "Invalid arguments"))
-          [ "bogus" ], Error(UnknownCommand("bogus", [||], []))
-          [ "--x" ], Error(UnknownCommand("--x", [||], []))
-          [ "--help" ], Error(HelpRequested [])
-          [ "version" ], Error VersionRequested ]
+        [
+            [], Ok SimpleDefaultCommand.Status
+            [ "status" ], Ok SimpleDefaultCommand.Status
+            [ "status"; "x" ], Error(InvalidArguments("status", "Unexpected argument 'x'"))
+            [ "run"; "f" ], Ok(SimpleDefaultCommand.Run "f")
+            [ "run" ], Error(InvalidArguments("run", "Invalid arguments"))
+            [ "bogus" ], Error(UnknownCommand("bogus", [||], []))
+            [ "--x" ], Error(UnknownCommand("--x", [||], []))
+            [ "--help" ], Error(HelpRequested [])
+            [ "version" ], Error VersionRequested
+        ]
 
     for argv, expected in cases do
         test <@ CommandTree.parse tree (Array.ofList argv) = expected @>
@@ -2650,12 +2652,14 @@ let ``zero-field nested default and explicit subcommands parse as pinned`` () =
     let tree = CommandReflection.fromUnion<RootCommand> "Test"
 
     let cases: (string list * Result<RootCommand, ParseError>) list =
-        [ [], Ok(RootCommand.Dev DevCommand.Check)
-          [ "dev" ], Ok(RootCommand.Dev DevCommand.Check)
-          [ "dev"; "check" ], Ok(RootCommand.Dev DevCommand.Check)
-          [ "dev"; "build" ], Ok(RootCommand.Dev DevCommand.Build)
-          [ "dev"; "x" ], Error(UnknownCommand("x", [||], [ "dev" ]))
-          [ "help" ], Ok RootCommand.Help ]
+        [
+            [], Ok(RootCommand.Dev DevCommand.Check)
+            [ "dev" ], Ok(RootCommand.Dev DevCommand.Check)
+            [ "dev"; "check" ], Ok(RootCommand.Dev DevCommand.Check)
+            [ "dev"; "build" ], Ok(RootCommand.Dev DevCommand.Build)
+            [ "dev"; "x" ], Error(UnknownCommand("x", [||], [ "dev" ]))
+            [ "help" ], Ok RootCommand.Help
+        ]
 
     for argv, expected in cases do
         test <@ CommandTree.parse tree (Array.ofList argv) = expected @>
@@ -2666,10 +2670,12 @@ let ``global flags around a zero-field default parse as pinned`` () =
         CommandReflection.fromUnionWithGlobals<SimpleDefaultCommand, GlobalFlag> "Test"
 
     let cases: (string list * Result<GlobalFlag list * SimpleDefaultCommand, ParseError>) list =
-        [ [ "--verbose" ], Ok([ GlobalFlag.Verbose ], SimpleDefaultCommand.Status)
-          [ "--verbose"; "run"; "f" ], Ok([ GlobalFlag.Verbose ], SimpleDefaultCommand.Run "f")
-          [ "run"; "f"; "--verbose" ], Ok([ GlobalFlag.Verbose ], SimpleDefaultCommand.Run "f")
-          [ "--verbose"; "bogus" ], Error(UnknownCommand("bogus", [||], [])) ]
+        [
+            [ "--verbose" ], Ok([ GlobalFlag.Verbose ], SimpleDefaultCommand.Status)
+            [ "--verbose"; "run"; "f" ], Ok([ GlobalFlag.Verbose ], SimpleDefaultCommand.Run "f")
+            [ "run"; "f"; "--verbose" ], Ok([ GlobalFlag.Verbose ], SimpleDefaultCommand.Run "f")
+            [ "--verbose"; "bogus" ], Error(UnknownCommand("bogus", [||], []))
+        ]
 
     for argv, expected in cases do
         test <@ spec.Parse(Array.ofList argv) = expected @>
