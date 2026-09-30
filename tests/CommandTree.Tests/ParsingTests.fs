@@ -567,10 +567,8 @@ let ``global flags with no command reach the default command`` () =
 
     test
         <@
-            spec.Parse [| "--verbose"; "--log-level"; "debug" |] = Ok(
-                [ GlobalFlag.Verbose; GlobalFlag.LogLevel "debug" ],
-                OptionalFieldDefault.Ratchet None
-            )
+            spec.Parse [| "--verbose"; "--log-level"; "debug" |] =
+                Ok([ GlobalFlag.Verbose; GlobalFlag.LogLevel "debug" ], OptionalFieldDefault.Ratchet None)
         @>
 
 [<Fact>]
@@ -929,19 +927,23 @@ let ``repeatable value flag accepts long short and inline occurrences in argumen
     let result =
         CommandTree.parse
             tree
-            [| "verify-merge"
-               "--deletes=first.fs"
-               "-d"
-               "second.fs"
-               "--deletes"
-               "third.fs" |]
+            [|
+                "verify-merge"
+                "--deletes=first.fs"
+                "-d"
+                "second.fs"
+                "--deletes"
+                "third.fs"
+            |]
 
     Assert.Equal(
         Ok(
             RepeatableFlagCommand.VerifyMerge
-                [ RepeatableFlag.Deletes "first.fs"
-                  RepeatableFlag.Deletes "second.fs"
-                  RepeatableFlag.Deletes "third.fs" ]
+                [
+                    RepeatableFlag.Deletes "first.fs"
+                    RepeatableFlag.Deletes "second.fs"
+                    RepeatableFlag.Deletes "third.fs"
+                ]
         ),
         result
     )
@@ -956,11 +958,13 @@ let ``repeatable nullary and optional-value flags preserve every occurrence`` ()
     Assert.Equal(
         Ok(
             RepeatableFlagCommand.VerifyMerge
-                [ RepeatableFlag.Trace
-                  RepeatableFlag.Wait None
-                  RepeatableFlag.Trace
-                  RepeatableFlag.Wait(Some 5)
-                  RepeatableFlag.Wait(Some 8) ]
+                [
+                    RepeatableFlag.Trace
+                    RepeatableFlag.Wait None
+                    RepeatableFlag.Trace
+                    RepeatableFlag.Wait(Some 5)
+                    RepeatableFlag.Wait(Some 8)
+                ]
         ),
         result
     )
@@ -972,20 +976,24 @@ let ``repeatable flags remain ordered when interleaved with positionals and sibl
     let result =
         CommandTree.parse
             tree
-            [| "publish-repeated"
-               "--deletes"
-               "first.fs"
-               "release"
-               "--once=only"
-               "--deletes=second.fs" |]
+            [|
+                "publish-repeated"
+                "--deletes"
+                "first.fs"
+                "release"
+                "--once=only"
+                "--deletes=second.fs"
+            |]
 
     Assert.Equal(
         Ok(
             RepeatableMixedCommand.PublishRepeated(
                 "release",
-                [ RepeatableFlag.Deletes "first.fs"
-                  RepeatableFlag.Once "only"
-                  RepeatableFlag.Deletes "second.fs" ]
+                [
+                    RepeatableFlag.Deletes "first.fs"
+                    RepeatableFlag.Once "only"
+                    RepeatableFlag.Deletes "second.fs"
+                ]
             )
         ),
         result
@@ -1346,12 +1354,14 @@ let ``optional-value flag formats inline for Some and bare for None`` () =
 let ``formatCmd renders optional-value flag inline and bare`` () =
     test
         <@
-            CommandReflection.formatCmd (OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5) ])) = "claim T-1 --wait=5"
+            CommandReflection.formatCmd (OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait(Some 5) ])) =
+                "claim T-1 --wait=5"
         @>
 
     test
         <@
-            CommandReflection.formatCmd (OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None ])) = "claim T-1 --wait"
+            CommandReflection.formatCmd (OptionalValueFlagCommand.Claim("T-1", [ ClaimFlag.Wait None ])) =
+                "claim T-1 --wait"
         @>
 
 [<Fact>]
@@ -1652,9 +1662,11 @@ let ``repeatable global flag accepts long short and inline occurrences in argume
 
     Assert.Equal(
         Ok(
-            [ RepeatableGlobalFlag.Include "first.fs"
-              RepeatableGlobalFlag.Include "second.fs"
-              RepeatableGlobalFlag.Include "third.fs" ],
+            [
+                RepeatableGlobalFlag.Include "first.fs"
+                RepeatableGlobalFlag.Include "second.fs"
+                RepeatableGlobalFlag.Include "third.fs"
+            ],
             GlobalCmd.Scan
         ),
         result

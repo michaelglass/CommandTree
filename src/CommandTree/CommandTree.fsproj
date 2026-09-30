@@ -29,7 +29,7 @@
 
   <ItemGroup>
     <PackageReference Include="FSharp.Core" Version="10.1.301" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.303" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>

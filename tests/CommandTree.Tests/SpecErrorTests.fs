@@ -29,10 +29,12 @@ type EqDeployFlag =
     | [<CmdFlag(Name = "to", Short = "t", Description = "Target env")>] Target of string
 
 type EqMergeArgs =
-    { [<CmdArg("Baseline file")>]
-      Baseline: string
-      [<CmdArg("Output", Default = "out.xml")>]
-      Output: string option }
+    {
+        [<CmdArg("Baseline file")>]
+        Baseline: string
+        [<CmdArg("Output", Default = "out.xml")>]
+        Output: string option
+    }
 
 type EqCommand =
     | [<Cmd("Task management")>] Task of EqTaskCmd
@@ -102,12 +104,15 @@ let ``Ok-path parse matrix matches pre-refactor behavior`` () =
 
     test
         <@
-            spec.Parse [| "merge"; "base.xml"; "result.xml" |] = Ok(
-                [],
-                EqCommand.Merge
-                    { Baseline = "base.xml"
-                      Output = Some "result.xml" }
-            )
+            spec.Parse [| "merge"; "base.xml"; "result.xml" |] =
+                Ok(
+                    [],
+                    EqCommand.Merge
+                        {
+                            Baseline = "base.xml"
+                            Output = Some "result.xml"
+                        }
+                )
         @>
 
     test <@ spec.Parse [| "tag"; "v1"; "a.fs"; "b.fs" |] = Ok([], EqCommand.Tag("v1", [ "a.fs"; "b.fs" ])) @>
@@ -115,20 +120,16 @@ let ``Ok-path parse matrix matches pre-refactor behavior`` () =
 
     test
         <@
-            spec.Parse [| "ident"; "00000000-0000-0000-0000-000000000001" |] = Ok(
-                [],
-                EqCommand.Ident(System.Guid "00000000-0000-0000-0000-000000000001")
-            )
+            spec.Parse [| "ident"; "00000000-0000-0000-0000-000000000001" |] =
+                Ok([], EqCommand.Ident(System.Guid "00000000-0000-0000-0000-000000000001"))
         @>
 
     test <@ spec.Parse [| "--verbose"; "test" |] = Ok([ Verbose ], EqCommand.Test) @>
 
     test
         <@
-            spec.Parse [| "--log-level"; "debug"; "task"; "list" |] = Ok(
-                [ LogLevel "debug" ],
-                EqCommand.Task EqTaskCmd.List
-            )
+            spec.Parse [| "--log-level"; "debug"; "task"; "list" |] =
+                Ok([ LogLevel "debug" ], EqCommand.Task EqTaskCmd.List)
         @>
 
     // Error cases — identical structured ParseErrors.
@@ -238,8 +239,10 @@ let ``formatAll single error has no count header`` () =
 [<Fact>]
 let ``formatAll multiple errors has count header and one line per error`` () =
     let errs =
-        [ SpecError.UnsupportedFieldType("first", "when_", typeof<System.DateTimeOffset>)
-          SpecError.GlobalFlagCollision("--timeout", "scan") ]
+        [
+            SpecError.UnsupportedFieldType("first", "when_", typeof<System.DateTimeOffset>)
+            SpecError.GlobalFlagCollision("--timeout", "scan")
+        ]
 
     let s = SpecError.formatAll errs
     test <@ s.Contains("2 problems found") @>
@@ -408,9 +411,12 @@ let ``every multi-field case of a flag DU is reported in declaration order`` () 
 
     test
         <@
-            twoBad = Error
-                [ MultiFieldFlagCase(typeof<TwoBadCasesFlag>, "Endpoint", [ "host"; "port" ])
-                  MultiFieldFlagCase(typeof<TwoBadCasesFlag>, "Range", [ "lo"; "hi"; "step" ]) ]
+            twoBad =
+                Error
+                    [
+                        MultiFieldFlagCase(typeof<TwoBadCasesFlag>, "Endpoint", [ "host"; "port" ])
+                        MultiFieldFlagCase(typeof<TwoBadCasesFlag>, "Range", [ "lo"; "hi"; "step" ])
+                    ]
         @>
 
 [<Fact>]
@@ -456,21 +462,23 @@ let ``positive control: nullary, required and optional flag cases construct and 
 
     test
         <@
-            parse [| "go"; "x"; "--force"; "--target"; "prod"; "--wait=5" |] = Ok(
-                ArityControlCmd.Go(
-                    "x",
-                    [ ArityControlFlag.Force
-                      ArityControlFlag.Target "prod"
-                      ArityControlFlag.Wait(Some 5) ]
+            parse [| "go"; "x"; "--force"; "--target"; "prod"; "--wait=5" |] =
+                Ok(
+                    ArityControlCmd.Go(
+                        "x",
+                        [
+                            ArityControlFlag.Force
+                            ArityControlFlag.Target "prod"
+                            ArityControlFlag.Wait(Some 5)
+                        ]
+                    )
                 )
-            )
         @>
 
     test
         <@
-            parse [| "go"; "x"; "--target=prod"; "--wait" |] = Ok(
-                ArityControlCmd.Go("x", [ ArityControlFlag.Target "prod"; ArityControlFlag.Wait None ])
-            )
+            parse [| "go"; "x"; "--target=prod"; "--wait" |] =
+                Ok(ArityControlCmd.Go("x", [ ArityControlFlag.Target "prod"; ArityControlFlag.Wait None ]))
         @>
 
     test <@ parse [| "go"; "x" |] = Ok(ArityControlCmd.Go("x", [])) @>
@@ -484,10 +492,13 @@ let ``positive control: single-field flag DU as globals constructs and parses as
 
     test
         <@
-            spec.Parse [| "--wait=3"; "--target"; "prod"; "--force"; "complete"; "7" |] = Ok(
-                [ ArityControlFlag.Wait(Some 3)
-                  ArityControlFlag.Target "prod"
-                  ArityControlFlag.Force ],
-                EqTaskCmd.Complete 7
-            )
+            spec.Parse [| "--wait=3"; "--target"; "prod"; "--force"; "complete"; "7" |] =
+                Ok(
+                    [
+                        ArityControlFlag.Wait(Some 3)
+                        ArityControlFlag.Target "prod"
+                        ArityControlFlag.Force
+                    ],
+                    EqTaskCmd.Complete 7
+                )
         @>

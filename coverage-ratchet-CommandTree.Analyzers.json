@@ -8,8 +8,8 @@
   },
   "countFloors": {
     "CommandTreeAnalyzer.fs": {
-      "coveredLines": 177,
-      "coveredBranches": 70
+      "coveredLines": 197,
+      "coveredBranches": 68
     }
   }
 }

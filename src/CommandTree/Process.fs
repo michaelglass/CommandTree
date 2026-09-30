@@ -7,9 +7,11 @@ open System.Threading.Tasks
 
 /// Result of running a command (for named field access)
 type CommandResult =
-    { ExitCode: int
-      Stdout: string
-      Stderr: string }
+    {
+        ExitCode: int
+        Stdout: string
+        Stderr: string
+    }
 
 /// Which of a child process's two output streams a line arrived on. A sink is
 /// handed the stream alongside the text because the two are routinely written to
@@ -71,10 +73,12 @@ module SilentRun =
     /// Inherit the caller's environment and working directory, wait indefinitely, and
     /// keep the output rather than streaming it.
     let defaults: SilentRun =
-        { Env = []
-          TimeoutMs = None
-          WorkingDirectory = None
-          Sink = None }
+        {
+            Env = []
+            TimeoutMs = None
+            WorkingDirectory = None
+            Sink = None
+        }
 
     let withEnv (env: (string * string) list) (run: SilentRun) = { run with Env = env }
     let withTimeoutMs (ms: int) (run: SilentRun) = { run with TimeoutMs = Some ms }
@@ -214,10 +218,12 @@ module Process =
         // afterwards is the documented way to be sure the buffers above are complete.
         proc.WaitForExit()
 
-        { ExitCode = (if exited then proc.ExitCode else -1)
-          Stdout = stdout.ToString().Trim()
-          Stderr = stderr.ToString().Trim()
-          TimedOut = not exited }
+        {
+            ExitCode = (if exited then proc.ExitCode else -1)
+            Stdout = stdout.ToString().Trim()
+            Stderr = stderr.ToString().Trim()
+            TimedOut = not exited
+        }
 
     /// Run a command silently with additional environment variables.
     let runSilentWithEnv (command: string) (args: string list) (env: (string * string) list) =
@@ -321,9 +327,11 @@ module Process =
     let runCommand (command: string) (args: string list) : CommandResult =
         let (exitCode, stdout, stderr) = runSilent command args
 
-        { ExitCode = exitCode
-          Stdout = stdout
-          Stderr = stderr }
+        {
+            ExitCode = exitCode
+            Stdout = stdout
+            Stderr = stderr
+        }
 
     /// Run a command interactively (no output capture) and return exit code.
     let runInteractive (command: string) (args: string list) : int =

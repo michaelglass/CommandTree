@@ -247,9 +247,11 @@ let ``runParallel completes all tasks`` () =
     let (_output, results) =
         UITests.captureStdout (fun () ->
             let tasks =
-                [| Process.runAsync "echo" [ "a" ]
-                   Process.runAsync "echo" [ "b" ]
-                   Process.runAsync "echo" [ "c" ] |]
+                [|
+                    Process.runAsync "echo" [ "a" ]
+                    Process.runAsync "echo" [ "b" ]
+                    Process.runAsync "echo" [ "c" ]
+                |]
 
             Process.runParallel tasks)
 
@@ -312,9 +314,11 @@ let ``run throws on non-zero exit code`` () =
 [<Fact>]
 let ``CommandResult has expected field names`` () =
     let result: CommandResult =
-        { ExitCode = 0
-          Stdout = "out"
-          Stderr = "err" }
+        {
+            ExitCode = 0
+            Stdout = "out"
+            Stderr = "err"
+        }
 
     test <@ result.ExitCode = 0 @>
     test <@ result.Stdout = "out" @>

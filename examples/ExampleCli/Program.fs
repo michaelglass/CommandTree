@@ -124,12 +124,14 @@ type FishDemoCommand =
 
 // Record-typed arg — [<CmdArg>] on fields lets you share arg docs across commands
 type MergeReportArgs =
-    { [<CmdArg("Baseline Cobertura XML")>]
-      Baseline: string
-      [<CmdArg("Current Cobertura XML")>]
-      Current: string
-      [<CmdArg("Output file", Default = "diff.html")>]
-      Output: string option }
+    {
+        [<CmdArg("Baseline Cobertura XML")>]
+        Baseline: string
+        [<CmdArg("Current Cobertura XML")>]
+        Current: string
+        [<CmdArg("Output file", Default = "diff.html")>]
+        Output: string option
+    }
 
 type ReportFlag =
     | [<CmdFlag(Description = "Include source lines with no coverage")>] ShowGaps
@@ -358,9 +360,11 @@ let handleProcessDemo (cmd: ProcessDemoCommand) =
         UI.section "Process.runParallel — parallel execution"
 
         let tasks =
-            [| Process.runAsync "echo" [ "task-1" ]
-               Process.runAsync "echo" [ "task-2" ]
-               Process.runAsync "echo" [ "task-3" ] |]
+            [|
+                Process.runAsync "echo" [ "task-1" ]
+                Process.runAsync "echo" [ "task-2" ]
+                Process.runAsync "echo" [ "task-3" ]
+            |]
 
         let results = Process.runParallel tasks
 
@@ -445,10 +449,12 @@ let handleReflectionDemo
         UI.title "CommandReflection.formatCmd"
 
         let examples: Command list =
-            [ Task(TaskCommand.Add("buy milk", Some Priority.High))
-              Deploy(DeployCommand.Push "staging")
-              Job(JobCommand.Start("build", 1024L, true))
-              Job(JobCommand.Status(Guid.Parse("550e8400-e29b-41d4-a716-446655440000"))) ]
+            [
+                Task(TaskCommand.Add("buy milk", Some Priority.High))
+                Deploy(DeployCommand.Push "staging")
+                Job(JobCommand.Start("build", 1024L, true))
+                Job(JobCommand.Status(Guid.Parse("550e8400-e29b-41d4-a716-446655440000")))
+            ]
 
         for ex in examples do
             let formatted = CommandReflection.formatCmd ex
@@ -471,15 +477,17 @@ let handleReflectionDemo
         UI.title "Field Value Parsing and Formatting"
 
         let testCases: (Type * string) list =
-            [ (typeof<string>, "hello")
-              (typeof<int>, "42")
-              (typeof<int64>, "9876543210")
-              (typeof<float>, "3.14")
-              (typeof<decimal>, "99.99")
-              (typeof<bool>, "true")
-              (typeof<Guid>, "550e8400-e29b-41d4-a716-446655440000")
-              (typeof<Priority option>, "high")
-              (typeof<Priority>, "med") ]
+            [
+                (typeof<string>, "hello")
+                (typeof<int>, "42")
+                (typeof<int64>, "9876543210")
+                (typeof<float>, "3.14")
+                (typeof<decimal>, "99.99")
+                (typeof<bool>, "true")
+                (typeof<Guid>, "550e8400-e29b-41d4-a716-446655440000")
+                (typeof<Priority option>, "high")
+                (typeof<Priority>, "med")
+            ]
 
         for (t, input) in testCases do
             match CommandReflection.parseFieldValue t input with
@@ -494,9 +502,11 @@ let handleReflectionDemo
         UI.info "CommandSpec bundles tree + format + execute:"
 
         let cmdSpec: CommandSpec<Command> =
-            { Tree = tree
-              Format = CommandReflection.formatCmd
-              Execute = runCmd }
+            {
+                Tree = tree
+                Format = CommandReflection.formatCmd
+                Execute = runCmd
+            }
 
         UI.dimInfo $"Tree root desc: %s{CommandTree.desc cmdSpec.Tree}"
         UI.dimInfo $"Format example: %s{cmdSpec.Format(Test)}"

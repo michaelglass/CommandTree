@@ -665,7 +665,9 @@ module CommandTree =
                             | Some s -> $" -s %s{s}"
                             | None -> ""
 
-                        [ $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape (flagDescription fi)}\"" ])
+                        [
+                            $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape (flagDescription fi)}\""
+                        ])
 
                 argCompletions @ flagCompletions
             | Group group ->

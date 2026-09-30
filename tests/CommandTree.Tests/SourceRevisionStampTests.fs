@@ -30,10 +30,12 @@ type private JjRepo() =
     let repo = Path.Combine(root, "repo")
 
     let env =
-        [ "JJ_CONFIG", config
-          "JJ_USER", "Stamp Test"
-          "JJ_EMAIL", "stamp@example.invalid"
-          "MSBUILDDISABLENODEREUSE", "1" ]
+        [
+            "JJ_CONFIG", config
+            "JJ_USER", "Stamp Test"
+            "JJ_EMAIL", "stamp@example.invalid"
+            "MSBUILDDISABLENODEREUSE", "1"
+        ]
 
     do
         Directory.CreateDirectory repo |> ignore
@@ -60,12 +62,14 @@ type private JjRepo() =
 
         this.Run
             "dotnet"
-            [ "msbuild"
-              project
-              "-nologo"
-              "-nodeReuse:false"
-              "-t:CommandTreeStampSourceRevision"
-              "-getProperty:SourceRevisionId" ]
+            [
+                "msbuild"
+                project
+                "-nologo"
+                "-nodeReuse:false"
+                "-t:CommandTreeStampSourceRevision"
+                "-getProperty:SourceRevisionId"
+            ]
 
     interface IDisposable with
         member _.Dispose() =
