@@ -12,11 +12,13 @@ All notable changes to the CommandTree library are documented in this file.
   Every `fromUnion*` entry point reads them, so `fromUnion` /
   `fromUnionWithGlobals` bind env vars without a prefix argument, and tools can
   read both facts from assembly metadata instead of from call sites.
-- feat: a declaration that disagrees with the entry point is a spec error:
-  `EnvPrefixConflict` (a different runtime prefix), `GlobalsConflict` (a
-  different `'Globals` type argument), `DeclaredGlobalsIgnored` (an entry point
-  without globals on a union that declares them), and `InvalidEnvPrefix` (a
-  blank declared prefix). A union without the attributes behaves as before.
+- feat!: `SpecError` has four new cases, so code that matches `SpecError`
+  exhaustively no longer compiles until it handles them. Each reports a root
+  declaration that disagrees with the entry point: `EnvPrefixConflict` (a
+  different runtime prefix), `GlobalsConflict` (a different `'Globals` type
+  argument), `DeclaredGlobalsIgnored` (an entry point without globals on a union
+  that declares them), and `InvalidEnvPrefix` (a blank declared prefix). A union
+  without the attributes builds exactly as before.
 
 ## 0.12.0 - 2026-09-29
 
