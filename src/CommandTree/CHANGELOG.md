@@ -7,6 +7,8 @@ All notable changes to the CommandTree library are documented in this file.
 
 ## Unreleased
 
+## 0.13.0 - 2026-09-30
+
 - feat: declare the env prefix and the global-flag union on the root command
   union with `[<CmdEnvPrefix("MYAPP")>]` and `[<CmdGlobals(typeof<GlobalFlag>)>]`.
   Every `fromUnion*` entry point reads them, so `fromUnion` /

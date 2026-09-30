@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.8 - 2026-09-30
+
 - feat: CT003 (Info) flags a `fromUnion*` call that passes the env prefix at
   runtime (`fromUnionWithEnv`, `fromUnionWithGlobalsAndEnv`) or builds globals
   for a root union without `[<CmdGlobals>]`, and names the
