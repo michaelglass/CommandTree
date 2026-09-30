@@ -58,10 +58,11 @@ let private constructorFullNames =
           "CommandTree.CommandReflection.fromUnionWithGlobals"
           "CommandTree.CommandReflection.fromUnionWithGlobalsAndEnv" ]
 
-/// A shape problem found on a specific field, carried with the field's declaration range.
+/// A problem found on a command DU or a `fromUnion*` call, carried with the range to report.
 type private Finding =
     { Code: string
       Message: string
+      Severity: Severity
       Range: range }
 
 /// Strip type abbreviations to the underlying type, mirroring how reflection sees the
@@ -168,6 +169,7 @@ let private validateFieldTypesFor (cmdName: string) (fields: FSharpField seq) : 
                   Message =
                     $"Field '%s{f.DisplayName}' of command '%s{cmdName}' has unsupported type "
                     + $"'%s{typeDisplayName f.FieldType}'. Supported types: %s{SupportedTypesDescription}."
+                  Severity = Severity.Warning
                   Range = fieldRange f })
     |> List.ofSeq
 
@@ -190,6 +192,7 @@ let private validateListPlacement (cmdName: string) (fields: FSharpField array) 
             // first of several). One diagnostic per case, matching the single runtime throw.
             [ { Code = ListFieldPlacementCode
                 Message = $"List field in case '%s{cmdName}' must be the last field and there can be only one."
+                Severity = Severity.Warning
                 Range = fieldRange firstListField } ]
         else
             []
@@ -303,6 +306,7 @@ let private undeclaredRootMetadata
                     Message =
                       $"Declare [<CmdEnvPrefix(%s{shown})>] on '%s{cmd.DisplayName}' instead of passing "
                       + "the prefix at runtime, so tools can read it from metadata."
+                    Severity = Severity.Info
                     Range = range } ]
             else
                 []
@@ -314,6 +318,7 @@ let private undeclaredRootMetadata
                     Message =
                       $"Declare [<CmdGlobals(typeof<%s{typeDisplayName globalsType}>)>] on "
                       + $"'%s{cmd.DisplayName}' so tools can read the globals from metadata."
+                    Severity = Severity.Info
                     Range = range } ]
             | _ -> []
 
@@ -364,11 +369,7 @@ let private toMessages (findings: Finding list) : Message list =
         { Type = Name
           Message = f.Message
           Code = f.Code
-          Severity =
-            if f.Code = UndeclaredRootMetadataCode then
-                Severity.Info
-            else
-                Severity.Warning
+          Severity = f.Severity
           Range = f.Range
           Fixes = [] })
 

@@ -1,6 +1,7 @@
 namespace CommandTree
 
 open System
+open System.Reflection
 open System.Text.RegularExpressions
 open FSharp.Reflection
 
@@ -1198,11 +1199,6 @@ module CommandReflection =
               Children = children
               Default = cases |> Array.tryFind isDefault |> Option.map getCommandName }
 
-    let private declared<'Attr, 'Value when 'Attr :> Attribute> (cmdType: Type) (read: 'Attr -> 'Value) =
-        cmdType.GetCustomAttributes(typeof<'Attr>, false)
-        |> Array.tryHead
-        |> Option.map (fun a -> read (a :?> 'Attr))
-
     /// Reconcile the root union's [<CmdEnvPrefix>] / [<CmdGlobals>] with what the
     /// entry point passed; the declaration is the source of truth, a disagreement
     /// is a spec error. Returns the effective env prefix.
@@ -1213,7 +1209,12 @@ module CommandReflection =
         (passedGlobals: Type option)
         : string option =
         let prefix =
-            match declared cmdType (fun (a: CmdEnvPrefixAttribute) -> a.Prefix), passedPrefix with
+            let declaredPrefix =
+                cmdType.GetCustomAttributes<CmdEnvPrefixAttribute>(false)
+                |> Seq.tryHead
+                |> Option.map _.Prefix
+
+            match declaredPrefix, passedPrefix with
             | Some d, _ when String.IsNullOrWhiteSpace d ->
                 errors.Add(InvalidEnvPrefix d)
                 None
@@ -1223,11 +1224,12 @@ module CommandReflection =
             | Some d, _ -> Some d
             | None, p -> p
 
-        match
-            declared cmdType (fun (a: CmdGlobalsAttribute) -> Option.ofObj a.GlobalsType)
-            |> Option.flatten,
-            passedGlobals
-        with
+        let declaredGlobals =
+            cmdType.GetCustomAttributes<CmdGlobalsAttribute>(false)
+            |> Seq.tryHead
+            |> Option.bind (fun a -> Option.ofObj a.GlobalsType)
+
+        match declaredGlobals, passedGlobals with
         | Some d, Some p when d <> p -> errors.Add(GlobalsConflict(d, p))
         | Some d, None -> errors.Add(DeclaredGlobalsIgnored d)
         | _ -> ()
