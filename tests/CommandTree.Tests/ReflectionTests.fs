@@ -259,8 +259,10 @@ let ``parseFieldValue returns None for unknown type`` () =
 // reflects over. Attaching every attribute kind to both and reading each back proves
 // the declared AttributeTargets covers the placements actually in use.
 type AllAttrsRecord =
-    { [<CmdArg("Record field arg")>]
-      Path: string }
+    {
+        [<CmdArg("Record field arg")>]
+        Path: string
+    }
 
 type AllAttrsFlag =
     | [<CmdFlag(Name = "lvl", Short = "l", Description = "Log level", Repeatable = true); CmdEnv("LVL")>] Level of
@@ -417,7 +419,7 @@ let ``formatFieldValue handles decimal`` () =
 [<Fact>]
 let ``formatFieldValue handles unknown type`` () =
     let result = CommandReflection.formatFieldValue (box (System.DateTime(2024, 1, 1)))
-    test <@ result = (string<obj> (System.DateTime(2024, 1, 1))) @>
+    test <@ result = (string<obj>(System.DateTime(2024, 1, 1))) @>
 
 [<Fact>]
 let ``formatFieldValue handles int`` () =

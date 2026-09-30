@@ -117,13 +117,15 @@ module CommandReflection =
 
     /// Scalar field types that parseFieldValue / formatFieldValue can round-trip.
     let private supportedScalarTypes =
-        [ typeof<string>
-          typeof<int>
-          typeof<int64>
-          typeof<bool>
-          typeof<Guid>
-          typeof<float>
-          typeof<decimal> ]
+        [
+            typeof<string>
+            typeof<int>
+            typeof<int64>
+            typeof<bool>
+            typeof<Guid>
+            typeof<float>
+            typeof<decimal>
+        ]
 
     /// Human-readable list of supported field types for error messages.
     let private supportedTypesDescription =
@@ -207,13 +209,15 @@ module CommandReflection =
         |> Array.mapi (fun i f ->
             let cmdArgAttr = getCmdArgAttr case i
 
-            { Name = toKebabCase f.Name
-              TypeName = getTypeName f.PropertyType
-              IsOptional = isOptionalType f.PropertyType || isListType f.PropertyType
-              IsList = isListType f.PropertyType
-              Completions = getCompletionHint case i f
-              Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
-              Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default) })
+            {
+                Name = toKebabCase f.Name
+                TypeName = getTypeName f.PropertyType
+                IsOptional = isOptionalType f.PropertyType || isListType f.PropertyType
+                IsList = isListType f.PropertyType
+                Completions = getCompletionHint case i f
+                Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
+                Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default)
+            })
         |> Array.toList
 
     /// Convert PascalCase to SCREAMING_SNAKE_CASE (e.g., "LogLevel" -> "LOG_LEVEL", "DryRun" -> "DRY_RUN")
@@ -330,13 +334,15 @@ module CommandReflection =
                     | Some count when count = 1 -> Some candidate
                     | _ -> None
 
-            { LongName = longName
-              ShortName = shortName
-              TypeName = typeName
-              Arity = arity
-              IsRepeatable = isRepeatable
-              Description = description
-              EnvVar = envVar })
+            {
+                LongName = longName
+                ShortName = shortName
+                TypeName = typeName
+                Arity = arity
+                IsRepeatable = isRepeatable
+                Description = description
+                EnvVar = envVar
+            })
         |> Array.toList
 
     /// Make a None value for an option type
@@ -604,25 +610,29 @@ module CommandReflection =
 
     /// Pre-computed lookup tables for flag parsing
     type internal FlagLookup =
-        { LongMap: Map<string, int>
-          ShortMap: Map<string, int>
-          ValidFlags: string list
-          RepeatableTags: Set<int> }
+        {
+            LongMap: Map<string, int>
+            ShortMap: Map<string, int>
+            ValidFlags: string list
+            RepeatableTags: Set<int>
+        }
 
     /// Build flag lookup tables from FlagInfo (called once at tree construction)
     let internal buildFlagLookup (flagInfo: FlagInfo list) : FlagLookup =
-        { LongMap = flagInfo |> List.mapi (fun i fi -> $"--%s{fi.LongName}", i) |> Map.ofList
-          ShortMap =
-            flagInfo
-            |> List.mapi (fun i fi -> i, fi)
-            |> List.choose (fun (i, fi) -> fi.ShortName |> Option.map (fun s -> $"-%s{s}", i))
-            |> Map.ofList
-          ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}")
-          RepeatableTags =
-            flagInfo
-            |> List.indexed
-            |> List.choose (fun (i, fi) -> if fi.IsRepeatable then Some i else None)
-            |> Set.ofList }
+        {
+            LongMap = flagInfo |> List.mapi (fun i fi -> $"--%s{fi.LongName}", i) |> Map.ofList
+            ShortMap =
+                flagInfo
+                |> List.mapi (fun i fi -> i, fi)
+                |> List.choose (fun (i, fi) -> fi.ShortName |> Option.map (fun s -> $"-%s{s}", i))
+                |> Map.ofList
+            ValidFlags = flagInfo |> List.map (fun fi -> $"--%s{fi.LongName}")
+            RepeatableTags =
+                flagInfo
+                |> List.indexed
+                |> List.choose (fun (i, fi) -> if fi.IsRepeatable then Some i else None)
+                |> Set.ofList
+        }
 
     /// Split argv at the first standalone POSIX `--` end-of-flags separator:
     /// (tokens before it, Some tokens after it) — or (args, None) when absent.
@@ -1054,13 +1064,15 @@ module CommandReflection =
                         positionalParts @ flagParts)
 
                 CommandTree.Leaf
-                    { Name = cmdName
-                      Description = desc
-                      Args = getArgInfo outerCase positionalFields
-                      Flags = flagInfo
-                      Examples = getCmdExamples outerCase
-                      Parse = parse
-                      FormatArgs = formatArgs }
+                    {
+                        Name = cmdName
+                        Description = desc
+                        Args = getArgInfo outerCase positionalFields
+                        Flags = flagInfo
+                        Examples = getCmdExamples outerCase
+                        Parse = parse
+                        FormatArgs = formatArgs
+                    }
             elif fields.Length = 1 && isUnionType fields.[0].PropertyType then
                 // Nested union -> Group
                 let nestedType = fields.[0].PropertyType
@@ -1074,10 +1086,12 @@ module CommandReflection =
                     |> Array.toList
 
                 CommandTree.Group
-                    { Name = cmdName
-                      Description = desc
-                      Children = nestedChildren
-                      Default = nestedCases |> Array.tryFind isDefault |> Option.map getCommandName }
+                    {
+                        Name = cmdName
+                        Description = desc
+                        Children = nestedChildren
+                        Default = nestedCases |> Array.tryFind isDefault |> Option.map getCommandName
+                    }
             elif fields.Length = 1 && FSharpType.IsRecord(fields.[0].PropertyType) then
                 // Record-typed argument: expand record fields as positional args with defaults
                 let recordType = fields.[0].PropertyType
@@ -1135,23 +1149,27 @@ module CommandReflection =
                     |> Array.map (fun f ->
                         let cmdArgAttr = getCmdArgAttrFromField f
 
-                        { Name = toKebabCase f.Name
-                          TypeName = getTypeName f.PropertyType
-                          IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
-                          IsList = false
-                          Completions = autoDetectCompletion f
-                          Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
-                          Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default) })
+                        {
+                            Name = toKebabCase f.Name
+                            TypeName = getTypeName f.PropertyType
+                            IsOptional = isOptionalType f.PropertyType || f.PropertyType = typeof<bool>
+                            IsList = false
+                            Completions = autoDetectCompletion f
+                            Description = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Description)
+                            Default = cmdArgAttr |> Option.bind (fun a -> Option.ofObj a.Default)
+                        })
                     |> Array.toList
 
                 CommandTree.Leaf
-                    { Name = cmdName
-                      Description = desc
-                      Args = argInfo
-                      Flags = []
-                      Examples = getCmdExamples outerCase
-                      Parse = parse
-                      FormatArgs = formatArgs }
+                    {
+                        Name = cmdName
+                        Description = desc
+                        Args = argInfo
+                        Flags = []
+                        Examples = getCmdExamples outerCase
+                        Parse = parse
+                        FormatArgs = formatArgs
+                    }
             else
                 // Leaf case
                 validateFieldTypes errors cmdName (fields |> Seq.map (fun f -> f.Name, f.PropertyType))
@@ -1183,21 +1201,25 @@ module CommandReflection =
                 let argInfo = getArgInfo outerCase fields
 
                 CommandTree.Leaf
-                    { Name = cmdName
-                      Description = desc
-                      Args = argInfo
-                      Flags = []
-                      Examples = getCmdExamples outerCase
-                      Parse = parse
-                      FormatArgs = formatArgs }
+                    {
+                        Name = cmdName
+                        Description = desc
+                        Args = argInfo
+                        Flags = []
+                        Examples = getCmdExamples outerCase
+                        Parse = parse
+                        FormatArgs = formatArgs
+                    }
 
         let children = cases |> Array.map (fun case -> processCase case id) |> Array.toList
 
         CommandTree.Group
-            { Name = ""
-              Description = rootDesc
-              Children = children
-              Default = cases |> Array.tryFind isDefault |> Option.map getCommandName }
+            {
+                Name = ""
+                Description = rootDesc
+                Children = children
+                Default = cases |> Array.tryFind isDefault |> Option.map getCommandName
+            }
 
     /// Reconcile the root union's [<CmdEnvPrefix>] / [<CmdGlobals>] with what the
     /// entry point passed; the declaration is the source of truth, a disagreement
@@ -1384,9 +1406,11 @@ module CommandReflection =
                         | Error e -> Error e
 
             Ok
-                { Tree = tree
-                  Parse = parse
-                  GlobalFlags = globalFlagInfo }
+                {
+                    Tree = tree
+                    Parse = parse
+                    GlobalFlags = globalFlagInfo
+                }
 
     /// Try to generate a GlobalSpec with global flags, returning every
     /// construction-time shape problem (including global/command flag

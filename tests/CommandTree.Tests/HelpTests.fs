@@ -23,12 +23,14 @@ type OptionalDescCommand =
 type DefaultOnlyCommand = | [<Cmd("Build"); CmdArg(Default = "Release")>] Build of config: string option
 
 type MergeArgs =
-    { [<CmdArg("Baseline XML file")>]
-      Baseline: string
-      [<CmdArg("Current XML file")>]
-      Current: string
-      [<CmdArg("Output path", Default = "merged.xml")>]
-      Output: string option }
+    {
+        [<CmdArg("Baseline XML file")>]
+        Baseline: string
+        [<CmdArg("Current XML file")>]
+        Current: string
+        [<CmdArg("Output path", Default = "merged.xml")>]
+        Output: string option
+    }
 
 type RecordArgCommand =
     | [<Cmd("Merge using record"); CmdExample("old.xml new.xml", "a.xml b.xml out.xml")>] Merge of MergeArgs
@@ -294,25 +296,27 @@ let ``argument and option rows hang multi-line descriptions under their column``
 
     test
         <@
-            merge = "Usage: fshw merge <baseline> <current>\n"
-                    + "\n"
-                    + "Merge\n"
-                    + "the inputs\n"
-                    + "\n"
-                    + "Arguments:\n"
-                    + "  <baseline>         Baseline XML\n"
-                    + "                     from main"
+            merge =
+                "Usage: fshw merge <baseline> <current>\n"
+                + "\n"
+                + "Merge\n"
+                + "the inputs\n"
+                + "\n"
+                + "Arguments:\n"
+                + "  <baseline>         Baseline XML\n"
+                + "                     from main"
         @>
 
     test
         <@
-            deploy = "Usage: fshw deploy [options]\n"
-                     + "\n"
-                     + "Deploy\n"
-                     + "\n"
-                     + "Options:\n"
-                     + "  --dry-run, -d                Skip the actual operation\n"
-                     + "                               and print what would run"
+            deploy =
+                "Usage: fshw deploy [options]\n"
+                + "\n"
+                + "Deploy\n"
+                + "\n"
+                + "Options:\n"
+                + "  --dry-run, -d                Skip the actual operation\n"
+                + "                               and print what would run"
         @>
 
 /// The root listing of layoutTree with its confirm command's description replaced.

@@ -55,12 +55,14 @@ let private ok result =
     | Error errs -> failwith $"Expected Ok, got %A{errs}"
 
 let private expectedEnvNames =
-    [ "verbose", Some "APP_VERBOSE"
-      "log-level", Some "APP_LVL"
-      "no-cache", Some "NO_CACHE"
-      "verbose", Some "APP_VERBOSE"
-      "log-level", Some "APP_LVL"
-      "no-cache", Some "NO_CACHE" ]
+    [
+        "verbose", Some "APP_VERBOSE"
+        "log-level", Some "APP_LVL"
+        "no-cache", Some "NO_CACHE"
+        "verbose", Some "APP_VERBOSE"
+        "log-level", Some "APP_LVL"
+        "no-cache", Some "NO_CACHE"
+    ]
 
 [<Fact>]
 let ``declared prefix yields the env names the runtime prefix yields`` () =
@@ -166,9 +168,12 @@ let ``declaration errors are reported together`` () =
 
     test
         <@
-            result = Error
-                [ EnvPrefixConflict("APP", "OTHER")
-                  GlobalsConflict(typeof<DeclGlobal>, typeof<OtherGlobal>) ]
+            result =
+                Error
+                    [
+                        EnvPrefixConflict("APP", "OTHER")
+                        GlobalsConflict(typeof<DeclGlobal>, typeof<OtherGlobal>)
+                    ]
         @>
 
 [<Fact>]
@@ -177,12 +182,15 @@ let ``no declarations: fromUnion binds no env vars, as before`` () =
 
     test
         <@
-            envNames tree = [ "verbose", None
-                              "log-level", None
-                              "no-cache", Some "NO_CACHE"
-                              "verbose", None
-                              "log-level", None
-                              "no-cache", Some "NO_CACHE" ]
+            envNames tree =
+                [
+                    "verbose", None
+                    "log-level", None
+                    "no-cache", Some "NO_CACHE"
+                    "verbose", None
+                    "log-level", None
+                    "no-cache", Some "NO_CACHE"
+                ]
         @>
 
 [<Fact>]
