@@ -259,11 +259,16 @@ module CommandTree =
             elif line = "" then ""
             else hang + line)
 
-    let private flagDescription (fi: FlagInfo) =
+    /// The first line of a description: the one-line summary a completion menu shows.
+    let private summaryLine (description: string) : string =
+        List.head (descriptionLines description)
+
+    /// Mark a flag description as repeatable when the flag may occur more than once.
+    let private withRepeatable (fi: FlagInfo) (description: string) =
         if fi.IsRepeatable then
-            $"%s{fi.Description} (repeatable)"
+            $"%s{description} (repeatable)"
         else
-            fi.Description
+            description
 
     /// Render a single flag info line for help output
     let private renderFlagLine (fi: FlagInfo) =
@@ -287,7 +292,7 @@ module CommandTree =
 
         let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
 
-        descriptionLines $"%s{flagDescription fi}%s{envPart}"
+        descriptionLines $"%s{withRepeatable fi fi.Description}%s{envPart}"
         |> tableRow (label.PadRight(30))
         |> String.concat "\n"
 
@@ -632,9 +637,12 @@ module CommandTree =
     let renderVersion (cmdPrefix: string) : string =
         sprintf "%s %s" cmdPrefix (entryAssemblyVersion ())
 
-    /// Generate fish shell completions from the command tree
+    /// Generate fish shell completions from the command tree. Each `-d` carries only the
+    /// first line of its description: fish shows one line per candidate.
     let fishCompletions (tree: CommandTree<'Cmd>) (cmdName: string) : string =
-        let escape (s: string) = s.Replace("\"", "\\\"")
+        // Inside fish double quotes, backslash, double quote and dollar are special.
+        let escape (s: string) =
+            s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("$", "\\$")
 
         let rec generate (node: CommandTree<'Cmd>) (path: string list) : string list =
             match node with
@@ -666,7 +674,7 @@ module CommandTree =
                             | None -> ""
 
                         [
-                            $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape (flagDescription fi)}\""
+                            $"complete -c %s{cmdName} -n \"%s{condition}\" -l %s{fi.LongName}%s{shortPart} -d \"%s{escape (withRepeatable fi (summaryLine fi.Description))}\""
                         ])
 
                 argCompletions @ flagCompletions
@@ -689,7 +697,7 @@ module CommandTree =
                     group.Children
                     |> List.map (fun child ->
                         let childName = name child
-                        let childDesc = escape (desc child)
+                        let childDesc = escape (summaryLine (desc child))
                         $"complete -c %s{cmdName} -n \"%s{condition}\" -a \"%s{childName}\" -d \"%s{childDesc}\"")
 
                 let nestedCompletions =
