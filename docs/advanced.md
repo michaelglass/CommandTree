@@ -199,8 +199,16 @@ with `-p:CommandTreeStampRevision=false` (whole feature) or
 ```fsharp
 FishCompletions.generateContent tree "my-tool"  // Generate .fish content
 FishCompletions.writeToFile tree "my-tool"      // Write to ~/.config/fish/completions/
-FishCompletions.installHook "my-tool"           // Auto-update hook in conf.d
+FishCompletions.installHook "my-tool" [ "src/Commands/**.fs" ]  // Auto-update hook in conf.d
 ```
+
+The hook runs on every `cd` into the project. It regenerates the completions only
+when they are missing or older than `my-tool` itself or a file matching one of the
+watched globs (relative to the project root), and it does so in the background, so
+the prompt never waits on the CLI. The first prompt after the regeneration exits
+sources the new file. Watch whatever changes when the command tree can: the
+sources that define it, or the built assembly that carries it.
+`FishCompletions.hookScript` returns the same hook as text.
 
 ## Build-time analyzer
 

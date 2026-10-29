@@ -55,7 +55,7 @@ Six source files in `src/CommandTree/`:
 
 - **Process.fs** -- Process execution: `run` (interactive with timing), `runSilent` (captured output), `runAsync` (Task-based), `runWithSpinner` (returns `int * string * string`), `runCommand` (returns `CommandResult` record), `runInteractive`, `dotnet`, `runParallel`. All use `ProcessStartInfo` directly (no shell).
 
-- **Fish.fs** -- Fish shell completion generation and installation. `FishCompletions.generateContent` creates `.fish` file content, `writeToFile` installs to `~/.config/fish/completions/`, `installHook` sets up auto-regeneration via `conf.d`.
+- **Fish.fs** -- Fish shell completion generation and installation. `FishCompletions.generateContent` creates `.fish` file content, `writeToFile` installs to `~/.config/fish/completions/`, `installHook cmdName watched` writes the `conf.d` hook from `hookScript`, which regenerates in the background and only when the completions are older than the CLI or a watched glob.
 
 ## Key Concepts
 

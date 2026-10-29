@@ -142,3 +142,171 @@ let ``generateContent uses cmdName in complete commands`` () =
     test <@ not (content1.Contains("complete -c other-tool")) @>
     test <@ content2.Contains("complete -c other-tool") @>
     test <@ not (content2.Contains("complete -c my-tool")) @>
+
+// =============================================================================
+// hookScript — the conf.d hook `installHook` writes
+//
+// The hook runs on every `cd`. It used to run the CLI's `fish generate`
+// synchronously on every change of directory into the project, so a CLI that
+// builds itself before running held the prompt for as long as that build took.
+// It now regenerates only when the completions are missing or older than an
+// input, and never in the foreground.
+// =============================================================================
+
+let private fishPath () =
+    (Environment.GetEnvironmentVariable "PATH"
+     |> Option.ofObj
+     |> Option.defaultValue "")
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+    |> Array.map (fun directory -> Path.Combine(directory, "fish"))
+    |> Array.tryFind File.Exists
+
+/// Run `script` under `fish --no-config` with HOME pointed at `home`; the exit
+/// code, stdout and whether it finished inside `timeout`.
+let private runFish (home: string) (script: string) (timeout: TimeSpan) =
+    let fish =
+        match fishPath () with
+        | Some fish -> fish
+        | None -> failwith "fish is not on PATH"
+
+    let psi = Diagnostics.ProcessStartInfo(fish)
+    psi.ArgumentList.Add "--no-config"
+    psi.ArgumentList.Add "-c"
+    psi.ArgumentList.Add script
+    psi.Environment["HOME"] <- home
+    psi.RedirectStandardOutput <- true
+    psi.UseShellExecute <- false
+    use proc = Diagnostics.Process.Start psi
+    let stdout = proc.StandardOutput.ReadToEndAsync()
+    let finished = proc.WaitForExit(int timeout.TotalMilliseconds)
+
+    if not finished then
+        proc.Kill true
+
+    finished, (if finished then proc.ExitCode else -1), (if finished then stdout.Result else "")
+
+let private withProject (assertion: string -> string -> unit) =
+    let id = Guid.NewGuid().ToString "N"
+    let root = Path.Combine(Path.GetTempPath(), $"commandtree-fish-hook-%s{id}")
+
+    let home = Path.Combine(root, "home")
+    let project = Path.Combine(root, "project")
+
+    Directory.CreateDirectory(Path.Combine(home, ".config", "fish", "completions"))
+    |> ignore
+
+    Directory.CreateDirectory(Path.Combine(project, "src")) |> ignore
+
+    try
+        assertion home project
+    finally
+        Directory.Delete(root, true)
+
+let private touch (path: string) (writtenAt: DateTime) =
+    if not (File.Exists path) then
+        File.WriteAllText(path, "")
+
+    File.SetLastWriteTimeUtc(path, writtenAt)
+
+let private completionsIn (home: string) =
+    Path.Combine(home, ".config", "fish", "completions", "tool.fish")
+
+[<Fact>]
+let ``hookScript names the CLI and every watched input, and backgrounds the regeneration`` () =
+    let script =
+        FishCompletions.hookScript "build.fsx" [ "src/Commands/*.fs"; "obj/Tool.dll" ]
+
+    test <@ script.Contains "--on-variable PWD" @>
+    test <@ script.Contains "\"$root/build.fsx\"" @>
+    test <@ script.Contains "$root/src/Commands/*.fs" @>
+    test <@ script.Contains "$root/obj/Tool.dll" @>
+    test <@ script.Contains "-nt" @>
+    test <@ script.Contains "fish generate" @>
+    test <@ script.Contains "disown" @>
+    // The dot in the CLI name never reaches a fish function name.
+    test <@ script.Contains "function __build_fsx_update_completions" @>
+
+[<Fact>]
+let ``hookScript refuses a watched pattern fish would not read as one literal glob`` () =
+    for pattern in
+        [
+            "src/My Commands/*.fs"
+            "$HOME/x"
+            "a;b"
+            "\"q\""
+            "/abs/path"
+            ""
+            "../outside"
+        ] do
+        raises<ArgumentException> <@ FishCompletions.hookScript "tool" [ pattern ] @>
+
+[<Fact>]
+let ``the hook judges completions stale when missing or older than an input, fresh otherwise`` () =
+    Assert.SkipWhen((fishPath ()).IsNone, "fish is not on PATH")
+
+    withProject (fun home project ->
+        let hook = Path.Combine(home, "hook.fish")
+        File.WriteAllText(hook, FishCompletions.hookScript "tool" [ "src/*.fs" ])
+        let anHourAgo = DateTime.UtcNow.AddHours -1.0
+        touch (Path.Combine(project, "tool")) anHourAgo
+        touch (Path.Combine(project, "src", "Commands.fs")) anHourAgo
+
+        let stale () =
+            let finished, code, _ =
+                runFish
+                    home
+                    $"source '%s{hook}'; __tool_completions_stale '%s{project}' '%s{completionsIn home}'"
+                    (TimeSpan.FromSeconds 30.0)
+
+            test <@ finished @>
+            code = 0
+
+        test <@ stale () @> // no completions file at all
+
+        touch (completionsIn home) DateTime.UtcNow
+        test <@ not (stale ()) @> // newer than the CLI and every watched input
+
+        touch (Path.Combine(project, "src", "Commands.fs")) (DateTime.UtcNow.AddMinutes 1.0)
+        test <@ stale () @> // a watched input changed after generation
+
+        touch (completionsIn home) (DateTime.UtcNow.AddMinutes 2.0)
+        touch (Path.Combine(project, "tool")) (DateTime.UtcNow.AddMinutes 3.0)
+        test <@ stale () @>) // the CLI itself changed after generation
+
+[<Fact>]
+let ``entering a project with stale completions returns before the generator finishes`` () =
+    Assert.SkipWhen((fishPath ()).IsNone, "fish is not on PATH")
+
+    withProject (fun home project ->
+        let hook = Path.Combine(home, "hook.fish")
+        File.WriteAllText(hook, FishCompletions.hookScript "tool" [])
+        let release = Path.Combine(home, "release")
+        let log = Path.Combine(home, "generated")
+        let tool = Path.Combine(project, "tool")
+
+        // A generator that cannot finish until the test releases it: a hook that
+        // waited for it would hold `cd` past the 30 s bound below, which kills fish.
+        File.WriteAllText(
+            tool,
+            "#!/bin/sh\n"
+            + $"i=0; while [ ! -f '%s{release}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done\n"
+            + $"echo \"$*\" > '%s{log}'\n"
+            + $"echo 'complete -c tool -f' > '%s{completionsIn home}'\n"
+        )
+
+        File.SetUnixFileMode(tool, UnixFileMode.UserRead ||| UnixFileMode.UserWrite ||| UnixFileMode.UserExecute)
+
+        let finished, code, stdout =
+            runFish home $"source '%s{hook}'; cd '%s{project}'; echo entered" (TimeSpan.FromSeconds 30.0)
+
+        test <@ finished && code = 0 && stdout.Trim() = "entered" @>
+        test <@ not (File.Exists log) @> // fish returned while the generator still waited
+
+        File.WriteAllText(release, "")
+        let deadline = DateTime.UtcNow.AddSeconds 60.0
+
+        while not (File.Exists log) && DateTime.UtcNow < deadline do
+            Threading.Thread.Sleep 100
+
+        test <@ File.Exists log @>
+        test <@ (File.ReadAllText log).Trim() = "fish generate" @>)

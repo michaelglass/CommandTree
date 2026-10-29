@@ -555,7 +555,7 @@ let handleFishDemo (tree: CommandTree<Command>) (cmdName: string) (cmd: FishDemo
         UI.title "Fish Completions Preview"
         UI.info "FishCompletions.generateContent output:"
         printfn "%s" (FishCompletions.generateContent tree cmdName)
-    | FishDemoCommand.Install -> FishCompletions.installHook cmdName
+    | FishDemoCommand.Install -> FishCompletions.installHook cmdName [ "*.fs" ]
 
 let rec run (tree: CommandTree<Command>) (cmdName: string) (cmd: Command) =
     match cmd with
