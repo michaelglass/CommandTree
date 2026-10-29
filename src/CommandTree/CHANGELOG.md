@@ -1,11 +1,16 @@
 # Changelog — CommandTree
 
+## Unreleased
+
+## 0.14.0 - 2026-10-29
+
+- feat!: fish hook regenerates completions in the background, only when stale
+
+
 All notable changes to the CommandTree library are documented in this file.
 
 (The `CommandTree.Analyzers` package has its own
 [`src/CommandTree.Analyzers/CHANGELOG.md`](../CommandTree.Analyzers/CHANGELOG.md).)
-
-## Unreleased
 
 ## 0.13.0 - 2026-09-30
 
