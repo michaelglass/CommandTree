@@ -35,15 +35,14 @@
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <!-- Auto-importing build target that stamps the source revision into the informational
-         version. build/ covers older direct refs; buildTransitive/ covers transitive +
-         modern direct refs. Not compiled (it's MSBuild, not F#). -->
+         version. Packed under build/ only, so NuGet imports it into projects that reference
+         CommandTree DIRECTLY. Under buildTransitive/ it also stamped every project that
+         merely references one of those (a CLI's test projects, say), so the clean/dirty
+         flip on the first edit after a commit recompiled all of them. Not compiled (it's
+         MSBuild, not F#). -->
     <None Include="build/CommandTree.targets"
           Pack="true"
           PackagePath="build/CommandTree.targets"
-          Visible="false" />
-    <None Include="build/CommandTree.targets"
-          Pack="true"
-          PackagePath="buildTransitive/CommandTree.targets"
           Visible="false" />
   </ItemGroup>
 

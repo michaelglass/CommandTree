@@ -190,7 +190,12 @@ suffix when the working copy has uncommitted changes). Under Jujutsu the commit 
 the working-copy commit's parent: `@` is rewritten on every edit, and stamping it
 would give every build a different assembly. A merge working copy falls back to
 Git. It never fails the build
-and never overrides a `SourceRevisionId` already set by CI/SourceLink. Opt out
+and never overrides a `SourceRevisionId` already set by CI/SourceLink. Only
+projects that reference CommandTree directly are stamped. A project that reaches
+CommandTree through another project, such as your CLI's test project, is not
+stamped, so the commit and the clean/dirty marker changing does not make it
+recompile. Add a direct `PackageReference` to a project that should carry the
+stamp too. Opt out
 with `-p:CommandTreeStampRevision=false` (whole feature) or
 `-p:CommandTreeStampDirty=false` (dirty marker only).
 

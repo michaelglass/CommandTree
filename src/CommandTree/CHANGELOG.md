@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- fix: the revision stamp now applies only to projects that reference CommandTree
+  directly. The package shipped its stamp target under `buildTransitive/` as well, so
+  every project that only references a CommandTree consumer (a CLI's test projects,
+  say) stamped its own assembly too. The stamp changes when the working copy turns
+  dirty on the first edit after a commit, and again at each commit, so all of those
+  projects recompiled each time for nothing but metadata. The stamped CLI's own
+  reference assembly keeps its identity across the change, so its dependents now
+  stay up to date. **Behaviour change:** a project that reached CommandTree only
+  transitively no longer reports a `+<commit>` in its informational version. Add a
+  direct `PackageReference` to stamp it.
+
 ## 0.14.0 - 2026-10-29
 
 - feat!: fish hook regenerates completions in the background, only when stale
