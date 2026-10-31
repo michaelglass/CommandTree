@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.1 - 2026-10-30
+
 - fix: the revision stamp now applies only to projects that reference CommandTree
   directly. The package shipped its stamp target under `buildTransitive/` as well, so
   every project that only references a CommandTree consumer (a CLI's test projects,
