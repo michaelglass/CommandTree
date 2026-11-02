@@ -296,7 +296,7 @@ errors, fish completions) and the optional build-time analyzer.
 <!-- sync:license:start -->
 ## License
 
-MIT
+[MPL-2.0](https://mozilla.org/MPL/2.0/)
 <!-- sync:license:end -->
 </content>
 </invoke>

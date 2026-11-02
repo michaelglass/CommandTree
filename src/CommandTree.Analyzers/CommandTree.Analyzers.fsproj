@@ -12,7 +12,7 @@
         <PackageId>CommandTree.Analyzers</PackageId>
         <Authors>Michael Glass</Authors>
         <Description>Opt-in FSharp.Analyzers.SDK analyzer that flags CommandTree command-DU shape errors (unsupported field types, list-field placement) at edit/build time, before the program runs.</Description>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
         <RepositoryUrl>https://github.com/michaelglass/CommandTree</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <Version>0.1.0-alpha.8</Version>

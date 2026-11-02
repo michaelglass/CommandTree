@@ -172,6 +172,6 @@ fish completions, and the optional build-time analyzer — lives in
 <!-- sync:license -->
 ## License
 
-MIT
+[MPL-2.0](https://mozilla.org/MPL/2.0/)
 <!-- sync:license:end -->
 </content>

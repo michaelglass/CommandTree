@@ -9,7 +9,7 @@
     <Authors>Michael Glass</Authors>
     <Description>Type-safe CLI command parsing with discriminated unions and reflection-based tree generation</Description>
     <PackageTags>fsharp;cli;command;parsing;discriminated-union;reflection</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageLicenseExpression>MPL-2.0</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/michaelglass/CommandTree</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
