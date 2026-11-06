@@ -310,3 +310,36 @@ let ``entering a project with stale completions returns before the generator fin
 
         test <@ File.Exists log @>
         test <@ (File.ReadAllText log).Trim() = "fish generate" @>)
+
+// =============================================================================
+// The generated script, as fish reads it
+// =============================================================================
+
+type FishQuotingCmd =
+    | [<Cmd("Show $HOME and \"quoted\" text\nsecond line that fish must never see")>] Show
+    | [<Cmd("Open a path like C:\\")>] Open
+
+[<Fact>]
+let ``fish reads every completion description as one literal line`` () =
+    Assert.SkipWhen((fishPath ()).IsNone, "fish is not on PATH")
+
+    withProject (fun home _ ->
+        let script = Path.Combine(home, "completions.fish")
+        let tree = CommandReflection.fromUnion<FishQuotingCmd> "Quoting\nCLI"
+        File.WriteAllText(script, FishCompletions.generateContent tree "tool")
+
+        // Stand in for `complete` and print each `-d` argument exactly as fish parsed it.
+        let finished, code, stdout =
+            runFish
+                home
+                ("function complete; set -l i (contains -i -- -d $argv); and printf '%s\\n' $argv[(math $i + 1)]; end; "
+                 + $"source '%s{script}'")
+                (TimeSpan.FromSeconds 30.0)
+
+        test <@ finished && code = 0 @>
+
+        test
+            <@
+                stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries) =
+                    [| "Show $HOME and \"quoted\" text"; "Open a path like C:\\" |]
+            @>)

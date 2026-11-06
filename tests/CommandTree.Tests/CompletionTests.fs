@@ -297,3 +297,45 @@ let ``fishCompletions identifies a repeatable flag`` () =
     let tree = CommandReflection.fromUnion<DUFlagCompCommand> "Test"
     let completions = CommandTree.fishCompletions tree "test"
     test <@ completions.Contains("-l env -s e -d \"Env (repeatable)\"") @>
+
+type MultiLineFlag =
+    | [<CmdFlag(Description = "Skip the actual operation\nand print what would run", Repeatable = true)>] Tag of string
+
+type MultiLineToolsCmd = | [<Cmd("List tools\none per line")>] Ls
+
+type MultiLineCommand =
+    | [<Cmd("Confirm the gate verdict\r\nfailed here, not selected by check\nre-run it to see why")>] Confirm of
+        MultiLineFlag list
+    | [<Cmd("Nested tools\nwith a second line")>] Tools of MultiLineToolsCmd
+    | [<Cmd("Greet \"you\" as $USER from C:\\home\nnot this line")>] Greet
+
+[<Fact>]
+let ``fishCompletions describes each command and flag with only the first description line`` () =
+    let tree = CommandReflection.fromUnion<MultiLineCommand> "Multi\nline"
+    let completions = CommandTree.fishCompletions tree "test"
+
+    let descriptions =
+        completions.Split('\n')
+        |> Array.filter (fun line -> line.Contains(" -d \""))
+        |> Array.map (fun line -> line.Substring(line.IndexOf(" -d \"") + 4))
+        |> List.ofArray
+
+    test
+        <@
+            descriptions =
+                [
+                    "\"Confirm the gate verdict\""
+                    "\"Nested tools\""
+                    "\"Greet \\\"you\\\" as \\$USER from C:\\\\home\""
+                    "\"Skip the actual operation (repeatable)\""
+                    "\"List tools\""
+                ]
+        @>
+
+    test <@ not (completions.Contains("\r")) @>
+
+    test
+        <@
+            completions.Split('\n')
+            |> Array.forall (fun line -> line.StartsWith("complete -c test"))
+        @>

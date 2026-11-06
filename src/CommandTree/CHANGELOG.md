@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- fix: fish completions describe each command and flag with only the first line
+  of its description, so a multi-line `[<Cmd>]` or `[<CmdFlag>]` description no
+  longer spills into the completion script. Backslashes and `$` in completion
+  text are now escaped as well as double quotes, so fish no longer expands them.
+
 ## 0.14.1 - 2026-10-30
 
 - fix: the revision stamp now applies only to projects that reference CommandTree
