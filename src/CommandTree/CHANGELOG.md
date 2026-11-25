@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.0 - 2026-11-25
+
 - fix: `HelpPrinter.print` pages only when stdout and stdin are both terminals,
   `TERM` is not `dumb`, `NO_PAGER` is not set to a non-empty value, `PAGER` is
   unset (then `less -R`) or names a program other than `cat`, and the help is
