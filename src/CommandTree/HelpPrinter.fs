@@ -16,6 +16,8 @@ type HelpConsole =
     {
         /// Whether stdout is a pipe or a file
         IsOutputRedirected: unit -> bool
+        /// Whether stdin is a pipe or a file (then nobody may be there to quit a pager)
+        IsInputRedirected: unit -> bool
         /// The terminal's size as (columns, rows). May throw when there is no console.
         WindowSize: unit -> int * int
         /// An environment variable, if set
@@ -45,7 +47,7 @@ module HelpPrinter =
                 with _ ->
                     0, 0
 
-        HelpEnvironment.parse redirected width height console.Variable
+        HelpEnvironment.parse redirected (console.IsInputRedirected()) width height console.Variable
 
     /// Print a plan through a console: straight to stdout, or through its pager, falling
     /// back to stdout when the pager cannot start.
@@ -97,13 +99,15 @@ module HelpPrinter =
     let system: HelpConsole =
         {
             IsOutputRedirected = fun () -> Console.IsOutputRedirected
+            IsInputRedirected = fun () -> Console.IsInputRedirected
             WindowSize = fun () -> Console.WindowWidth, Console.WindowHeight
             Variable = fun name -> Environment.GetEnvironmentVariable name |> Option.ofObj
             WriteLine = fun text -> Console.Out.WriteLine text
             Page = runPager
         }
 
-    /// Read stdout's terminal state, its size, NO_COLOR, PAGER and LESS.
+    /// Read whether stdout and stdin are terminals, the window size, NO_COLOR, NO_PAGER,
+    /// TERM, PAGER and LESS.
     let detect () : HelpEnvironment = detectWith system
 
     /// Print a plan to this process's stdout or through its pager.
@@ -114,6 +118,6 @@ module HelpPrinter =
         deliver (HelpEnvironment.plan environment doc)
 
     /// Print a help document for this process's stdout: styled and wrapped on a terminal
-    /// (plain when NO_COLOR is set), paged when taller than the window, plain and unwrapped
-    /// when redirected.
+    /// (plain when NO_COLOR is set), paged when taller than the window and paging is
+    /// allowed (see <c>HelpEnvironment.parse</c>), plain and unwrapped when redirected.
     let print (doc: HelpDoc) : unit = printWith (detect ()) doc

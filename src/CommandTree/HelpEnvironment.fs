@@ -30,6 +30,24 @@ type PagerCommand =
         Environment: (string * string) list
     }
 
+/// Why help is never paged in this environment.
+type PagingOffReason =
+    /// Stdin is not a terminal, so nobody may be there to press a key: a pager would wait forever
+    | InputRedirected
+    /// PAGER is set but blank, or names <c>cat</c>
+    | PagerDisabled
+    /// TERM is <c>dumb</c>
+    | DumbTerminal
+    /// NO_PAGER is set to a non-empty value
+    | NoPagerSet
+
+/// Whether help taller than the terminal may go through a pager, and which one.
+type Paging =
+    /// Never page; print directly
+    | PagingOff of reason: PagingOffReason
+    /// Page through this command when the help does not fit
+    | PagingOn of PagerCommand
+
 /// What the help printer knows about its surroundings, parsed once at the edge
 /// (see <c>HelpEnvironment.parse</c> and <c>HelpPrinter.detect</c>).
 type HelpEnvironment =
@@ -38,8 +56,8 @@ type HelpEnvironment =
         Target: HelpTarget
         /// Whether NO_COLOR is set to a non-empty value
         NoColor: bool
-        /// The pager for help taller than the terminal
-        Pager: PagerCommand
+        /// Whether, and through what, help taller than the terminal is paged
+        Paging: Paging
     }
 
 /// How rendered help reaches the reader.
@@ -61,7 +79,7 @@ type HelpPlan =
 /// Parse the environment and decide colour, width and paging. Pure.
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module HelpEnvironment =
-    /// The pager used when PAGER is unset or blank: <c>less -R</c>, which passes colour through.
+    /// The pager used when PAGER is unset: <c>less -R</c>, which passes colour through.
     let defaultPager =
         {
             Program = "less"
@@ -77,37 +95,64 @@ module HelpEnvironment =
         | None -> [ "LESS", "FRX" ]
         | Some _ -> []
 
-    let private parsePager (pager: string option) (less: string option) : PagerCommand =
-        let parts =
-            pager
-            |> Option.map (fun v -> v.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries) |> List.ofArray)
+    /// PAGER as a command: unset means <c>less -R</c>; blank or <c>cat</c> (with any
+    /// arguments) means no pager at all.
+    let private parsePager (pager: string option) (less: string option) : Paging =
+        let words (value: string) =
+            value.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries)
+            |> List.ofArray
 
-        let command =
-            match parts with
-            | Some(program :: arguments) ->
+        let environment = pagerVariables less
+
+        match pager |> Option.map words with
+        | None ->
+            PagingOn
+                { defaultPager with
+                    Environment = environment
+                }
+        | Some []
+        | Some("cat" :: _) -> PagingOff PagerDisabled
+        | Some(program :: arguments) ->
+            PagingOn
                 {
                     Program = program
                     Arguments = arguments
-                    Environment = []
+                    Environment = environment
                 }
-            | Some []
-            | None -> defaultPager
 
-        { command with
-            Environment = pagerVariables less
-        }
+    let private isSet (value: string option) =
+        value |> Option.exists (fun v -> v <> "")
 
-    /// Parse raw facts into a <c>HelpEnvironment</c>. <c>width</c> and <c>height</c> are the
-    /// terminal's reported size, ignored when stdout is redirected; a terminal that reports
-    /// no size (0) is taken to be 80x24. <c>variable</c> looks up an environment variable:
-    /// NO_COLOR, PAGER (split at whitespace, no shell quoting) and LESS are read.
-    let parse (isRedirected: bool) (width: int) (height: int) (variable: string -> string option) : HelpEnvironment =
+    let private parsePaging (isInputRedirected: bool) (variable: string -> string option) : Paging =
+        if isInputRedirected then
+            PagingOff InputRedirected
+        elif isSet (variable "NO_PAGER") then
+            PagingOff NoPagerSet
+        elif variable "TERM" = Some "dumb" then
+            PagingOff DumbTerminal
+        else
+            parsePager (variable "PAGER") (variable "LESS")
+
+    /// Parse raw facts into a <c>HelpEnvironment</c>. <c>isOutputRedirected</c> and
+    /// <c>isInputRedirected</c> say whether stdout and stdin are pipes or files rather than
+    /// a terminal. <c>width</c> and <c>height</c> are the terminal's reported size, ignored
+    /// when stdout is redirected; a terminal that reports no size (0) is taken to be 80x24.
+    /// <c>variable</c> looks up an environment variable: NO_COLOR, NO_PAGER, TERM, PAGER
+    /// (split at whitespace, no shell quoting) and LESS are read. Paging is off when stdin
+    /// is redirected, NO_PAGER is set, TERM is <c>dumb</c>, or PAGER is blank or <c>cat</c>.
+    let parse
+        (isOutputRedirected: bool)
+        (isInputRedirected: bool)
+        (width: int)
+        (height: int)
+        (variable: string -> string option)
+        : HelpEnvironment =
         let orDefault fallback reported =
             if reported > 0 then reported else fallback
 
         {
             Target =
-                if isRedirected then
+                if isOutputRedirected then
                     Redirected
                 else
                     Terminal
@@ -115,8 +160,8 @@ module HelpEnvironment =
                             Width = orDefault 80 width
                             Height = orDefault 24 height
                         }
-            NoColor = variable "NO_COLOR" |> Option.exists (fun value -> value <> "")
-            Pager = parsePager (variable "PAGER") (variable "LESS")
+            NoColor = isSet (variable "NO_COLOR")
+            Paging = parsePaging isInputRedirected variable
         }
 
     /// Styled on a terminal unless NO_COLOR is set; plain otherwise.
@@ -132,13 +177,15 @@ module HelpEnvironment =
         | Terminal size -> HelpWidth.create size.Width
         | Redirected -> HelpWidth.unbounded
 
-    /// Page help of <c>lineCount</c> lines only on a terminal it does not fit: one with no
-    /// more rows than lines, since the shell prompt that follows needs a row too.
+    /// Page help of <c>lineCount</c> lines only when paging is on and on a terminal it does
+    /// not fit: one with no more rows than lines, since the shell prompt that follows needs
+    /// a row too.
     let delivery (environment: HelpEnvironment) (lineCount: int) : HelpDelivery =
-        match environment.Target with
-        | Terminal size when lineCount >= size.Height -> Paged environment.Pager
-        | Terminal _
-        | Redirected -> Direct
+        match environment.Target, environment.Paging with
+        | Terminal size, PagingOn pager when lineCount >= size.Height -> Paged pager
+        | Terminal _, PagingOn _
+        | Terminal _, PagingOff _
+        | Redirected, _ -> Direct
 
     /// Lay out and render a document for this environment and decide how to deliver it.
     let plan (environment: HelpEnvironment) (doc: HelpDoc) : HelpPlan =

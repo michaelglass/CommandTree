@@ -344,14 +344,14 @@ let private terminal width height noColor : HelpEnvironment =
     {
         Target = Terminal { Width = width; Height = height }
         NoColor = noColor
-        Pager = HelpEnvironment.defaultPager
+        Paging = PagingOn HelpEnvironment.defaultPager
     }
 
 let private redirected: HelpEnvironment =
     {
         Target = Redirected
         NoColor = false
-        Pager = HelpEnvironment.defaultPager
+        Paging = PagingOn HelpEnvironment.defaultPager
     }
 
 [<Fact>]
@@ -366,19 +366,93 @@ let ``a terminal wraps at its width and redirected output does not wrap`` () =
     test <@ HelpEnvironment.width redirected = HelpWidth.unbounded @>
 
 [<Fact>]
-let ``the pager runs only for a terminal shorter than the text`` () =
+let ``does not page when the help fits the window`` () =
     let tall = terminal 80 10 false
     test <@ HelpEnvironment.delivery tall 9 = Direct @>
     test <@ HelpEnvironment.delivery tall 10 = Paged HelpEnvironment.defaultPager @>
     test <@ HelpEnvironment.delivery tall 500 = Paged HelpEnvironment.defaultPager @>
     test <@ HelpEnvironment.delivery redirected 500 = Direct @>
 
+[<Fact>]
+let ``does not page when paging is off however tall the help is`` () =
+    let off =
+        { terminal 80 10 false with
+            Paging = PagingOff DumbTerminal
+        }
+
+    test <@ HelpEnvironment.delivery off 500 = Direct @>
+
 /// A variable lookup over a fixed set of (name, value) pairs.
 let private variables (pairs: (string * string) list) (name: string) =
     pairs |> List.tryFind (fst >> (=) name) |> Option.map snd
 
+/// Parse with stdin and stdout both terminals, 80x24.
 let private parseVars pairs =
-    HelpEnvironment.parse false 80 24 (variables pairs)
+    HelpEnvironment.parse false false 80 24 (variables pairs)
+
+/// The delivery of 100 lines (taller than any window here) on an 80x24 terminal.
+let private tallHelpWith isInputRedirected pairs =
+    HelpEnvironment.delivery (HelpEnvironment.parse false isInputRedirected 80 24 (variables pairs)) 100
+
+let private lessR: PagerCommand =
+    {
+        Program = "less"
+        Arguments = [ "-R" ]
+        Environment = [ "LESS", "FRX" ]
+    }
+
+[<Fact>]
+let ``pages when stdin and stdout are terminals and the help is taller than the window`` () =
+    test <@ tallHelpWith false [ "TERM", "xterm-256color" ] = Paged lessR @>
+
+[<Fact>]
+let ``does not page when stdin is redirected`` () =
+    test <@ (HelpEnvironment.parse false true 80 24 (variables [])).Paging = PagingOff InputRedirected @>
+    test <@ tallHelpWith true [] = Direct @>
+
+[<Fact>]
+let ``an unset PAGER pages through less -R`` () =
+    test <@ (parseVars []).Paging = PagingOn lessR @>
+
+[<Fact>]
+let ``does not page when PAGER is empty`` () =
+    test <@ (parseVars [ "PAGER", "" ]).Paging = PagingOff PagerDisabled @>
+    test <@ (parseVars [ "PAGER", "  \t" ]).Paging = PagingOff PagerDisabled @>
+    test <@ tallHelpWith false [ "PAGER", "" ] = Direct @>
+
+[<Fact>]
+let ``does not page when PAGER is cat`` () =
+    test <@ (parseVars [ "PAGER", "cat" ]).Paging = PagingOff PagerDisabled @>
+    test <@ (parseVars [ "PAGER", " cat -v " ]).Paging = PagingOff PagerDisabled @>
+    test <@ tallHelpWith false [ "PAGER", "cat" ] = Direct @>
+    test <@ tallHelpWith false [ "PAGER", "cat -v" ] = Direct @>
+
+[<Fact>]
+let ``a PAGER whose program merely starts with cat still pages`` () =
+    test
+        <@
+            (parseVars [ "PAGER", "catless" ]).Paging =
+                PagingOn
+                    { lessR with
+                        Program = "catless"
+                        Arguments = []
+                    }
+        @>
+
+[<Fact>]
+let ``does not page when TERM is dumb`` () =
+    test <@ (parseVars [ "TERM", "dumb" ]).Paging = PagingOff DumbTerminal @>
+    test <@ tallHelpWith false [ "TERM", "dumb" ] = Direct @>
+    test <@ tallHelpWith false [ "TERM", "xterm" ] = Paged lessR @>
+
+[<Fact>]
+let ``does not page when NO_PAGER is set`` () =
+    test <@ (parseVars [ "NO_PAGER", "1" ]).Paging = PagingOff NoPagerSet @>
+    test <@ tallHelpWith false [ "NO_PAGER", "1" ] = Direct @>
+
+[<Fact>]
+let ``an empty NO_PAGER still pages`` () =
+    test <@ tallHelpWith false [ "NO_PAGER", "" ] = Paged lessR @>
 
 [<Fact>]
 let ``parse reads NO_COLOR as set only when non-empty`` () =
@@ -397,28 +471,29 @@ let private pager program arguments : PagerCommand =
     }
 
 [<Fact>]
-let ``parse splits PAGER into program and arguments and defaults to less -R`` () =
-    let parsed value = (parseVars [ "PAGER", value ]).Pager
+let ``parse splits PAGER into program and arguments`` () =
+    let parsed value = (parseVars [ "PAGER", value ]).Paging
 
-    test <@ (parseVars []).Pager = pager "less" [ "-R" ] @>
-    test <@ parsed "  " = pager "less" [ "-R" ] @>
-    test <@ parsed "most" = pager "most" [] @>
-    test <@ parsed " less  -R -S " = pager "less" [ "-R"; "-S" ] @>
+    test <@ parsed "most" = PagingOn(pager "most" []) @>
+    test <@ parsed " less  -R -S " = PagingOn(pager "less" [ "-R"; "-S" ]) @>
 
 [<Fact>]
 let ``the pager gets LESS=FRX only when LESS is unset`` () =
-    test <@ (parseVars []).Pager.Environment = [ "LESS", "FRX" ] @>
-    test <@ List.isEmpty (parseVars [ "LESS", "-S" ]).Pager.Environment @>
-    test <@ List.isEmpty (parseVars [ "LESS", "" ]).Pager.Environment @>
+    let lessRAlone = PagingOn { lessR with Environment = [] }
+
+    test <@ (parseVars []).Paging = PagingOn lessR @>
+    test <@ (parseVars [ "LESS", "-S" ]).Paging = lessRAlone @>
+    test <@ (parseVars [ "LESS", "" ]).Paging = lessRAlone @>
 
 [<Fact>]
 let ``parse treats a redirected stdout as Redirected whatever size it reports`` () =
-    test <@ (HelpEnvironment.parse true 120 50 (variables [])).Target = Redirected @>
+    test <@ (HelpEnvironment.parse true false 120 50 (variables [])).Target = Redirected @>
 
 [<Fact>]
 let ``parse falls back to 80x24 for a terminal that reports no size`` () =
-    test <@ (HelpEnvironment.parse false 0 0 (variables [])).Target = Terminal { Width = 80; Height = 24 } @>
-    test <@ (HelpEnvironment.parse false 132 43 (variables [])).Target = Terminal { Width = 132; Height = 43 } @>
+    test <@ (HelpEnvironment.parse false false 0 0 (variables [])).Target = Terminal { Width = 80; Height = 24 } @>
+
+    test <@ (HelpEnvironment.parse false false 132 43 (variables [])).Target = Terminal { Width = 132; Height = 43 } @>
 
 [<Fact>]
 let ``plan renders for the environment and picks the delivery`` () =
@@ -460,6 +535,7 @@ let private fakeConsole redirected (windowSize: unit -> int * int) (outcome: Pag
         Console =
             {
                 IsOutputRedirected = fun () -> redirected
+                IsInputRedirected = fun () -> false
                 WindowSize = windowSize
                 Variable = variables [ "PAGER", "most" ]
                 WriteLine = written.Add
@@ -480,7 +556,24 @@ let ``detectWith does not ask a redirected stdout for its size`` () =
     let fake = fakeConsole true noSize PagerShown
     let env = HelpPrinter.detectWith fake.Console
     test <@ env.Target = Redirected @>
-    test <@ env.Pager.Program = "most" @>
+    test <@ env.Paging = PagingOn(pager "most" []) @>
+
+[<Fact>]
+let ``detectWith asks IsInputRedirected and threads it into the paging decision`` () =
+    let fake = fakeConsole false (fun () -> 80, 24) PagerShown
+    let asked = ResizeArray<unit>()
+
+    let stdinRedirected =
+        { fake.Console with
+            IsInputRedirected =
+                fun () ->
+                    asked.Add()
+                    true
+        }
+
+    test <@ (HelpPrinter.detectWith stdinRedirected).Paging = PagingOff InputRedirected @>
+    test <@ asked.Count = 1 @>
+    test <@ (HelpPrinter.detectWith fake.Console).Paging = PagingOn(pager "most" []) @>
 
 [<Fact>]
 let ``detectWith reads a terminal's size`` () =
@@ -565,7 +658,10 @@ let ``detect reads the process environment into a parsed environment`` () =
         not (String.IsNullOrEmpty(Environment.GetEnvironmentVariable "NO_COLOR"))
 
     test <@ env.NoColor = expectedNoColor @>
-    test <@ env.Pager.Program <> "" @>
+
+[<Fact>]
+let ``the real console reports whether stdin is redirected`` () =
+    test <@ HelpPrinter.system.IsInputRedirected() = Console.IsInputRedirected @>
 
 [<Fact>]
 let ``the real console reads the window size or says it cannot`` () =

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- fix: `HelpPrinter.print` pages only when stdout and stdin are both terminals,
+  `TERM` is not `dumb`, `NO_PAGER` is not set to a non-empty value, `PAGER` is
+  unset (then `less -R`) or names a program other than `cat`, and the help is
+  taller than the window; otherwise it prints directly. A pager in a terminal
+  pane nobody types into (a coding agent's tmux pane, say) no longer waits for a
+  keypress forever. **Behaviour change:** `PAGER` set to an empty or blank value
+  now turns paging off instead of falling back to `less -R`, as does `PAGER=cat`
+  (with any arguments); `NO_PAGER` is new.
+- feat: **Breaking** for code that builds or reads a `HelpEnvironment` or
+  `HelpConsole` directly. `HelpEnvironment.Pager` is replaced by
+  `Paging: Paging` (`PagingOn of PagerCommand` | `PagingOff of PagingOffReason`,
+  the reason being `InputRedirected`, `PagerDisabled`, `DumbTerminal` or
+  `NoPagerSet`); `HelpEnvironment.parse` takes whether stdin is redirected after
+  whether stdout is (`parse isOutputRedirected isInputRedirected width height
+  variable`); `HelpConsole` gains `IsInputRedirected`.
+
 ## 0.14.3 - 2026-11-25
 
 - fix: group help (`help`, `helpForPath` and `helpWithGlobals` on a group, and

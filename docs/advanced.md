@@ -98,10 +98,18 @@ limit. To print help the way a terminal reader wants it, hand the document to
   a usage too long for it moves its description to the next line instead of
   pushing it right. Redirected output does not wrap, so each row stays on one
   line for `grep`.
-- **Paging.** Help with at least as many lines as the terminal has rows goes
-  through `$PAGER` (default `less -R`; `LESS=FRX` when `LESS` is unset); never
-  when stdout is redirected. If the pager cannot start, the help is printed
-  directly.
+- **Paging.** Help goes through a pager only when all of these hold; otherwise
+  it is printed directly:
+  - stdout **and stdin** are terminals (a pager in a pane nobody types into,
+    such as a coding agent's, would wait for a key forever);
+  - `PAGER` is unset (then `less -R`, with `LESS=FRX` when `LESS` is unset) or
+    names a program other than `cat`; `PAGER` set to an empty or blank value, or
+    to `cat` with any arguments, turns paging off;
+  - `TERM` is not `dumb`;
+  - `NO_PAGER` is not set to a non-empty value;
+  - the help has at least as many lines as the terminal has rows.
+
+  If the pager cannot start, the help is printed directly.
 
 `helpFull`/`helpFullDoc` is the overview: one row per command at every depth,
 each description cut to its first sentence (`HelpDoc.firstSentence`), and a
@@ -114,15 +122,19 @@ tested without a terminal:
 
 ```fsharp
 let noVariables (_: string) : string option = None
-let env = HelpEnvironment.parse (* isRedirected *) false 100 40 noVariables
+let env =
+    HelpEnvironment.parse (* isOutputRedirected *) false (* isInputRedirected *) false 100 40 noVariables
+// env.Paging : Paging — PagingOn pager, or PagingOff reason
+//   (InputRedirected | PagerDisabled | DumbTerminal | NoPagerSet)
 let plan = HelpEnvironment.plan env (CommandTree.helpFullDoc tree "my-cli")
 // plan.Rendered : string       — laid out at 100 columns, styled
-// plan.Delivery : HelpDelivery — Direct, or Paged pager when taller than 40 rows
+// plan.Delivery : HelpDelivery — Direct, or Paged pager when paging is on and
+//                                the help is taller than 40 rows
 HelpDoc.toText (HelpWidth.create 80) Plain doc // any width, either colour mode
 ```
 
-The effects themselves go through a `HelpConsole` record (redirect check, window
-size, environment variables, writing a line, running the pager).
+The effects themselves go through a `HelpConsole` record (stdout and stdin
+redirect checks, window size, environment variables, writing a line, running the pager).
 `HelpPrinter.system` is the real one; `HelpPrinter.detectWith` and
 `HelpPrinter.deliverWith` take any other, so a test can script a terminal, a
 window size that cannot be read, or a pager that will not start.
