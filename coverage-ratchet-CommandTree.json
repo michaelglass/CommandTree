@@ -44,15 +44,15 @@
       "coveredBranches": 0
     },
     "Fish.fs": {
-      "coveredLines": 20,
-      "coveredBranches": 1
+      "coveredLines": 70,
+      "coveredBranches": 5
     },
     "Process.fs": {
       "coveredLines": 202,
       "coveredBranches": 38
     },
     "Reflection.fs": {
-      "coveredLines": 846,
+      "coveredLines": 867,
       "coveredBranches": 421
     },
     "SpecError.fs": {
@@ -60,12 +60,24 @@
       "coveredBranches": 15
     },
     "Tree.fs": {
-      "coveredLines": 318,
-      "coveredBranches": 159
+      "coveredLines": 313,
+      "coveredBranches": 157
     },
     "UI.fs": {
       "coveredLines": 51,
       "coveredBranches": 24
+    },
+    "HelpDoc.fs": {
+      "coveredLines": 160,
+      "coveredBranches": 73
+    },
+    "HelpEnvironment.fs": {
+      "coveredLines": 49,
+      "coveredBranches": 20
+    },
+    "HelpPrinter.fs": {
+      "coveredLines": 48,
+      "coveredBranches": 8
     }
   }
 }
