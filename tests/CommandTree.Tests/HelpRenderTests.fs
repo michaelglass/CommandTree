@@ -229,6 +229,40 @@ let ``help for one command keeps its full description`` () =
     test <@ help.Contains("Type-check every project or one named project", StringComparison.Ordinal) @>
 
 [<Fact>]
+let ``group help lists each child with its first sentence`` () =
+    // The widest label, "  migrate <database>", ends at column 20; descriptions start at 22.
+    let at22 (label: string) = label.PadRight 22
+
+    let expected =
+        "Usage: ./build.fsx db <command>\n"
+        + "\n"
+        + "Database management\n"
+        + "\n"
+        + "Commands:\n"
+        + at22 "  migrate <database>"
+        + "Apply pending migrations to the named database, e.g. staging.\n"
+        + at22 "  shell"
+        + "Open a psql shell"
+
+    test <@ CommandTree.helpForPath tree [ "db" ] "./build.fsx" = expected @>
+
+[<Fact>]
+let ``root help lists each command with its first sentence, with or without globals`` () =
+    let rootHelp = CommandTree.help tree [] "./build.fsx"
+    let globalsHelp = CommandTree.helpWithGlobals tree [] "./build.fsx"
+
+    for help in [ rootHelp; globalsHelp ] do
+        test <@ help.Contains("Compile only.", StringComparison.Ordinal) @>
+        test <@ not (help.Contains("Type-check every project", StringComparison.Ordinal)) @>
+
+[<Fact>]
+let ``a leaf's own help keeps its full description while its group shows the first sentence`` () =
+    let groupHelp = CommandTree.helpForPath tree [ "db" ] "./build.fsx"
+    let leafHelp = CommandTree.helpForPath tree [ "db"; "migrate" ] "./build.fsx"
+    test <@ not (groupHelp.Contains("Never edits an applied one.", StringComparison.Ordinal)) @>
+    test <@ leafHelp.Contains("Never edits an applied one.", StringComparison.Ordinal) @>
+
+[<Fact>]
 let ``the string help is the plain unbounded rendering of its document`` () =
     test <@ CommandTree.helpFull tree "x" = HelpDoc.plain (CommandTree.helpFullDoc tree "x") @>
     test <@ CommandTree.help tree [] "x" = HelpDoc.plain (CommandTree.helpDoc tree [] "x") @>

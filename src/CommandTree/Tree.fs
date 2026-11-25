@@ -279,17 +279,15 @@ module CommandTree =
             let spans = [ span HelpStyle.Text line ]
             if i = lines.Length - 1 then spans @ suffix else spans)
 
-    /// The <c>(default)</c> marker on the first line of the default child's description.
-    let private markDefault (group: GroupData<'Cmd>) (child: CommandTree<'Cmd>) (lines: HelpSpan list list) =
+    /// A child's one-line summary: its description's first sentence, then <c>(default)</c>
+    /// when it is its group's default. The full text belongs to that command's own help.
+    let private childSummary (group: GroupData<'Cmd>) (child: CommandTree<'Cmd>) : HelpSpan list list =
+        let sentence = span HelpStyle.Text (HelpDoc.firstSentence (desc child))
+
         if group.Default = Some(name child) then
-            lines
-            |> List.mapi (fun i line ->
-                if i = 0 then
-                    line @ [ span HelpStyle.Secondary " (default)" ]
-                else
-                    line)
+            [ [ sentence; span HelpStyle.Secondary " (default)" ] ]
         else
-            lines
+            [ [ sentence ] ]
 
     let private argSpans (argList: ArgInfo list) : HelpSpan list =
         argList |> List.map (fun a -> span HelpStyle.Argument $" %s{formatArg a}")
@@ -347,14 +345,15 @@ module CommandTree =
             Description = describe description defaultPart
         }
 
-    /// A group's children as table rows, each with its full description.
+    /// A group's children as table rows, each with its first sentence: the full text
+    /// belongs to that command's own help.
     let private childRows (group: GroupData<'Cmd>) : HelpRow list =
         group.Children
         |> List.map (fun child ->
             {
                 Depth = 0
                 Label = nameSpan child :: argSpans (args child)
-                Description = describe (desc child) [] |> markDefault group child
+                Description = childSummary group child
             })
 
     /// A titled section: a blank line, the heading, then its blocks. Nothing when empty.
@@ -426,12 +425,10 @@ module CommandTree =
     /// The overview rows for a node and, for a group, everything under it. Each
     /// description is its first sentence: the full text belongs to that command's help.
     let rec private overviewRows (depth: int) (parent: GroupData<'Cmd> option) (node: CommandTree<'Cmd>) =
-        let sentence = [ [ span HelpStyle.Text (HelpDoc.firstSentence (desc node)) ] ]
-
         let summary =
             match parent with
-            | Some group -> markDefault group node sentence
-            | None -> sentence
+            | Some group -> childSummary group node
+            | None -> [ [ span HelpStyle.Text (HelpDoc.firstSentence (desc node)) ] ]
 
         match node with
         | Leaf leaf ->

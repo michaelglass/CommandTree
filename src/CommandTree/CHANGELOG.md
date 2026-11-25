@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- fix: group help (`help`, `helpForPath` and `helpWithGlobals` on a group, and
+  their `...Doc` twins) lists each child with its first sentence, as the overview
+  does, so a long description no longer fills the listing. The full text stays in
+  the command's own help. A multi-line child description is joined into that
+  sentence rather than hung over several lines.
+
 ## 0.14.2 - 2026-11-25
 
 - feat: help for terminals. `helpDoc`, `helpFullDoc`, `helpForPathDoc` and

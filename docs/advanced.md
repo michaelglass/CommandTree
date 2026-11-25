@@ -105,8 +105,9 @@ limit. To print help the way a terminal reader wants it, hand the document to
 
 `helpFull`/`helpFullDoc` is the overview: one row per command at every depth,
 each description cut to its first sentence (`HelpDoc.firstSentence`), and a
-blank line before and after each top-level group. The full text belongs to the
-command's own help.
+blank line before and after each top-level group. A group's own help
+(`helpForPath`, `help`, `helpWithGlobals`) lists its children the same way, one
+first sentence each. The full text belongs to the command's own help.
 
 Every decision is a pure function over the parsed environment, so it can be
 tested without a terminal:
