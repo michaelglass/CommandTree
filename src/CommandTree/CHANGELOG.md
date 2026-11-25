@@ -6,6 +6,10 @@
   of its description, so a multi-line `[<Cmd>]` or `[<CmdFlag>]` description no
   longer spills into the completion script. Backslashes and `$` in completion
   text are now escaped as well as double quotes, so fish no longer expands them.
+- fix: `Process.runAsync` reads stdout and stderr concurrently. It read stdout to the
+  end before starting on stderr, so a child that wrote more than a pipe buffer to
+  stderr first blocked forever. A command that cannot start still yields a faulted
+  task.
 
 ## 0.14.1 - 2026-10-30
 

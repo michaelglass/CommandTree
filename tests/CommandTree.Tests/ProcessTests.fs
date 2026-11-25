@@ -132,6 +132,32 @@ let ``runAsync returns exit code stdout stderr`` () =
     test <@ out.Trim() = "async-output" @>
     test <@ err = "" @>
 
+[<Fact>]
+let ``runAsync reads stderr while stdout is still open`` () =
+    // 200 KB on stderr before anything on stdout: reading stdout to its end first would
+    // leave the child blocked on a full stderr pipe forever.
+    let script = "head -c 200000 /dev/zero | tr '\\0' e >&2; echo done"
+
+    let (_output, result) =
+        UITests.captureStdout (fun () ->
+            let task = Process.runAsync "sh" [ "-c"; script ]
+            test <@ task.Wait(TimeSpan.FromSeconds 30.0) @>
+            task.Result)
+
+    let (code, out, err) = result
+    test <@ code = 0 @>
+    test <@ out.Trim() = "done" @>
+    test <@ err.Length = 200000 @>
+
+[<Fact>]
+let ``runAsync of a command that cannot start is a faulted task`` () =
+    let (_output, task) =
+        UITests.captureStdout (fun () -> Process.runAsync "/nonexistent/commandtree-missing" [])
+
+    test <@ task.IsFaulted @>
+    test <@ (task.Exception.InnerException :? System.ComponentModel.Win32Exception) @>
+
+
 // =============================================================================
 // runWithSpinner — spinner + captured output
 // =============================================================================

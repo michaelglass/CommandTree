@@ -103,18 +103,31 @@ module Process =
         args |> List.iter psi.ArgumentList.Add
         psi
 
+    /// Start a process for <c>psi</c>, run <c>body</c> with it, and dispose of it. A
+    /// constructed process is never null, unlike <c>Process.Start</c>'s result, so this
+    /// carries no null check that no test could reach.
+    let private withProcess (psi: ProcessStartInfo) (body: Diagnostics.Process -> 'T) : 'T =
+        let proc = new Diagnostics.Process(StartInfo = psi)
+
+        try
+            proc.Start() |> ignore
+            body proc
+        finally
+            proc.Dispose()
+
     /// Run a command and wait for it to complete.
     let run (command: string) (args: string list) =
         UI.cmd command (String.concat " " args)
         let sw = Stopwatch.StartNew()
         let psi = mkPsi command args
-        use proc = Diagnostics.Process.Start(psi)
-        proc.WaitForExit()
-        sw.Stop()
-        printfn $"    %s{UI.timing sw.Elapsed}"
 
-        if proc.ExitCode <> 0 then
-            failwith $"Command failed with exit code %d{proc.ExitCode}"
+        withProcess psi (fun proc ->
+            proc.WaitForExit()
+            sw.Stop()
+            printfn $"    %s{UI.timing sw.Elapsed}"
+
+            if proc.ExitCode <> 0 then
+                failwith $"Command failed with exit code %d{proc.ExitCode}")
 
     /// Run a command with spinner, capturing output.
     let runWithSpinner (message: string) (command: string) (args: string list) =
@@ -123,25 +136,25 @@ module Process =
                 let psi = mkPsi command args
                 psi.RedirectStandardOutput <- true
                 psi.RedirectStandardError <- true
-                use proc = Diagnostics.Process.Start(psi)
-                // Read stdout and stderr in parallel to avoid deadlock when buffer fills
-                let stdoutTask = proc.StandardOutput.ReadToEndAsync()
-                let stderrTask = proc.StandardError.ReadToEndAsync()
-                proc.WaitForExit()
-                let stdout = stdoutTask.Result
-                let stderr = stderrTask.Result
 
-                if proc.ExitCode <> 0 then
-                    if not (String.IsNullOrWhiteSpace(stderr)) then
-                        eprintfn "%s" stderr
+                withProcess psi (fun proc ->
+                    // Read stdout and stderr in parallel to avoid deadlock when buffer fills
+                    let stdoutTask = proc.StandardOutput.ReadToEndAsync()
+                    let stderrTask = proc.StandardError.ReadToEndAsync()
+                    proc.WaitForExit()
+                    let stdout = stdoutTask.Result
+                    let stderr = stderrTask.Result
 
-                    if not (String.IsNullOrWhiteSpace(stdout)) then
-                        printfn "%s" stdout
+                    if proc.ExitCode <> 0 then
+                        if not (String.IsNullOrWhiteSpace(stderr)) then
+                            eprintfn "%s" stderr
 
-                    failwith $"Command failed with exit code %d{proc.ExitCode}"
+                        if not (String.IsNullOrWhiteSpace(stdout)) then
+                            printfn "%s" stdout
 
-                (proc.ExitCode, stdout, stderr))
+                        failwith $"Command failed with exit code %d{proc.ExitCode}"
 
+                    (proc.ExitCode, stdout, stderr)))
         // Show output after spinner completes
         if not (String.IsNullOrWhiteSpace(stdout)) then
             printfn "%s" (stdout.TrimEnd())
@@ -151,19 +164,31 @@ module Process =
 
         (exitCode, stdout, stderr)
 
-    /// Run a command asynchronously, returning exit code, stdout, stderr.
-    let runAsync (command: string) (args: string list) =
-        task {
-            UI.cmd command (String.concat " " args)
-            let psi = mkPsi command args
-            psi.RedirectStandardOutput <- true
-            psi.RedirectStandardError <- true
-            use proc = Diagnostics.Process.Start(psi)
-            let! stdout = proc.StandardOutput.ReadToEndAsync()
-            let! stderr = proc.StandardError.ReadToEndAsync()
-            do! proc.WaitForExitAsync()
-            return (proc.ExitCode, stdout, stderr)
-        }
+    /// Run a command asynchronously, returning exit code, stdout, stderr. Both streams are
+    /// read concurrently, so a child that fills one pipe while the other is being drained
+    /// cannot deadlock. A command that cannot start yields a faulted task.
+    let runAsync (command: string) (args: string list) : Task<int * string * string> =
+        UI.cmd command (String.concat " " args)
+        let psi = mkPsi command args
+        psi.RedirectStandardOutput <- true
+        psi.RedirectStandardError <- true
+        let proc = new Diagnostics.Process(StartInfo = psi)
+
+        try
+            proc.Start() |> ignore
+            let stdout = proc.StandardOutput.ReadToEndAsync()
+            let stderr = proc.StandardError.ReadToEndAsync()
+
+            Task
+                .WhenAll([| stdout :> Task; stderr :> Task; proc.WaitForExitAsync() |])
+                .ContinueWith<int * string * string>(fun (_: Task) ->
+                    try
+                        (proc.ExitCode, stdout.Result, stderr.Result)
+                    finally
+                        proc.Dispose())
+        with error ->
+            proc.Dispose()
+            Task.FromException<int * string * string> error
 
     /// Run a command silently under a <see cref="SilentRun"/> — any combination of
     /// environment, timeout, working directory and a streaming sink, including the
@@ -235,13 +260,13 @@ module Process =
         for (key, value) in env do
             psi.EnvironmentVariables.[key] <- value
 
-        use proc = Diagnostics.Process.Start(psi)
-        let stdoutTask = proc.StandardOutput.ReadToEndAsync()
-        let stderrTask = proc.StandardError.ReadToEndAsync()
-        proc.WaitForExit()
-        let stdout = stdoutTask.Result
-        let stderr = stderrTask.Result
-        (proc.ExitCode, stdout.Trim(), stderr.Trim())
+        withProcess psi (fun proc ->
+            let stdoutTask = proc.StandardOutput.ReadToEndAsync()
+            let stderrTask = proc.StandardError.ReadToEndAsync()
+            proc.WaitForExit()
+            let stdout = stdoutTask.Result
+            let stderr = stderrTask.Result
+            (proc.ExitCode, stdout.Trim(), stderr.Trim()))
 
     /// Run a command with additional environment variables (interactive, no capture).
     let runWithEnv (command: string) (args: string list) (env: (string * string) list) =
@@ -252,13 +277,13 @@ module Process =
         for (key, value) in env do
             psi.EnvironmentVariables.[key] <- value
 
-        use proc = Diagnostics.Process.Start(psi)
-        proc.WaitForExit()
-        sw.Stop()
-        printfn $"    %s{UI.timing sw.Elapsed}"
+        withProcess psi (fun proc ->
+            proc.WaitForExit()
+            sw.Stop()
+            printfn $"    %s{UI.timing sw.Elapsed}"
 
-        if proc.ExitCode <> 0 then
-            failwith $"Command failed with exit code %d{proc.ExitCode}"
+            if proc.ExitCode <> 0 then
+                failwith $"Command failed with exit code %d{proc.ExitCode}")
 
     /// Run a command silently with an optional timeout (milliseconds). Returns
     /// (exitCode, trimmed stdout, trimmed stderr); a timeout yields (-1, "", message).
@@ -268,25 +293,25 @@ module Process =
         psi.RedirectStandardError <- true
         psi.CreateNoWindow <- true
 
-        use proc = Diagnostics.Process.Start(psi)
-        // Read stdout and stderr in parallel to avoid deadlock when buffer fills
-        let stdoutTask = proc.StandardOutput.ReadToEndAsync()
-        let stderrTask = proc.StandardError.ReadToEndAsync()
+        withProcess psi (fun proc ->
+            // Read stdout and stderr in parallel to avoid deadlock when buffer fills
+            let stdoutTask = proc.StandardOutput.ReadToEndAsync()
+            let stderrTask = proc.StandardError.ReadToEndAsync()
 
-        let exited =
-            match timeout with
-            | Some ms -> proc.WaitForExit(ms)
-            | None ->
-                proc.WaitForExit()
-                true
+            let exited =
+                match timeout with
+                | Some ms -> proc.WaitForExit(ms)
+                | None ->
+                    proc.WaitForExit()
+                    true
 
-        if not exited then
-            proc.Kill(entireProcessTree = true)
-            (-1, "", $"Process timed out after %d{timeout.Value}ms")
-        else
-            let stdout = stdoutTask.Result
-            let stderr = stderrTask.Result
-            (proc.ExitCode, stdout.Trim(), stderr.Trim())
+            if not exited then
+                proc.Kill(entireProcessTree = true)
+                (-1, "", $"Process timed out after %d{timeout.Value}ms")
+            else
+                let stdout = stdoutTask.Result
+                let stderr = stderrTask.Result
+                (proc.ExitCode, stdout.Trim(), stderr.Trim()))
 
     /// Run a command silently with an optional timeout (milliseconds) in a specific
     /// directory.
@@ -297,24 +322,24 @@ module Process =
         psi.CreateNoWindow <- true
         psi.WorkingDirectory <- workDir
 
-        use proc = Diagnostics.Process.Start(psi)
-        let stdoutTask = proc.StandardOutput.ReadToEndAsync()
-        let stderrTask = proc.StandardError.ReadToEndAsync()
+        withProcess psi (fun proc ->
+            let stdoutTask = proc.StandardOutput.ReadToEndAsync()
+            let stderrTask = proc.StandardError.ReadToEndAsync()
 
-        let exited =
-            match timeout with
-            | Some ms -> proc.WaitForExit(ms)
-            | None ->
-                proc.WaitForExit()
-                true
+            let exited =
+                match timeout with
+                | Some ms -> proc.WaitForExit(ms)
+                | None ->
+                    proc.WaitForExit()
+                    true
 
-        if not exited then
-            proc.Kill(entireProcessTree = true)
-            (-1, "", $"Process timed out after %d{timeout.Value}ms")
-        else
-            let stdout = stdoutTask.Result
-            let stderr = stderrTask.Result
-            (proc.ExitCode, stdout.Trim(), stderr.Trim())
+            if not exited then
+                proc.Kill(entireProcessTree = true)
+                (-1, "", $"Process timed out after %d{timeout.Value}ms")
+            else
+                let stdout = stdoutTask.Result
+                let stderr = stderrTask.Result
+                (proc.ExitCode, stdout.Trim(), stderr.Trim()))
 
     /// Run a command silently in a specific directory.
     let runSilentInDir (command: string) (args: string list) (workDir: string) =
@@ -336,17 +361,19 @@ module Process =
     /// Run a command interactively (no output capture) and return exit code.
     let runInteractive (command: string) (args: string list) : int =
         let psi = mkPsi command args
-        use proc = Diagnostics.Process.Start(psi)
-        proc.WaitForExit()
-        proc.ExitCode
+
+        withProcess psi (fun proc ->
+            proc.WaitForExit()
+            proc.ExitCode)
 
     /// Run a command interactively in a specific directory.
     let runInteractiveInDir (command: string) (args: string list) (workDir: string) : int =
         let psi = mkPsi command args
         psi.WorkingDirectory <- workDir
-        use proc = Diagnostics.Process.Start(psi)
-        proc.WaitForExit()
-        proc.ExitCode
+
+        withProcess psi (fun proc ->
+            proc.WaitForExit()
+            proc.ExitCode)
 
     /// Run a dotnet command.
     let dotnet (args: string list) = run "dotnet" args
