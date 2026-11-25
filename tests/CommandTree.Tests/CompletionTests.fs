@@ -339,3 +339,31 @@ let ``fishCompletions describes each command and flag with only the first descri
             completions.Split('\n')
             |> Array.forall (fun line -> line.StartsWith("complete -c test"))
         @>
+
+[<Fact>]
+let ``fish completion for a flag without a short name has no -s`` () =
+    let verbose =
+        {
+            LongName = "verbose"
+            ShortName = None
+            TypeName = "bool"
+            Arity = Nullary
+            IsRepeatable = false
+            Description = "Talk more"
+            EnvVar = None
+        }
+
+    let leaf: LeafData<unit> =
+        {
+            Name = "run"
+            Description = "Run it"
+            Args = []
+            Flags = [ verbose ]
+            Examples = []
+            Parse = fun _ -> Ok()
+            FormatArgs = fun () -> Some []
+        }
+
+    let completions = CommandTree.fishCompletions (CommandTree.Leaf leaf) "test"
+
+    test <@ completions = "complete -c test -n \"__fish_seen_subcommand_from run\" -l verbose -d \"Talk more\"" @>

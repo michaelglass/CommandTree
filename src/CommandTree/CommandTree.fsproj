@@ -54,11 +54,14 @@
 
   <ItemGroup>
     <Compile Include="Attributes.fs" />
+    <Compile Include="HelpDoc.fs" />
+    <Compile Include="HelpEnvironment.fs" />
     <Compile Include="Tree.fs" />
     <Compile Include="SpecError.fs" />
     <Compile Include="Reflection.fs" />
     <Compile Include="UI.fs" />
     <Compile Include="Process.fs" />
+    <Compile Include="HelpPrinter.fs" />
     <Compile Include="Fish.fs" />
   </ItemGroup>
 </Project>

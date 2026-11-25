@@ -12,6 +12,7 @@ CommandTree.help tree path prefix        // Help text for one level
 CommandTree.helpFull tree prefix         // Full recursive help
 CommandTree.helpForPath tree path prefix // Help for a subcommand path
 CommandTree.helpWithGlobals tree flags prefix // Help with a global-options section
+CommandTree.helpFullDoc tree prefix      // ...and a HelpDoc twin of each, for HelpPrinter.print
 CommandTree.format tree cmd prefix       // Format a command back to a CLI string
 CommandTree.findByPath tree path         // Navigate to a subtree
 CommandTree.closestGroupPath tree args   // Deepest matching group path
@@ -70,6 +71,60 @@ match CommandTree.parse tree argv with
     printfn "%s" (CommandTree.renderParseError tree err "my-cli") // help text (HelpRequested)
     0
 ```
+
+### Terminal help: wrapping, colour, paging
+
+Each help function above has a `...Doc` twin (`helpDoc`, `helpFullDoc`,
+`helpForPathDoc`, `helpWithGlobalsDoc`) that returns a `HelpDoc`: a list of
+styled lines and two-column tables, with no decision yet about width or colour.
+The string functions are that document rendered as plain text with no width
+limit. To print help the way a terminal reader wants it, hand the document to
+`HelpPrinter.print`:
+
+```fsharp
+| Error(HelpRequested path) ->
+    HelpPrinter.print (CommandTree.helpForPathDoc tree path "my-cli")
+    0
+```
+
+`HelpPrinter.print` reads the environment once (`HelpPrinter.detect`) and then:
+
+- **Colour.** Group names bold cyan, command and flag names bold, arguments
+  green, secondary text such as `(default)` dim, headings bold. Plain text when
+  stdout is not a terminal or `NO_COLOR` is set to any non-empty value.
+- **Width.** On a terminal, descriptions wrap to its width with a hanging indent
+  that keeps them in their column; every row of a table shares one description
+  column, capped at `HelpDoc.maxDescriptionColumn` (and a third of the width), so
+  a usage too long for it moves its description to the next line instead of
+  pushing it right. Redirected output does not wrap, so each row stays on one
+  line for `grep`.
+- **Paging.** Help with at least as many lines as the terminal has rows goes
+  through `$PAGER` (default `less -R`; `LESS=FRX` when `LESS` is unset); never
+  when stdout is redirected. If the pager cannot start, the help is printed
+  directly.
+
+`helpFull`/`helpFullDoc` is the overview: one row per command at every depth,
+each description cut to its first sentence (`HelpDoc.firstSentence`), and a
+blank line before and after each top-level group. The full text belongs to the
+command's own help.
+
+Every decision is a pure function over the parsed environment, so it can be
+tested without a terminal:
+
+```fsharp
+let noVariables (_: string) : string option = None
+let env = HelpEnvironment.parse (* isRedirected *) false 100 40 noVariables
+let plan = HelpEnvironment.plan env (CommandTree.helpFullDoc tree "my-cli")
+// plan.Rendered : string       — laid out at 100 columns, styled
+// plan.Delivery : HelpDelivery — Direct, or Paged pager when taller than 40 rows
+HelpDoc.toText (HelpWidth.create 80) Plain doc // any width, either colour mode
+```
+
+The effects themselves go through a `HelpConsole` record (redirect check, window
+size, environment variables, writing a line, running the pager).
+`HelpPrinter.system` is the real one; `HelpPrinter.detectWith` and
+`HelpPrinter.deliverWith` take any other, so a test can script a terminal, a
+window size that cannot be read, or a pager that will not start.
 
 ## Reflection
 

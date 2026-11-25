@@ -247,18 +247,6 @@ module CommandTree =
     let private descriptionLines (description: string) : string list =
         description.Split([| "\r\n"; "\n" |], StringSplitOptions.None) |> List.ofArray
 
-    /// Lay out one row of a two-column help table. The first description line follows
-    /// the label; each further line is indented to start in the same column, wherever
-    /// the label's width put it. Blank lines stay empty rather than trailing spaces.
-    let private tableRow (label: string) (lines: string list) : string list =
-        let hang = String.replicate (label.Length + 1) " "
-
-        lines
-        |> List.mapi (fun i line ->
-            if i = 0 then $"%s{label} %s{line}"
-            elif line = "" then ""
-            else hang + line)
-
     /// The first line of a description: the one-line summary a completion menu shows.
     let private summaryLine (description: string) : string =
         List.head (descriptionLines description)
@@ -270,75 +258,121 @@ module CommandTree =
         else
             description
 
-    /// Render a single flag info line for help output
-    let private renderFlagLine (fi: FlagInfo) =
-        let longPart = $"--%s{fi.LongName}"
+    let private span (style: HelpStyle) (text: string) : HelpSpan = { Text = text; Style = style }
 
+    let private heading (title: string) : HelpBlock =
+        HelpBlock.Line(0, 0, [ span HelpStyle.Heading $"%s{title}:" ])
+
+    /// Continuation lines of a usage line hang under the text after "Usage: ".
+    [<Literal>]
+    let private usageHang = 7
+
+    let private usageLine (spans: HelpSpan list) : HelpBlock =
+        HelpBlock.Line(0, usageHang, span HelpStyle.Heading "Usage:" :: spans)
+
+    /// A description as span lines, with <c>suffix</c> appended to its last line.
+    let private describe (description: string) (suffix: HelpSpan list) : HelpSpan list list =
+        let lines = descriptionLines description
+
+        lines
+        |> List.mapi (fun i line ->
+            let spans = [ span HelpStyle.Text line ]
+            if i = lines.Length - 1 then spans @ suffix else spans)
+
+    /// The <c>(default)</c> marker on the first line of the default child's description.
+    let private markDefault (group: GroupData<'Cmd>) (child: CommandTree<'Cmd>) (lines: HelpSpan list list) =
+        if group.Default = Some(name child) then
+            lines
+            |> List.mapi (fun i line ->
+                if i = 0 then
+                    line @ [ span HelpStyle.Secondary " (default)" ]
+                else
+                    line)
+        else
+            lines
+
+    let private argSpans (argList: ArgInfo list) : HelpSpan list =
+        argList |> List.map (fun a -> span HelpStyle.Argument $" %s{formatArg a}")
+
+    let private optionsSpans (flags: FlagInfo list) : HelpSpan list =
+        if flags.IsEmpty then
+            []
+        else
+            [ span HelpStyle.Argument " [options]" ]
+
+    /// A node's name, styled as a group or a command.
+    let private nameSpan (node: CommandTree<'Cmd>) : HelpSpan =
+        match node with
+        | Leaf leaf -> span HelpStyle.Command leaf.Name
+        | Group group -> span HelpStyle.Group group.Name
+
+    let private flagRow (fi: FlagInfo) : HelpRow =
         let shortPart =
             match fi.ShortName with
-            | Some s -> $", -%s{s}"
-            | None -> ""
+            | Some s -> [ span HelpStyle.Text ", "; span HelpStyle.Command $"-%s{s}" ]
+            | None -> []
 
         let typePart =
             match fi.Arity with
-            | Nullary -> ""
-            | Required -> $" <%s{fi.TypeName}>"
-            | Optional -> $"[=<%s{fi.TypeName}>]"
+            | Nullary -> []
+            | Required -> [ span HelpStyle.Argument $" <%s{fi.TypeName}>" ]
+            | Optional -> [ span HelpStyle.Argument $"[=<%s{fi.TypeName}>]" ]
+
+        let repeatable =
+            if fi.IsRepeatable then
+                [ span HelpStyle.Secondary " (repeatable)" ]
+            else
+                []
 
         let envPart =
             match fi.EnvVar with
-            | Some { VarName = v } -> $" (env: %s{v})"
-            | None -> ""
+            | Some { VarName = v } -> [ span HelpStyle.Secondary $" (env: %s{v})" ]
+            | None -> []
 
-        let label = $"  %s{longPart}%s{shortPart}%s{typePart}"
+        {
+            Depth = 0
+            Label = (span HelpStyle.Command $"--%s{fi.LongName}" :: shortPart) @ typePart
+            Description = describe fi.Description (repeatable @ envPart)
+        }
 
-        descriptionLines $"%s{withRepeatable fi fi.Description}%s{envPart}"
-        |> tableRow (label.PadRight(30))
-        |> String.concat "\n"
-
-    /// Format arguments for a command
-    let private formatArgs' (argList: ArgInfo list) =
-        if argList.IsEmpty then
-            ""
-        else
-            " " + (argList |> List.map formatArg |> String.concat " ")
-
-    /// Render the children of a group as a help listing
-    let private renderChildrenHelp (group: GroupData<'Cmd>) : string =
-        group.Children
-        |> List.map (fun c ->
-            let argsStr = formatArgs' (args c)
-            let cmdStr = $"%s{name c}%s{argsStr}"
-            let marker = if group.Default = Some(name c) then " (default)" else ""
-
-            descriptionLines (desc c)
-            |> List.mapi (fun i line -> if i = 0 then line + marker else line)
-            |> tableRow $"  %s{cmdStr.PadRight(16)}"
-            |> String.concat "\n")
-        |> String.concat "\n"
-
-    /// Render a single arg description line for the Arguments section
-    let private renderArgLine (arg: ArgInfo) (desc: string) =
-        let label = $"  %s{formatArg arg}"
-
-        let defaultSuffix =
+    let private argRow (arg: ArgInfo) (description: string) : HelpRow =
+        let defaultPart =
             match arg.Default with
-            | Some d -> $" (default: %s{d})"
-            | None -> ""
+            | Some d -> [ span HelpStyle.Secondary $" (default: %s{d})" ]
+            | None -> []
 
-        descriptionLines $"%s{desc}%s{defaultSuffix}"
-        |> tableRow (label.PadRight(20))
-        |> String.concat "\n"
+        {
+            Depth = 0
+            Label = [ span HelpStyle.Argument (formatArg arg) ]
+            Description = describe description defaultPart
+        }
 
-    /// Render a named help section (returns empty string when lines is empty)
-    let private renderSection (header: string) (lines: string list) =
-        if lines.IsEmpty then
-            ""
+    /// A group's children as table rows, each with its full description.
+    let private childRows (group: GroupData<'Cmd>) : HelpRow list =
+        group.Children
+        |> List.map (fun child ->
+            {
+                Depth = 0
+                Label = nameSpan child :: argSpans (args child)
+                Description = describe (desc child) [] |> markDefault group child
+            })
+
+    /// A titled section: a blank line, the heading, then its blocks. Nothing when empty.
+    let private section (title: string) (blocks: HelpBlock list) : HelpBlock list =
+        if blocks.IsEmpty then
+            []
         else
-            $"\n\n%s{header}:\n" + String.concat "\n" lines
+            HelpBlock.Blank :: heading title :: blocks
 
-    /// Generate help for a tree node (single level)
-    let help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
+    let private table (rows: HelpRow list) : HelpBlock list =
+        if rows.IsEmpty then [] else [ HelpBlock.Table [ rows ] ]
+
+    let private descriptionBlocks (description: string) : HelpBlock list =
+        descriptionLines description
+        |> List.map (fun line -> HelpBlock.Line(0, 0, [ span HelpStyle.Text line ]))
+
+    /// Help for a tree node (single level) as a document. <c>path</c> is the parent path.
+    let helpDoc (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : HelpDoc =
         let pathStr =
             if path.IsEmpty then
                 cmdPrefix
@@ -347,69 +381,105 @@ module CommandTree =
 
         match tree with
         | Leaf leaf ->
-            let argsStr = formatArgs' leaf.Args
+            let usage =
+                usageLine (
+                    [ span HelpStyle.Text $" %s{pathStr} "; span HelpStyle.Command leaf.Name ]
+                    @ argSpans leaf.Args
+                    @ optionsSpans leaf.Flags
+                )
 
-            let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
+            let argumentRows =
+                leaf.Args |> List.choose (fun a -> a.Description |> Option.map (argRow a))
 
-            let argsSection =
-                leaf.Args
-                |> List.choose (fun a -> a.Description |> Option.map (fun d -> renderArgLine a d))
-                |> renderSection "Arguments"
-
-            let flagsSection = leaf.Flags |> List.map renderFlagLine |> renderSection "Options"
-
-            let examplesSection =
+            let examples =
                 leaf.Examples
-                |> List.map (fun e -> $"  %s{pathStr} %s{leaf.Name} %s{e}")
-                |> renderSection "Examples"
+                |> List.map (fun e -> HelpBlock.Line(2, 4, [ span HelpStyle.Text $"%s{pathStr} %s{leaf.Name} %s{e}" ]))
 
-            $"Usage: %s{pathStr} %s{leaf.Name}%s{argsStr}%s{optionsStr}\n\n%s{leaf.Description}%s{argsSection}%s{flagsSection}%s{examplesSection}"
+            [ usage; HelpBlock.Blank ]
+            @ descriptionBlocks leaf.Description
+            @ section "Arguments" (table argumentRows)
+            @ section "Options" (table (leaf.Flags |> List.map flagRow))
+            @ section "Examples" examples
 
         | Group group ->
-            let prefix =
+            let groupName =
                 if group.Name = "" then
-                    pathStr
+                    []
                 else
-                    $"%s{pathStr} %s{group.Name}"
+                    [ span HelpStyle.Text " "; span HelpStyle.Group group.Name ]
 
-            $"Usage: %s{prefix} <command>\n\n%s{group.Description}\n\nCommands:\n%s{renderChildrenHelp group}"
+            [
+                usageLine (
+                    [ span HelpStyle.Text $" %s{pathStr}" ]
+                    @ groupName
+                    @ [ span HelpStyle.Argument " <command>" ]
+                )
+                HelpBlock.Blank
+            ]
+            @ descriptionBlocks group.Description
+            @ [ HelpBlock.Blank; heading "Commands"; HelpBlock.Table [ childRows group ] ]
 
-    /// Generate full help with all subtrees expanded
+    /// Generate help for a tree node (single level), as plain text
+    let help (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
+        HelpDoc.plain (helpDoc tree path cmdPrefix)
+
+    /// The overview rows for a node and, for a group, everything under it. Each
+    /// description is its first sentence: the full text belongs to that command's help.
+    let rec private overviewRows (depth: int) (parent: GroupData<'Cmd> option) (node: CommandTree<'Cmd>) =
+        let sentence = [ [ span HelpStyle.Text (HelpDoc.firstSentence (desc node)) ] ]
+
+        let summary =
+            match parent with
+            | Some group -> markDefault group node sentence
+            | None -> sentence
+
+        match node with
+        | Leaf leaf ->
+            [
+                {
+                    Depth = depth
+                    Label = span HelpStyle.Command leaf.Name :: argSpans leaf.Args @ optionsSpans leaf.Flags
+                    Description = summary
+                }
+            ]
+        | Group group ->
+            {
+                Depth = depth
+                Label = [ span HelpStyle.Group group.Name ]
+                Description = summary
+            }
+            :: (group.Children |> List.collect (overviewRows (depth + 1) (Some group)))
+
+    /// The full overview as a document: every command at every depth, one row each, with
+    /// its first sentence. Each top-level group is its own section; runs of top-level
+    /// commands between groups share one.
+    let helpFullDoc (tree: CommandTree<'Cmd>) (cmdPrefix: string) : HelpDoc =
+        let topLevel, parent =
+            match tree with
+            | Group group when group.Name = "" -> group.Children, Some group
+            | node -> [ node ], None
+
+        let sections, run =
+            topLevel
+            |> List.fold
+                (fun (sections, run) node ->
+                    let rows = overviewRows 0 parent node
+
+                    match node with
+                    | Leaf _ -> sections, run @ rows
+                    | Group _ -> sections @ [ run; rows ], [])
+                ([], [])
+
+        [
+            usageLine [ span HelpStyle.Text $" %s{cmdPrefix}"; span HelpStyle.Argument " <command>" ]
+            HelpBlock.Blank
+            heading "Commands"
+            HelpBlock.Table(sections @ [ run ])
+        ]
+
+    /// Generate full help with all subtrees expanded, as plain text
     let helpFull (tree: CommandTree<'Cmd>) (cmdPrefix: string) : string =
-        let rec formatNode (node: CommandTree<'Cmd>) (indent: int) : string list =
-            let pad = String.replicate indent "  "
-
-            match node with
-            | Leaf leaf ->
-                let argsStr = formatArgs' leaf.Args
-
-                let optionsStr = if leaf.Flags.IsEmpty then "" else " [options]"
-
-                let cmdStr = $"%s{leaf.Name}%s{argsStr}%s{optionsStr}"
-                tableRow $"%s{pad}%s{cmdStr.PadRight(20)}" (descriptionLines leaf.Description)
-
-            | Group group ->
-                let header =
-                    if group.Name = "" then
-                        []
-                    else
-                        tableRow $"%s{pad}%s{group.Name.PadRight(20)}" (descriptionLines group.Description)
-
-                let childIndent = if group.Name = "" then indent else indent + 1
-
-                let childLines =
-                    group.Children
-                    |> List.collect (fun c ->
-                        let lines = formatNode c childIndent
-
-                        match group.Default, lines with
-                        | Some dc, first :: rest when name c = dc -> (first + " (default)") :: rest
-                        | _ -> lines)
-
-                header @ childLines
-
-        let lines = formatNode tree 0
-        $"Usage: %s{cmdPrefix} <command>\n\nCommands:\n" + String.concat "\n" lines
+        HelpDoc.plain (helpFullDoc tree cmdPrefix)
 
     /// Find a subtree by path (e.g., ["env"] or ["infra"; "app"])
     let rec findByPath (tree: CommandTree<'Cmd>) (path: string list) : CommandTree<'Cmd> option =
@@ -423,10 +493,11 @@ module CommandTree =
                 |> List.tryFind (fun c -> name c = segment)
                 |> Option.bind (fun child -> findByPath child rest)
 
-    /// Generate help for a subtree at the given path
-    let helpForPath (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
+    /// Help for the subtree at the given path as a document; root help when the path
+    /// does not resolve.
+    let helpForPathDoc (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : HelpDoc =
         match findByPath tree path with
-        // Pass parent path (all but last segment) since help() adds the node's own name
+        // Pass parent path (all but last segment) since helpDoc adds the node's own name
         | Some subtree ->
             let parentPath =
                 if path.Length > 0 then
@@ -434,22 +505,33 @@ module CommandTree =
                 else
                     []
 
-            help subtree parentPath cmdPrefix
-        | None -> help tree [] cmdPrefix
+            helpDoc subtree parentPath cmdPrefix
+        | None -> helpDoc tree [] cmdPrefix
 
-    /// Generate help for the root with global options section
-    let helpWithGlobals (tree: CommandTree<'Cmd>) (globalFlags: FlagInfo list) (cmdPrefix: string) : string =
-        let globalSection =
-            if globalFlags.IsEmpty then
-                ""
-            else
-                let flagLines = globalFlags |> List.map renderFlagLine |> String.concat "\n"
-                $"\nGlobal options:\n%s{flagLines}\n"
+    /// Generate help for a subtree at the given path, as plain text
+    let helpForPath (tree: CommandTree<'Cmd>) (path: string list) (cmdPrefix: string) : string =
+        HelpDoc.plain (helpForPathDoc tree path cmdPrefix)
 
+    /// Root help with a global options section, as a document
+    let helpWithGlobalsDoc (tree: CommandTree<'Cmd>) (globalFlags: FlagInfo list) (cmdPrefix: string) : HelpDoc =
         match tree with
         | Group group ->
-            $"Usage: %s{cmdPrefix} [global options] <command>\n\n%s{group.Description}%s{globalSection}\nCommands:\n%s{renderChildrenHelp group}"
-        | _ -> help tree [] cmdPrefix
+            [
+                usageLine
+                    [
+                        span HelpStyle.Text $" %s{cmdPrefix}"
+                        span HelpStyle.Argument " [global options] <command>"
+                    ]
+                HelpBlock.Blank
+            ]
+            @ descriptionBlocks group.Description
+            @ section "Global options" (table (globalFlags |> List.map flagRow))
+            @ [ HelpBlock.Blank; heading "Commands"; HelpBlock.Table [ childRows group ] ]
+        | Leaf _ -> helpDoc tree [] cmdPrefix
+
+    /// Generate help for the root with global options section, as plain text
+    let helpWithGlobals (tree: CommandTree<'Cmd>) (globalFlags: FlagInfo list) (cmdPrefix: string) : string =
+        HelpDoc.plain (helpWithGlobalsDoc tree globalFlags cmdPrefix)
 
     /// Find the deepest valid group path from a list of args.
     /// Used to show help for the nearest matching group when an unknown command is typed.

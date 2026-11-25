@@ -43,15 +43,19 @@ dotnet test --coverage --coverage-output-format cobertura --coverage-output "$PW
 
 ## Architecture
 
-Six source files in `src/CommandTree/`:
+Source files in `src/CommandTree/`:
 
 - **Attributes.fs** -- Marker attributes for union cases: `CmdAttribute` (description + name override), `CmdDefaultAttribute` (default subcommand), `CmdCompletionAttribute` (shell completion values), `CmdFileCompletionAttribute` (file path completions), `CmdFlagAttribute` (flag name/short override on DU flag cases), `CmdEnvAttribute` (env var suffix override), `CmdEnvRawAttribute` (exact env var name override), and the root-union declarations `CmdEnvPrefixAttribute` (env var prefix) and `CmdGlobalsAttribute` (global-flag union), which every `fromUnion*` entry point reads.
 
-- **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, `FlagInfo`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`, `UnknownFlag`, `DuplicateFlag`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `findByPath`, `closestGroupPath`, `suggestPath` (closest command path anywhere in the tree, for "Did you mean" refusals), and `fishCompletions`.
+- **HelpDoc.fs** -- The help document model and every pure help-output decision. `HelpDoc` is a list of `HelpBlock`s (`Line` with indent/hang, `Table` of `HelpRow` sections sharing one description column, `Blank`) built from `HelpSpan`s tagged with a `HelpStyle`. `HelpDoc.layout` wraps to a `HelpWidth` (no line longer than it; hanging indents; a label too wide for the column moves its description to the next line), `HelpDoc.render` emits text in a `ColorMode` (`Styled` | `Plain`), `HelpDoc.firstSentence` makes overview summaries. `HelpEnvironment` (target `Terminal of TerminalSize` | `Redirected`, `NoColor`, `Pager`) is parsed once by `HelpEnvironment.parse`; `colorMode`, `width`, `delivery` and `plan` decide colour, wrap width and paging from it.
+
+- **Tree.fs** -- Core ADT and operations. Defines `CommandTree<'Cmd>` (recursive `Leaf`/`Group` union), `ArgInfo`, `ArgCompletionHint`, `FlagInfo`, and `ParseError` (structured error type with `HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`, `UnknownFlag`, `DuplicateFlag`). The `CommandTree` module has `parse` (returns `Result<'Cmd, ParseError>`), `format`, `help`, `helpFull`, `helpForPath`, `helpWithGlobals` (each the plain rendering of its `...Doc` twin, which returns a `HelpDoc`), `findByPath`, `closestGroupPath`, `suggestPath` (closest command path anywhere in the tree, for "Did you mean" refusals), and `fishCompletions`.
 
 - **Reflection.fs** -- Generates `CommandTree<'Cmd>` from discriminated unions via `FSharp.Reflection`. `CommandReflection.fromUnion<'Cmd>` is the main entry point. Also provides `parseFieldValue` (returns `Result<obj option, string>`), `formatFieldValue`, `formatCmd`, `toKebabCase`, `getFlagInfoFromDU` (builds `FlagInfo` list from DU flag types), and `CommandSpec<'Cmd>` for bundling tree + execute + format. Supports field types: string, int, int64, float, decimal, bool, Guid, option, list, nested unions, and trailing DU flag lists (parsed as named `--flags`, optionally after positional fields; flags may appear anywhere, and tokens after a standalone `--` always bind as positionals).
 
 - **UI.fs** -- Terminal output helpers: colored printing (`title`, `section`, `success`, `fail`, `info`, `warn`), timing display with color gradient, spinner animation (`withSpinner`, `withSpinnerQuiet`). `Color` module has ANSI escape codes.
+
+- **HelpPrinter.fs** -- The I/O edge for help: `detectWith` and `deliverWith` take a `HelpConsole` record of effects (redirect check, window size, variables, write, run pager → `PagerShown` | `PagerUnavailable`) and hold the decisions: size asked only of a terminal, unknown size when it throws, stdout fallback when the pager cannot start. `system` is the real console and the only code that touches the terminal or starts the pager; `detect`, `deliver`, `printWith` and `print` use it.
 
 - **Process.fs** -- Process execution: `run` (interactive with timing), `runSilent` (captured output), `runAsync` (Task-based), `runWithSpinner` (returns `int * string * string`), `runCommand` (returns `CommandResult` record), `runInteractive`, `dotnet`, `runParallel`. All use `ProcessStartInfo` directly (no shell).
 
@@ -73,12 +77,13 @@ Six source files in `src/CommandTree/`:
 
 ## Tests
 
-Six test files in `tests/CommandTree.Tests/`:
+Test files in `tests/CommandTree.Tests/` include:
 
 - **ReflectionTests.fs** -- `toKebabCase`, `toDescription`, `fromUnion` tree generation, `caseName`, `formatCmd`, field value parsing/formatting for all supported types (string, int, int64, float, decimal, bool, Guid, option, union).
 - **CompletionTests.fs** -- Completion attributes, union auto-detection, fish completion output for values/files/nested groups.
 - **ParsingTests.fs** -- `parse` for simple/nested/default commands, argument parsing, structured `ParseError` matching (`HelpRequested`, `UnknownCommand`, `InvalidArguments`, `AmbiguousArgument`), `closestGroupPath`, help generation, `format` roundtrips.
 - **UITests.fs** -- Color ANSI constants, UI output functions (title, section, success, fail, info, warn, dimInfo, cmd), timingColor gradient, timing format, withSpinner non-interactive mode. Uses stdout/stderr capture helpers.
+- **HelpRenderTests.fs** -- Help layout and rendering: no line longer than the width, hanging indents, long labels moving their description down, sections, first-sentence summaries, styled vs plain output, `HelpEnvironment` parsing and decisions (colour, width, paging), `HelpPrinter.detectWith`/`deliverWith` driven through a fake `HelpConsole`, and the real console (stdout, a real `sh` pager, a missing pager, a pager that quits early).
 - **ProcessTests.fs** -- `runSilent`, `runCommand`, `runSilentWithEnv`, `runSilentWithTimeout`, `runInteractive`, `runAsync`, `runWithSpinner`, `runParallel`. Uses real process execution (echo/sh).
 - **FishTests.fs** -- `generateContent` snapshot/fixture tests for completion script structure, subcommands, file completions, cmdName variations.
 

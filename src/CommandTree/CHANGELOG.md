@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- feat: help for terminals. `helpDoc`, `helpFullDoc`, `helpForPathDoc` and
+  `helpWithGlobalsDoc` return a `HelpDoc` (styled lines and two-column tables),
+  and `HelpPrinter.print doc` prints it for this process's stdout: group names
+  bold cyan, commands bold, arguments green, secondary text dim; descriptions
+  wrapped to the terminal width with a hanging indent that keeps them in their
+  column; through `$PAGER` (default `less -R`) when taller than the window.
+  Redirected output, or `NO_COLOR` set, gets plain text; redirected output is not
+  wrapped or paged, and a pager that cannot start falls back to printing
+  directly. Every decision is a pure function over a parsed `HelpEnvironment`
+  (`colorMode`, `width`, `delivery`, `plan`), and the effects go through a
+  `HelpConsole` record (`HelpPrinter.system` is the real one), so every arm is
+  testable without a TTY.
+- feat: **Behaviour change** to the string help (`help`, `helpFull`,
+  `helpForPath`, `helpWithGlobals`), which is now the plain, unbounded rendering
+  of the same document. Every row of a table starts its description in one
+  column (two past the widest label, at most column 32); a label too wide for it
+  puts its description on the next line instead of pushing it right. Table rows
+  indent two columns per level, starting at two. `helpFull` is the overview: each
+  description is cut to its first sentence and each top-level group is set off
+  by blank lines. `helpWithGlobals` puts a blank line before each section.
+  Signatures are unchanged; tests that pin exact help text need new expectations.
 - fix: fish completions describe each command and flag with only the first line
   of its description, so a multi-line `[<Cmd>]` or `[<CmdFlag>]` description no
   longer spills into the completion script. Backslashes and `$` in completion

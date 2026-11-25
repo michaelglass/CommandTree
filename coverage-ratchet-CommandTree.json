@@ -21,7 +21,7 @@
     "Tree.fs": {
       "line": 98,
       "branch": 94,
-      "reason": "F# compiler-generated branches for Option match in renderFlagLine, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching; plus the entryAssemblyVersion entry-vs-calling-assembly fallback (GetEntryAssembly() is non-null under the test host, so the null branch is host-dependent and not deterministically coverable) — its testable logic lives in assemblyVersion(asm) which is 100% line-covered, and the wrapper is covered indirectly via renderVersion"
+      "reason": "F# compiler-generated branches for Option match in the fish ShortName rendering, Array.contains in hasHelpFlag/hasVersionFlag, and record DU pattern matching; plus the entryAssemblyVersion entry-vs-calling-assembly fallback (GetEntryAssembly() is non-null under the test host, so the null branch is host-dependent and not deterministically coverable) — its testable logic lives in assemblyVersion(asm) which is 100% line-covered, and the wrapper is covered indirectly via renderVersion"
     },
     "UI.fs": [
       {
@@ -60,8 +60,8 @@
       "coveredBranches": 15
     },
     "Tree.fs": {
-      "coveredLines": 257,
-      "coveredBranches": 161
+      "coveredLines": 318,
+      "coveredBranches": 159
     },
     "UI.fs": {
       "coveredLines": 51,

@@ -195,6 +195,13 @@ type LayoutCommand =
 
 let private layoutTree = CommandReflection.fromUnion<LayoutCommand> "Layout"
 
+/// Pad a label to the column its table's descriptions start in.
+let private at (column: int) (label: string) = label.PadRight column
+
+/// The root listing's widest label, "  merge <baseline> <current>", ends at column 28,
+/// so its descriptions start two columns later.
+let private rootColumn = at 30
+
 [<Fact>]
 let ``group listing hangs multi-line descriptions under the description column`` () =
     let expected =
@@ -203,13 +210,20 @@ let ``group listing hangs multi-line descriptions under the description column``
         + "Layout\n"
         + "\n"
         + "Commands:\n"
-        + "  confirm          Confirm the gate verdict\n"
-        + "                   failed here, not selected by check\n"
-        + "                   re-run it to see why\n"
-        + "  merge <baseline> <current> Merge\n"
-        + "                             the inputs\n"
-        + "  deploy           Deploy\n"
-        + "  tools            Nested tools"
+        + rootColumn "  confirm"
+        + "Confirm the gate verdict\n"
+        + rootColumn ""
+        + "failed here, not selected by check\n"
+        + rootColumn ""
+        + "re-run it to see why\n"
+        + rootColumn "  merge <baseline> <current>"
+        + "Merge\n"
+        + rootColumn ""
+        + "the inputs\n"
+        + rootColumn "  deploy"
+        + "Deploy\n"
+        + rootColumn "  tools"
+        + "Nested tools"
 
     test <@ CommandTree.help layoutTree [] "fshw" = expected @>
 
@@ -221,10 +235,14 @@ let ``nested group listing puts the default marker on the first description line
         + "Nested tools\n"
         + "\n"
         + "Commands:\n"
-        + "  confirm          Confirm the gate verdict (default)\n"
-        + "                   failed here, not selected by check\n"
-        + "                   re-run it to see why\n"
-        + "  status           Show status"
+        + at 11 "  confirm"
+        + "Confirm the gate verdict (default)\n"
+        + at 11 ""
+        + "failed here, not selected by check\n"
+        + at 11 ""
+        + "re-run it to see why\n"
+        + at 11 "  status"
+        + "Show status"
 
     test <@ CommandTree.helpForPath layoutTree [ "tools" ] "fshw" = expected @>
 
@@ -239,30 +257,40 @@ let ``helpWithGlobals listing hangs multi-line descriptions under the descriptio
         <@
             listing.StartsWith(
                 "Commands:\n"
-                + "  confirm          Confirm the gate verdict\n"
-                + "                   failed here, not selected by check\n"
-                + "                   re-run it to see why\n",
+                + rootColumn "  confirm"
+                + "Confirm the gate verdict\n"
+                + rootColumn ""
+                + "failed here, not selected by check\n"
+                + rootColumn ""
+                + "re-run it to see why\n",
                 System.StringComparison.Ordinal
             )
         @>
 
 [<Fact>]
-let ``helpFull hangs multi-line descriptions under each depth's own column`` () =
+let ``helpFull summarises each command in one column with a blank line before each group`` () =
+    let summary =
+        "Confirm the gate verdict failed here, not selected by check re-run it to see why"
+
     let expected =
         "Usage: fshw <command>\n"
         + "\n"
         + "Commands:\n"
-        + "confirm              Confirm the gate verdict\n"
-        + "                     failed here, not selected by check\n"
-        + "                     re-run it to see why\n"
-        + "merge <baseline> <current> Merge\n"
-        + "                           the inputs\n"
-        + "deploy [options]     Deploy\n"
-        + "tools                Nested tools\n"
-        + "  confirm              Confirm the gate verdict (default)\n"
-        + "                       failed here, not selected by check\n"
-        + "                       re-run it to see why\n"
-        + "  status               Show status"
+        + rootColumn "  confirm"
+        + summary
+        + "\n"
+        + rootColumn "  merge <baseline> <current>"
+        + "Merge the inputs\n"
+        + rootColumn "  deploy [options]"
+        + "Deploy\n"
+        + "\n"
+        + rootColumn "  tools"
+        + "Nested tools\n"
+        + rootColumn "    confirm"
+        + summary
+        + " (default)\n"
+        + rootColumn "    status"
+        + "Show status"
 
     test <@ CommandTree.helpFull layoutTree "fshw" = expected @>
 
@@ -303,8 +331,10 @@ let ``argument and option rows hang multi-line descriptions under their column``
                 + "the inputs\n"
                 + "\n"
                 + "Arguments:\n"
-                + "  <baseline>         Baseline XML\n"
-                + "                     from main"
+                + at 14 "  <baseline>"
+                + "Baseline XML\n"
+                + at 14 ""
+                + "from main"
         @>
 
     test
@@ -315,8 +345,10 @@ let ``argument and option rows hang multi-line descriptions under their column``
                 + "Deploy\n"
                 + "\n"
                 + "Options:\n"
-                + "  --dry-run, -d                Skip the actual operation\n"
-                + "                               and print what would run"
+                + at 17 "  --dry-run, -d"
+                + "Skip the actual operation\n"
+                + at 17 ""
+                + "and print what would run"
         @>
 
 /// The root listing of layoutTree with its confirm command's description replaced.
@@ -332,19 +364,11 @@ let private listingWithConfirmDescription (description: string) =
 
 [<Fact>]
 let ``Windows line endings in a description render as single newlines in a listing`` () =
-    test
-        <@
-            (listingWithConfirmDescription "first\r\nsecond")
-                .EndsWith("  confirm          first\n                   second")
-        @>
+    test <@ (listingWithConfirmDescription "first\r\nsecond").EndsWith("  confirm  first\n           second") @>
 
 [<Fact>]
 let ``a blank line in a listed description stays empty instead of trailing spaces`` () =
-    test
-        <@
-            (listingWithConfirmDescription "first\n\nsecond")
-                .EndsWith("  confirm          first\n\n                   second")
-        @>
+    test <@ (listingWithConfirmDescription "first\n\nsecond").EndsWith("  confirm  first\n\n           second") @>
 
 type OptionalDefaultHelpCommand =
     | [<Cmd("Ratchet coverage"); CmdDefault>] Ratchet of config: string option

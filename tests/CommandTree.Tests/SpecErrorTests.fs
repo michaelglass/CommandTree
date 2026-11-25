@@ -49,20 +49,33 @@ type EqGlobalFlag =
     | [<CmdFlag(Name = "log-level", Description = "Log level")>] LogLevel of string
 
 /// Golden full help text for the public contract. Byte-equal across `fromUnion*`
-/// (wrapper) and `tryFromUnion*` (direct) on this valid DU.
+/// (wrapper) and `tryFromUnion*` (direct) on this valid DU. The widest label,
+/// "  merge <baseline> [output]", ends at column 27, so descriptions start at 29.
 let private goldenHelpFull =
+    let at29 (label: string) = label.PadRight 29
+
     "Usage: refcli <command>\n"
     + "\n"
     + "Commands:\n"
-    + "task                 Task management\n"
-    + "  add <title> [priority] Add a task\n"
-    + "  list                 List tasks (default)\n"
-    + "  complete <id>        Complete a task\n"
-    + "deploy [options]     Deploy somewhere\n"
-    + "merge <baseline> [output] Merge with record args\n"
-    + "tag <label> [<files...>] Tag files\n"
-    + "test                 Run the suite\n"
-    + "ident <id>           A guid arg"
+    + at29 "  task"
+    + "Task management\n"
+    + at29 "    add <title> [priority]"
+    + "Add a task\n"
+    + at29 "    list"
+    + "List tasks (default)\n"
+    + at29 "    complete <id>"
+    + "Complete a task\n"
+    + "\n"
+    + at29 "  deploy [options]"
+    + "Deploy somewhere\n"
+    + at29 "  merge <baseline> [output]"
+    + "Merge with record args\n"
+    + at29 "  tag <label> [<files...>]"
+    + "Tag files\n"
+    + at29 "  test"
+    + "Run the suite\n"
+    + at29 "  ident <id>"
+    + "A guid arg"
 
 [<Fact>]
 let ``tryFromUnionWithGlobalsAndEnv Ok-path help text matches canonical golden`` () =
