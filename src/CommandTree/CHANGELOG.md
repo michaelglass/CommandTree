@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.2 - 2026-11-25
+
 - feat: help for terminals. `helpDoc`, `helpFullDoc`, `helpForPathDoc` and
   `helpWithGlobalsDoc` return a `HelpDoc` (styled lines and two-column tables),
   and `HelpPrinter.print doc` prints it for this process's stdout: group names

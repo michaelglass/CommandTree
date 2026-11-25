@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.9 - 2026-11-25
+
+- chore: relicense under MPL-2.0
+
+
 ## 0.1.0-alpha.8 - 2026-09-30
 
 - feat: CT003 (Info) flags a `fromUnion*` call that passes the env prefix at
