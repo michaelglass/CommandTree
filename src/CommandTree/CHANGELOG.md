@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.3 - 2026-11-25
+
 - fix: group help (`help`, `helpForPath` and `helpWithGlobals` on a group, and
   their `...Doc` twins) lists each child with its first sentence, as the overview
   does, so a long description no longer fills the listing. The full text stays in
